@@ -1,0 +1,140 @@
+// https://github.com/mrdoob/three.js/blob/r129/src/renderers/webgl/WebGLProperties.js
+
+#ifndef THREEPP_GLPROPERTIES_HPP
+#define THREEPP_GLPROPERTIES_HPP
+
+#include "threepp/constants.hpp"
+#include "threepp/scenes/Scene.hpp"
+
+#include "GLUniforms.hpp"
+#include "threepp/core/Uniform.hpp"
+#include "threepp/materials/Material.hpp"
+#include "threepp/renderers/RenderTarget.hpp"
+#include "threepp/textures/Texture.hpp"
+
+#include <array>
+#include <optional>
+#include <unordered_map>
+
+namespace threepp::gl {
+
+    struct GLProgram;
+
+    struct TextureProperties {
+
+        bool glInit{};
+        std::optional<int> maxMipLevel{};
+        std::optional<unsigned int> glTexture{};
+        std::optional<int> currentAnisotropy{};
+        unsigned int version{};
+    };
+
+    struct RenderTargetProperties {
+
+        std::optional<unsigned int> glFramebuffer;
+        std::optional<std::array<unsigned int, 6>> glCubeFramebuffers;
+        std::optional<unsigned int> glDepthbuffer;
+
+        // Multisampled targets (RenderTarget::samples > 0) own a second
+        // framebuffer whose attachments are multisampled renderbuffers. Draws
+        // go there; glFramebuffer (the one holding the texture) only ever
+        // receives the resolve blit.
+        std::optional<unsigned int> glMultisampledFramebuffer;
+        std::optional<unsigned int> glColorRenderbuffer;
+        std::optional<unsigned int> glDepthRenderbuffer;
+    };
+
+    struct MaterialProperties {
+
+        GLProgram* program = nullptr;
+        GLProgram* currentProgram = nullptr;
+        std::unordered_map<std::string, GLProgram*> programs{};
+
+        std::optional<FogVariant> fog;
+
+        int numIntersection{};
+        std::optional<int> numClippingPlanes;
+        std::vector<float> clippingState;
+
+        Texture* envMap;
+        Texture* environment;
+
+        std::optional<ColorSpace> outputEncoding;
+        bool instancing{};
+        bool skinning{};
+        bool vertexAlphas{};
+
+        bool needsLights{};
+        bool receiveShadow{};
+
+        // The shadow configuration the current program was compiled against.
+        // USE_SHADOWMAP and SHADOWMAP_TYPE_* are baked into the shader, so a
+        // runtime change to Renderer::shadowMap() has to invalidate the program —
+        // otherwise the shadow pass stops running while the material keeps
+        // sampling the (now frozen) shadow map.
+        bool shadowMapEnabled{};
+        ShadowMap shadowMapType{};
+
+        unsigned int lightsStateVersion{};
+
+        std::vector<UniformObject*> uniformsList;
+        UniformMap* uniforms;
+
+        unsigned int version{};
+    };
+
+    template<class E, class T>
+    struct GLTypeProperties {
+
+        T* get(E* key) {
+
+            return &properties_[key];
+        }
+
+        void remove(E* key) {
+
+            properties_.erase(key);
+        }
+
+        void dispose() {
+
+            properties_.clear();
+        }
+
+    private:
+        friend class GLProperties;
+        std::unordered_map<E*, T> properties_;
+    };
+
+    class GLProperties {
+
+    public:
+        GLTypeProperties<Texture, TextureProperties> textureProperties;
+        GLTypeProperties<Material, MaterialProperties> materialProperties;
+        GLTypeProperties<RenderTarget, RenderTargetProperties> renderTargetProperties;
+
+        void dispose() {
+
+            auto texturePropertiesCopy = textureProperties.properties_;
+            for (auto& [tex, _] : texturePropertiesCopy) {
+                tex->dispose();
+            }
+            auto materialPropertiesCopy = materialProperties.properties_;
+            for (auto& [mat, _] : materialPropertiesCopy) {
+                mat->dispose();
+            }
+
+            auto renderTargetPropertiesCopy = renderTargetProperties.properties_;
+            for (auto& [target, _] : renderTargetPropertiesCopy) {
+                target->dispose();
+            }
+
+            textureProperties.dispose();
+            materialProperties.dispose();
+            renderTargetProperties.dispose();
+        }
+    };
+
+}// namespace threepp::gl
+
+#endif//THREEPP_GLPROPERTIES_HPP

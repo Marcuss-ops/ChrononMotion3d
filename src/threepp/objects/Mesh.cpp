@@ -1,0 +1,409 @@
+
+#include "threepp/objects/Mesh.hpp"
+
+#include "threepp/objects/SkinnedMesh.hpp"
+
+#include "threepp/core/AttributeView.hpp"
+#include "threepp/core/Face3.hpp"
+#include "threepp/core/Raycaster.hpp"
+
+#include "threepp/materials/MeshBasicMaterial.hpp"
+
+#include "threepp/math/Triangle.hpp"
+
+#include <algorithm>
+#include <memory>
+
+
+using namespace threepp;
+
+namespace {
+
+    std::optional<Intersection> checkIntersection(
+            Object3D& object, Material& material, const Raycaster& raycaster, const Ray& ray,
+            const Vector3& pA, const Vector3& pB, const Vector3& pC, Vector3& point) {
+
+        static thread_local Vector3 _intersectionPointWorld{};
+
+        if (material.side == Side::Back) {
+
+            ray.intersectTriangle(pC, pB, pA, true, point);
+
+        } else {
+
+            ray.intersectTriangle(pA, pB, pC, material.side != Side::Double, point);
+        }
+
+        if (point.isNan()) return std::nullopt;
+
+        _intersectionPointWorld.copy(point);
+        _intersectionPointWorld.applyMatrix4(*object.matrixWorld);
+
+        const auto distance = raycaster.ray.origin.distanceTo(_intersectionPointWorld);
+
+        if (distance < raycaster.nearPlane || distance > raycaster.farPlane) return std::nullopt;
+
+        Intersection intersection{};
+        intersection.distance = distance;
+        intersection.point = _intersectionPointWorld;
+        intersection.object = &object;
+
+        return intersection;
+    }
+
+    std::optional<Intersection> checkBufferGeometryIntersection(
+            Object3D& object, Material& material,
+            const Raycaster& raycaster, const Ray& ray,
+            const FloatBufferAttribute& position,
+            const std::vector<std::shared_ptr<BufferAttribute>>* morphPosition,
+            bool morphTargetsRelative,
+            const FloatAttributeView* uv,
+            const FloatAttributeView* uv2,
+            unsigned int a, unsigned int b, unsigned int c) {
+
+        static thread_local Vector3 _vA{};
+        static thread_local Vector3 _vB{};
+        static thread_local Vector3 _vC{};
+        static thread_local Vector3 _intersectionPoint{};
+
+        position.setFromBufferAttribute(_vA, a);
+        position.setFromBufferAttribute(_vB, b);
+        position.setFromBufferAttribute(_vC, c);
+
+        if (morphPosition) {
+
+            if (auto morphObject = object.as<ObjectWithMorphTargetInfluences>()) {
+
+                if (auto morphMaterial = material.as<MaterialWithMorphTargets>()) {
+
+                    if (morphMaterial->morphTargets) {
+
+                        const auto& morphInfluences = morphObject->morphTargetInfluences();
+
+                        if (!morphInfluences.empty()) {
+
+                            Vector3 _morphA;
+                            Vector3 _morphB;
+                            Vector3 _morphC;
+                            Vector3 _tempA;
+                            Vector3 _tempB;
+                            Vector3 _tempC;
+
+                            for (unsigned i = 0, il = morphPosition->size(); i < il; i++) {
+
+                                float influence = morphInfluences[i];
+
+                                if (influence == 0) continue;
+
+                                auto morphAttribute = morphPosition->at(i)->typed<float>();
+
+                                morphAttribute->setFromBufferAttribute(_tempA, a);
+                                morphAttribute->setFromBufferAttribute(_tempB, b);
+                                morphAttribute->setFromBufferAttribute(_tempC, c);
+
+                                if (morphTargetsRelative) {
+
+                                    _morphA.addScaledVector(_tempA, influence);
+                                    _morphB.addScaledVector(_tempB, influence);
+                                    _morphC.addScaledVector(_tempC, influence);
+
+                                } else {
+
+                                    _morphA.addScaledVector(_tempA.sub(_vA), influence);
+                                    _morphB.addScaledVector(_tempB.sub(_vB), influence);
+                                    _morphC.addScaledVector(_tempC.sub(_vC), influence);
+                                }
+                            }
+
+                            _vA.add(_morphA);
+                            _vB.add(_morphB);
+                            _vC.add(_morphC);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (auto skinned = object.as<SkinnedMesh>()) {
+            skinned->boneTransform(a, _vA);
+            skinned->boneTransform(b, _vB);
+            skinned->boneTransform(c, _vC);
+        }
+
+        auto intersection = checkIntersection(object, material, raycaster, ray, _vA, _vB, _vC, _intersectionPoint);
+
+        if (intersection) {
+
+            static thread_local Vector2 _uvA{};
+            static thread_local Vector2 _uvB{};
+            static thread_local Vector2 _uvC{};
+
+            // The views are tightly packed (FloatAttributeView de-strides
+            // interleaved sources), so direct itemSize indexing is safe here.
+            // NB: vertex B used to be read from index `c` — a copy-paste slip
+            // that skewed every interpolated raycast UV toward the C corner.
+            const auto readUv = [](const FloatAttributeView& view, unsigned int v, Vector2& target) {
+                const auto base = static_cast<size_t>(v) * view.itemSize();
+                target.set(view[base], view[base + 1]);
+            };
+
+            if (uv) {
+
+                readUv(*uv, a, _uvA);
+                readUv(*uv, b, _uvB);
+                readUv(*uv, c, _uvC);
+
+                Vector2 uvTarget{};
+                Triangle::getUV(_intersectionPoint, _vA, _vB, _vC, _uvA, _uvB, _uvC, uvTarget);
+                intersection->uv = uvTarget;
+            }
+
+            if (uv2) {
+
+                readUv(*uv2, a, _uvA);
+                readUv(*uv2, b, _uvB);
+                readUv(*uv2, c, _uvC);
+
+                Vector2 uv2Target{};
+                Triangle::getUV(_intersectionPoint, _vA, _vB, _vC, _uvA, _uvB, _uvC, uv2Target);
+                intersection->uv2 = uv2Target;
+            }
+
+            Face3 face{a, b, c, {}, 0};
+
+            Triangle::getNormal(_vA, _vB, _vC, face.normal);
+
+            intersection->face = face;
+        }
+
+        return intersection;
+    }
+
+}// namespace
+
+
+Mesh::Mesh(std::shared_ptr<BufferGeometry> geometry, std::shared_ptr<Material> material)
+    : ObjectWithMaterials({material ? std::move(material) : MeshBasicMaterial::create()}),
+      geometry_(geometry ? std::move(geometry) : BufferGeometry::create()) {}
+
+Mesh::Mesh(std::shared_ptr<BufferGeometry> geometry, std::vector<std::shared_ptr<Material>> materials)
+    : ObjectWithMaterials{std::move(materials)}, geometry_(std::move(geometry)) {}
+
+void Mesh::raycast(const Raycaster& raycaster, std::vector<Intersection>& intersects) {
+
+    if (material() == nullptr) return;
+
+    static thread_local Sphere _sphere{};
+
+    // Checking boundingSphere distance to ray. Through the virtual hook, not
+    // straight off the geometry: a SkinnedMesh answers with the bounds of its
+    // POSED self, because its geometry describes a bind pose that is not where
+    // its vertices are drawn (see raycastBoundingSphere).
+
+    if (const auto* bounds = raycastBoundingSphere()) {
+
+        _sphere.copy(*bounds);
+        _sphere.applyMatrix4(*matrixWorld);
+
+        if (!raycaster.ray.intersectsSphere(_sphere)) return;
+    }
+
+    //
+
+    static thread_local Ray _ray{};
+    static thread_local Matrix4 _inverseMatrix{};
+
+    _inverseMatrix.copy(*matrixWorld).invert();
+    _ray.copy(raycaster.ray).applyMatrix4(_inverseMatrix);
+
+    // Check boundingBox before continuing
+
+    if (const auto* box = raycastBoundingBox()) {
+
+        if (!_ray.intersectsBox(*box)) return;
+    }
+
+    std::optional<Intersection> intersection;
+
+    const auto index = geometry_->getIndex();
+    const auto position = geometry_->getAttribute<float>("position");
+    const auto morphPosition = geometry_->getMorphAttribute("position");
+    const auto morphTargetsRelative = geometry_->morphTargetsRelative;
+    // Views instead of typed pointers: uv/uv2 may be narrowed
+    // (compressAttributes), and the typed getter would return null — the
+    // intersection would silently lose its uv field. Zero-copy when float.
+    const FloatAttributeView uvView(geometry_->getAttribute("uv"));
+    const FloatAttributeView uv2View(geometry_->getAttribute("uv2"));
+    const auto* uv = uvView ? &uvView : nullptr;
+    const auto* uv2 = uv2View ? &uv2View : nullptr;
+    const auto groups = geometry_->groups;
+    const auto drawRange = geometry_->drawRange;
+
+    if (index != nullptr) {
+
+        // indexed buffer geometry
+
+        if (numMaterials() > 1) {
+
+            for (auto& group : groups) {
+
+                auto& groupMaterial = materials_[group.materialIndex];
+
+                const auto start = std::max(group.start, drawRange.start);
+                const auto end = std::min((group.start + group.count), (drawRange.start + drawRange.count));
+
+                for (int j = start, jl = end; j < jl; j += 3) {
+
+                    const auto a = index->getX(j);
+                    const auto b = index->getX(j + 1);
+                    const auto c = index->getX(j + 2);
+
+                    intersection = checkBufferGeometryIntersection(
+                            *this, *groupMaterial, raycaster, _ray, *position,
+                            morphPosition, morphTargetsRelative, uv, uv2, a, b, c);
+
+                    if (intersection) {
+
+                        intersection->faceIndex = j / 3;// triangle number in indexed buffer semantics
+                        intersection->face->materialIndex = group.materialIndex;
+                        intersects.emplace_back(*intersection);
+                    }
+                }
+            }
+
+        } else {
+
+            const int start = std::max(0, drawRange.start);
+            const int end = std::min(index->count(), (drawRange.start + drawRange.count));
+
+            for (int i = start, il = end; i < il; i += 3) {
+
+                const auto a = index->getX(i);
+                const auto b = index->getX(i + 1);
+                const auto c = index->getX(i + 2);
+
+                intersection = checkBufferGeometryIntersection(
+                        *this, *material(), raycaster, _ray, *position,
+                        morphPosition, morphTargetsRelative, uv, uv2, a, b, c);
+
+                if (intersection) {
+
+                    intersection->faceIndex = i / 3;// triangle number in indexed buffer semantics
+                    intersects.emplace_back(*intersection);
+                }
+            }
+        }
+
+    } else if (position != nullptr) {
+
+        // non-indexed buffer geometry
+
+        if (numMaterials() > 1) {
+
+            for (auto& group : groups) {
+
+                auto& groupMaterial = materials_[group.materialIndex];
+
+                const auto start = std::max(group.start, drawRange.start);
+                const auto end = std::min((group.start + group.count), (drawRange.start + drawRange.count));
+
+                for (int j = start, jl = end; j < jl; j += 3) {
+
+                    const auto a = j;
+                    const auto b = j + 1;
+                    const auto c = j + 2;
+
+                    intersection = checkBufferGeometryIntersection(
+                            *this, *groupMaterial, raycaster, _ray, *position,
+                            morphPosition, morphTargetsRelative, uv, uv2, a, b, c);
+
+                    if (intersection) {
+
+                        intersection->faceIndex = j / 3;// triangle number in non-indexed buffer semantics
+                        intersection->face->materialIndex = group.materialIndex;
+                        intersects.emplace_back(*intersection);
+                    }
+                }
+            }
+
+        } else {
+
+            const int start = std::max(0, drawRange.start);
+            const int end = std::min(position->count(), (drawRange.start + drawRange.count));
+
+            for (int i = start, il = end; i < il; i += 3) {
+
+                const int a = i;
+                const int b = i + 1;
+                const int c = i + 2;
+
+                intersection = checkBufferGeometryIntersection(
+                        *this, *material(), raycaster, _ray, *position,
+                        morphPosition, morphTargetsRelative, uv, uv2, a, b, c);
+
+                if (intersection) {
+
+                    intersection->faceIndex = i / 3;// triangle number in non-indexed buffer semantics
+                    intersects.emplace_back(*intersection);
+                }
+            }
+        }
+    }
+}
+
+std::string Mesh::type() const {
+
+    return "Mesh";
+}
+
+std::shared_ptr<BufferGeometry> Mesh::geometry() const {
+
+    return geometry_;
+}
+
+void Mesh::setGeometry(const std::shared_ptr<BufferGeometry>& geometry) {
+
+    geometry_ = geometry;
+}
+
+std::shared_ptr<Mesh> Mesh::create(std::shared_ptr<BufferGeometry> geometry, std::shared_ptr<Material> material) {
+
+    return std::make_shared<Mesh>(std::move(geometry), std::move(material));
+}
+
+std::shared_ptr<Mesh> Mesh::create(std::shared_ptr<BufferGeometry> geometry, std::vector<std::shared_ptr<Material>> materials) {
+
+    return std::make_shared<Mesh>(std::move(geometry), std::move(materials));
+}
+
+void Mesh::copy(const Object3D& source, bool recursive) {
+    Object3D::copy(source, recursive);
+
+    if (const auto m = source.as<Mesh>()) {
+
+        // TODO morphs
+
+        materials_ = m->materials_;
+        geometry_ = m->geometry_;
+    }
+}
+
+const Sphere* Mesh::raycastBoundingSphere() {
+
+    if (!geometry_) return nullptr;
+    if (!geometry_->boundingSphere) geometry_->computeBoundingSphere();
+    return geometry_->boundingSphere ? &*geometry_->boundingSphere : nullptr;
+}
+
+const Box3* Mesh::raycastBoundingBox() {
+
+    // Not computed on demand, matching the behaviour this replaced: the box is
+    // a second, tighter reject after the sphere already passed, and paying to
+    // build one for every mesh that has never needed it is not worth it.
+    if (!geometry_ || !geometry_->boundingBox) return nullptr;
+    return &*geometry_->boundingBox;
+}
+
+std::shared_ptr<Object3D> Mesh::createDefault() {
+    return create();
+}

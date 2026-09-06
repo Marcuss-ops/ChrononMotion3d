@@ -1,0 +1,116 @@
+
+#include "threepp/renderers/gl/GLObjects.hpp"
+
+#include "threepp/objects/InstancedMesh.hpp"
+#include <algorithm>
+#include "threepp/renderers/gl/GLAttributes.hpp"
+#include "threepp/renderers/gl/GLGeometries.hpp"
+#include "threepp/renderers/gl/GLInfo.hpp"
+
+#ifndef __EMSCRIPTEN__
+#include <glad/glad.h>
+#else
+#include <GLES3/gl3.h>
+#endif
+
+using namespace threepp;
+using namespace threepp::gl;
+
+
+struct GLObjects::Impl {
+
+    struct OnInstancedMeshDispose: EventListener {
+
+        explicit OnInstancedMeshDispose(Impl* scope): scope(scope) {}
+
+        void onEvent(Event& event) override {
+            auto instancedMesh = std::any_cast<InstancedMesh*>(event.target);
+
+            instancedMesh->removeEventListener("dispose", *this);
+
+            auto& tracked = scope->registeredInstancedMeshes_;
+            tracked.erase(std::remove(tracked.begin(), tracked.end(), instancedMesh), tracked.end());
+
+            scope->attributes_.remove(instancedMesh->instanceMatrix());
+
+            if (instancedMesh->instanceColor()) scope->attributes_.remove(instancedMesh->instanceColor());
+        }
+
+    private:
+        Impl* scope;
+    };
+
+    GLInfo& info_;
+    GLGeometries& geometries_;
+    GLAttributes& attributes_;
+
+    OnInstancedMeshDispose onInstancedMeshDispose;
+
+    std::unordered_map<BufferGeometry*, size_t> updateMap_;
+    std::vector<InstancedMesh*> registeredInstancedMeshes_;
+
+    Impl(GLGeometries& geometries, GLAttributes& attributes, GLInfo& info)
+        : info_(info),
+          geometries_(geometries),
+          attributes_(attributes),
+          onInstancedMeshDispose(this) {}
+
+    BufferGeometry* update(Object3D* object) {
+
+        const auto frame = info_.render.frame;
+
+        const auto geometry = object->geometry().get();
+        geometries_.get(object, geometry);
+
+        // Update once per frame
+
+        if (!updateMap_.contains(geometry) || updateMap_[geometry] != frame) {
+
+            geometries_.update(geometry);
+
+            updateMap_[geometry] = frame;
+        }
+
+        if (auto instancedMesh = object->as<InstancedMesh>()) {
+
+            if (!object->hasEventListener("dispose", onInstancedMeshDispose)) {
+
+                object->addEventListener("dispose", onInstancedMeshDispose);
+                registeredInstancedMeshes_.push_back(instancedMesh);
+            }
+
+            attributes_.update(instancedMesh->instanceMatrix(), GL_ARRAY_BUFFER);
+
+            if (instancedMesh->instanceColor() != nullptr) {
+
+                attributes_.update(instancedMesh->instanceColor(), GL_ARRAY_BUFFER);
+            }
+        }
+
+        return geometry;
+    }
+
+    void dispose() {
+
+        for (auto* im : registeredInstancedMeshes_) {
+            im->removeEventListener("dispose", onInstancedMeshDispose);
+        }
+        registeredInstancedMeshes_.clear();
+        updateMap_.clear();
+    }
+};
+
+BufferGeometry* GLObjects::update(Object3D* object) {
+
+    return pimpl_->update(object);
+}
+
+gl::GLObjects::GLObjects(GLGeometries& geometries, GLAttributes& attributes, GLInfo& info)
+    : pimpl_(std::make_unique<Impl>(geometries, attributes, info)) {}
+
+void gl::GLObjects::dispose() {
+
+    pimpl_->dispose();
+}
+
+GLObjects::~GLObjects() = default;

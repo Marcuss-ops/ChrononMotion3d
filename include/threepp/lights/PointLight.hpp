@@ -1,0 +1,40 @@
+// https://github.com/mrdoob/three.js/blob/r129/src/lights/PointLight.js
+
+#ifndef THREEPP_POINTLIGHT_HPP
+#define THREEPP_POINTLIGHT_HPP
+
+#include "threepp/lights/Light.hpp"
+#include "threepp/lights/light_interfaces.hpp"
+
+namespace threepp {
+
+    class PointLight: public Light, public LightWithShadow {
+
+    public:
+        float distance;
+        float decay;
+        // Physical source radius (world units). >0 gives ray-traced soft
+        // shadows with distance-widening penumbras in the Vulkan deferred
+        // renderer; 0 (default) keeps exact hard shadows. (threepp extension —
+        // three.js has no analytic-light source size.)
+        float radius = 0.f;
+
+        [[nodiscard]] std::string type() const override;
+
+        [[nodiscard]] float getPower() const;
+
+        void setPower(float power);
+
+        void dispose() override;
+
+        void copy(const Object3D& source, bool recursive) override;
+
+        static std::shared_ptr<PointLight> create(const Color& color = 0xffffff, std::optional<float> intensity = std::nullopt, float distance = 0, float decay = 1);
+
+    protected:
+        PointLight(const Color& color, std::optional<float> intensity, float distance, float decay);
+    };
+
+}// namespace threepp
+
+#endif//THREEPP_POINTLIGHT_HPP

@@ -1,0 +1,190 @@
+// https://github.com/mrdoob/three.js/blob/r129/src/materials/Material.js
+
+#ifndef THREEPP_MATERIAL_HPP
+#define THREEPP_MATERIAL_HPP
+
+#include "threepp/constants.hpp"
+#include "threepp/core/EventDispatcher.hpp"
+#include "threepp/core/Uniform.hpp"
+#include "threepp/math/Plane.hpp"
+
+#include <atomic>
+#include <optional>
+#include <variant>
+
+namespace threepp {
+
+    typedef std::variant<bool, int, float, Vector2, Side, Blending, BlendFactor, BlendEquation, StencilFunc, StencilOp, CombineOperation, DepthFunc, DepthPacking, NormalMapType, Color, std::string, std::shared_ptr<Texture>> MaterialValue;
+
+    class Material: public EventDispatcher {
+
+    public:
+        // Atomic — see Object3D::id. This is the id whose collision bites
+        // hardest: GLRenderer gates "refreshMaterial" on
+        // `material->id != _currentMaterialId`, so two materials sharing an id
+        // means the second never uploads its uniforms and renders with the
+        // first's colour/roughness/maps.
+        const unsigned int id = materialId.fetch_add(1, std::memory_order_relaxed);
+
+        std::string name;
+
+        bool fog = true;
+
+        Blending blending = Blending::Normal;
+        Side side{Side::Front};
+        bool vertexColors = false;
+
+        // GPU tet-skinning (deformable/soft bodies): when enabled the vertex shader
+        // sets each vertex to a barycentric blend of 4 collision-tet positions read
+        // from tetTexture, addressed by the tetIndex/tetWeight vertex attributes.
+        // tetTexture holds world-space tet positions (1 RGB texel per tet, packed
+        // row-major into a tetTextureSize x tetTextureSize float texture). The rest
+        // pose enters through baked per-vertex attributes (the rest tet edge-matrix
+        // inverse), so the shader skins normals by the per-tet deformation gradient
+        // without a per-frame matrix inverse or a second rest-position texture.
+        bool tetSkinning = false;
+        std::shared_ptr<Texture> tetTexture;
+        int tetTextureSize = 0;
+
+        // Hint for temporal passes (Vulkan deferred TAA): this material's texture
+        // content animates every frame (scrolling UV offset, video texture, live
+        // DataTexture) WITHOUT geometric motion, so motion vectors cannot reproject
+        // it. Temporal accumulation holds a short history on these surfaces instead
+        // of smearing the moving pattern. No effect on GL.
+        bool textureAnimatedHint = false;
+
+        float opacity = 1;
+        bool transparent = false;
+
+        BlendFactor blendSrc = BlendFactor::SrcAlpha;
+        BlendFactor blendDst = BlendFactor::OneMinusSrcAlpha;
+        BlendEquation blendEquation = BlendEquation::Add;
+        std::optional<BlendFactor> blendSrcAlpha;
+        std::optional<BlendFactor> blendDstAlpha;
+        std::optional<BlendEquation> blendEquationAlpha;
+
+        DepthFunc depthFunc{DepthFunc::LessEqual};
+        // Whether to have depth test enabled when rendering this material. When the depth test is disabled, the depth write will also be implicitly disabled.
+        bool depthTest = true;
+        // Whether rendering this material has any effect on the depth buffer.
+        // When drawing 2D overlays it can be useful to disable the depth writing in order to layer several things together without creating z-index artifacts.
+        bool depthWrite = true;
+
+        int stencilWriteMask = 0xff;
+        StencilFunc stencilFunc{StencilFunc::Always};
+        int stencilRef = 0;
+        int stencilFuncMask = 0xff;
+        StencilOp stencilFail{StencilOp::Keep};
+        StencilOp stencilZFail{StencilOp::Keep};
+        StencilOp stencilZPass{StencilOp::Keep};
+        bool stencilWrite = false;
+
+        std::vector<Plane> clippingPlanes;
+        bool clipIntersection = false;
+        bool clipShadows = false;
+        bool clipping = false;
+
+        std::optional<Side> shadowSide{};
+
+        bool colorWrite = true;
+
+        bool polygonOffset = false;
+        float polygonOffsetFactor = 0;
+        float polygonOffsetUnits = 0;
+
+        bool dithering = false;
+
+        float alphaTest = 0;
+        bool alphaToCoverage = false;
+        bool premultipliedAlpha = false;
+
+        bool visible = true;
+
+        bool toneMapped = true;
+
+        std::unordered_map<std::string, UniformValue> defaultAttributeValues;
+
+        Material(Material&&) = delete;
+        Material& operator=(Material&&) = delete;
+        Material(const Material&) = delete;
+        Material& operator=(const Material&) = delete;
+
+        [[nodiscard]] std::string uuid() const;
+
+        // Only serialization round-trips (ObjectLoader) have a reason to call this.
+        void setUuid(const std::string& uuid);
+
+        [[nodiscard]] unsigned int version() const;
+
+        void setValues(const std::unordered_map<std::string, MaterialValue>& values);
+
+        void copyCompatibleFrom(const Material& other);
+
+        void dispose();
+
+        void needsUpdate();
+
+        [[nodiscard]] virtual std::string type() const = 0;
+
+        template<class T>
+            requires std::derived_from<T, Material>
+        T* as() {
+
+            return dynamic_cast<T*>(this);
+        }
+
+        template<class T>
+            requires std::derived_from<T, Material>
+        [[nodiscard]] bool is() const {
+
+            return dynamic_cast<const T*>(this) != nullptr;
+        }
+
+        template<class T = Material>
+            requires std::derived_from<T, Material>
+        [[nodiscard]] std::shared_ptr<T> clone() const {
+
+            auto clone = createDefault();
+            copyInto(*clone);
+
+            return std::dynamic_pointer_cast<T>(clone);
+        }
+
+        ~Material() override;
+
+    protected:
+        Material();
+
+        virtual std::shared_ptr<Material> createDefault() const = 0;
+
+        virtual void copyInto(Material& material) const;
+
+        static Color extractColor(const MaterialValue& value) {
+            if (std::holds_alternative<int>(value)) {
+                return std::get<int>(value);
+            } else {
+                return std::get<Color>(value);
+            }
+        }
+
+        static float extractFloat(const MaterialValue& value) {
+            if (std::holds_alternative<int>(value)) {
+                return std::get<int>(value);
+            } else {
+                return std::get<float>(value);
+            }
+        }
+
+        virtual bool setValue(const std::string& key, const MaterialValue& value);
+
+    private:
+        bool disposed_ = false;
+        std::string uuid_;
+        unsigned int version_ = 0;
+        inline static std::atomic<unsigned int> materialId{0};
+    };
+
+
+}// namespace threepp
+
+#endif//THREEPP_MATERIAL_HPP
