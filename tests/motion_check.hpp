@@ -6,8 +6,8 @@
 #ifndef CHRONONMOTION_TEST_CHECK_HPP
 #define CHRONONMOTION_TEST_CHECK_HPP
 
-#include "threepp/math/Vector2.hpp"
-#include "threepp/math/Vector3.hpp"
+#include "chrononmotion/math/Vector2.hpp"
+#include "chrononmotion/math/Vector3.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -35,7 +35,7 @@ namespace chrononmotion_test {
         }
     }
 
-    inline void checkNear(const threepp::Vector3& actual, const threepp::Vector3& expected,
+    inline void checkNear(const chrononmotion::Vector3& actual, const chrononmotion::Vector3& expected,
                           float epsilon, const char* what) {
 
         ++checks;
@@ -48,7 +48,7 @@ namespace chrononmotion_test {
         }
     }
 
-    inline void checkNear(const threepp::Vector2& actual, const threepp::Vector2& expected,
+    inline void checkNear(const chrononmotion::Vector2& actual, const chrononmotion::Vector2& expected,
                           float epsilon, const char* what) {
 
         ++checks;

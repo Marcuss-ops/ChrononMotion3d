@@ -1,0 +1,109 @@
+
+#ifndef CHRONONMOTION_KEYFRAMETRACK_HPP
+#define CHRONONMOTION_KEYFRAMETRACK_HPP
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "chrononmotion/constants.hpp"
+#include "chrononmotion/math/Interpolant.hpp"
+#include "chrononmotion/math/interpolants/CubicInterpolant.hpp"
+#include "chrononmotion/math/interpolants/DiscreteInterpolant.hpp"
+#include "chrononmotion/math/interpolants/LinearInterpolant.hpp"
+
+#include <functional>
+
+namespace chrononmotion {
+
+    class Interpolant;
+
+    class KeyframeTrack {
+
+        using InterpolantFactory = std::function<std::unique_ptr<Interpolant>(const Sample&, const Sample&, int, Sample*)>;
+
+    public:
+        static Interpolation defaultInterpolation;
+
+        [[nodiscard]] virtual std::string ValueTypeName() const = 0;
+
+        [[nodiscard]] std::string getName() const {
+
+            return name_;
+        }
+
+        [[nodiscard]] const std::vector<float>& getTimes() const {
+
+            return times_;
+        }
+
+        [[nodiscard]] const std::vector<float>& getValues() const {
+
+            return values_;
+        }
+
+        [[nodiscard]] Interpolation getInterpolation() const {
+
+            return interpolation_;
+        }
+
+        size_t getValueSize() const;
+
+        void setInterpolation(Interpolation interpolation);
+
+        // Convert this track's values to deltas relative to its first keyframe, so
+        // it can be played as an additive layer (rotations become relative
+        // quaternions, positions/numbers become differences). Used by
+        // AnimationClip::makeAdditive for upper-body-overlay animation.
+        void makeAdditive();
+
+        KeyframeTrack& shift(float timeOffset);
+
+        KeyframeTrack& scale(float timeScale);
+
+        KeyframeTrack& trim(float startTime, float endTime);
+
+        KeyframeTrack& optimize();
+
+        std::unique_ptr<Interpolant> createInterpolant(std::vector<float>* result) const;
+
+        virtual ~KeyframeTrack() = default;
+
+    protected:
+        KeyframeTrack(std::string name,
+                      const std::vector<float>& times,
+                      const std::vector<float>& values,
+                      const std::optional<Interpolation>& interpolation = {});
+
+    private:
+        std::string name_;
+        std::vector<float> times_;
+        std::vector<float> values_;
+        // Initialised here as well as in setInterpolation(): the constructor
+        // always calls setInterpolation, but a member holding an enum should
+        // never be able to start out indeterminate.
+        Interpolation interpolation_{Interpolation::Linear};
+
+        std::function<std::unique_ptr<Interpolant>(const Sample&, const Sample&, int, Sample*)> createInterpolant_;
+
+        virtual std::unique_ptr<Interpolant> InterpolantFactoryMethodDiscrete(const Sample& times, const Sample& values, int valueSize, Sample* result) {
+
+            return std::make_unique<DiscreteInterpolant>(times, values, valueSize, result);
+        }
+
+        virtual std::unique_ptr<Interpolant> InterpolantFactoryMethodLinear(const Sample& times, const Sample& values, int valueSize, Sample* result) {
+
+            return std::make_unique<LinearInterpolant>(times, values, valueSize, result);
+        }
+
+        virtual std::unique_ptr<Interpolant> InterpolantFactoryMethodSmooth(const Sample& times, const Sample& values, int valueSize, Sample* result) {
+
+            return std::make_unique<CubicInterpolant>(times, values, valueSize, result);
+        }
+    };
+
+
+}// namespace chrononmotion
+
+#endif//CHRONONMOTION_KEYFRAMETRACK_HPP

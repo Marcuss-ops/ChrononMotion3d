@@ -6,13 +6,13 @@
 // bounds, and the container/clone contract — so a future cut that removes one
 // of them fails here instead of in Chronon's compiler.
 
-#include "threepp/threepp.hpp"
+#include "chrononmotion/chrononmotion.hpp"
 
 #include <cmath>
 #include <cstdio>
 #include <vector>
 
-using namespace threepp;
+using namespace chrononmotion;
 
 namespace {
 
@@ -295,6 +295,64 @@ namespace {
         check(objectClone != nullptr && objectClone->type() == "Object3D", "a bare node clones through createDefault");
     }
 
+    // ------------------------------------------------------- geometry primitives
+
+    void geometryPrimitivesCarryTheirParameters() {
+
+        section("geometry primitives");
+
+        auto plane = PlaneGeometry::create(4.f, 3.f);
+        check(plane->type() == "PlaneGeometry", "a PlaneGeometry reports its type");
+        check(plane->getAttribute("position") != nullptr && plane->getAttribute("position")->count() == 4,
+              "a one-segment plane has four vertices");
+        check(plane->hasIndex() && plane->getIndex()->count() == 6, "and two triangles");
+        plane->computeBoundingBox();
+        check(plane->boundingBox.has_value(), "a primitive computes its own bounds");
+        checkNear(plane->boundingBox->min(), Vector3(-2.f, -1.5f, 0.f), 1e-5f, "the plane box is centred on the origin");
+        checkNear(plane->boundingBox->max(), Vector3(2.f, 1.5f, 0.f), 1e-5f, "and spans the authored size");
+
+        auto subdivided = PlaneGeometry::create(2.f, 2.f, 3, 4);
+        check(subdivided->getAttribute("position")->count() == 20, "segments subdivide the vertex grid");
+        check(subdivided->getIndex()->count() == 72, "and the index list follows");
+        check(subdivided->parameters.widthSegments == 3 && subdivided->widthSegments == 3,
+              "the construction parameters are retained");
+
+        auto box = BoxGeometry::create(2.f, 4.f, 6.f);
+        check(box->type() == "BoxGeometry", "a BoxGeometry reports its type");
+        check(box->getAttribute("position")->count() == 24, "a box is six faces of four vertices");
+        check(box->getIndex()->count() == 36, "twelve triangles");
+        check(box->groups.size() == 6, "one group per face keeps multi-material semantics");
+        box->computeBoundingBox();
+        checkNear(box->boundingBox->min(), Vector3(-1.f, -2.f, -3.f), 1e-5f, "the box bounds follow its size");
+        checkNear(box->boundingBox->max(), Vector3(1.f, 2.f, 3.f), 1e-5f, "...on both sides of the origin");
+
+        auto sphere = SphereGeometry::create(2.f);
+        check(sphere->type() == "SphereGeometry", "a SphereGeometry reports its type");
+        checkNear(sphere->radius, 2.f, 1e-6f, "the radius is retained");
+        const auto* position = sphere->getAttribute("position");
+        const auto* normal = sphere->getAttribute("normal");
+        check(position != nullptr && normal != nullptr && normal->count() == position->count(),
+              "every sphere vertex carries a normal");
+        if (const auto* normals = dynamic_cast<const FloatBufferAttribute*>(normal)) {
+            bool unit = true;
+            for (int i = 0; i < normals->count(); ++i) {
+                const Vector3 n(normals->getX(static_cast<size_t>(i)),
+                                normals->getY(static_cast<size_t>(i)),
+                                normals->getZ(static_cast<size_t>(i)));
+                if (std::fabs(n.length() - 1.f) > 1e-5f) unit = false;
+            }
+            check(unit, "the sphere normals are unit length");
+        }
+        sphere->computeBoundingSphere();
+        check(sphere->boundingSphere.has_value(), "the sphere computes a bounding sphere");
+        checkNear(sphere->boundingSphere->radius, 2.f, 1e-3f, "whose radius matches the geometry");
+
+        // A primitive is a BufferGeometry, so a Mesh takes it with no adapter.
+        auto mesh = Mesh::create(box);
+        check(mesh->geometry() == box, "a Mesh keeps the primitive it was handed");
+        check(mesh->geometry()->type() == "BoxGeometry", "and reports it through the geometry");
+    }
+
     // ----------------------------------------------------------- content invariance
 
     void textAndImageShareTransformSemantics() {
@@ -354,6 +412,7 @@ int main() {
     curvesSampleDeterministically();
     keyframeTracksInterpolate();
     geometryBoundsAndContainers();
+    geometryPrimitivesCarryTheirParameters();
     textAndImageShareTransformSemantics();
 
     std::printf("\n%d checks, %d failures\n", checks, failures);

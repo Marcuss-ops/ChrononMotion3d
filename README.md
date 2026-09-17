@@ -15,7 +15,8 @@ math/ core/ animation/ cameras/        kept, and largely untouched
 extras/curves                          kept
 objects/{Group,Mesh}, scenes/Scene     kept, narrowed
 materials/ (40 materials + mixins)     one abstract Material base
-renderers/ loaders/ geometries/        deleted
+renderers/ loaders/ material zoo        deleted
+geometries/                              Box, Plane and Sphere only
 lights/ helpers/ utils/ textures/      deleted
 canvas/ controls/ input/ audio/        deleted
 postprocessing/ splats/ extras/        deleted
@@ -25,7 +26,7 @@ apps/ examples/ tests/ python/         deleted
 Roughly **5.4% of the upstream library sources survive** (~14.1k of ~259.3k lines,
 99 files), and nothing is fetched at configure time. What grows back on top is the
 half threepp does not have: the deterministic motion model in
-`include/threepp/motion/` — see [The motion model](#the-motion-model).
+`include/chrononmotion/motion/` — see [The motion model](#the-motion-model).
 
 The fork is not a rewrite: `Object3D` is still the three.js node — parent and
 children, position/rotation/quaternion/scale, local and world matrices,
@@ -43,10 +44,11 @@ deliberately not done yet. Read it before changing anything here.
 ## Status
 
 The motion model is landed on top of the fork. The three.js half still provides
-the maths, the curves, the cameras and the keyframe vocabulary; `threepp/motion/`
-is the layer/transform/timeline/camera model a deterministic compiler samples
-from. glTF import, geometry primitives and the namespace rename are still
-deferred — see the list at the end of [CHRONONMOTION.md](CHRONONMOTION.md).
+the maths, the curves, the cameras and the keyframe vocabulary;
+`chrononmotion/motion/` is the layer/transform/timeline/camera model a
+deterministic compiler samples from. The public headers and C++ namespace use
+`chrononmotion`; Box, Plane and Sphere geometry primitives are included. glTF
+import remains deferred — see [CHRONONMOTION.md](CHRONONMOTION.md).
 
 ## The motion model
 
@@ -82,10 +84,10 @@ The composition rules, in one place:
   transform, anchor and parallax semantics cannot drift apart.
 
 ```cpp
-#include "threepp/threepp.hpp"
+#include "chrononmotion/chrononmotion.hpp"
 
-using namespace threepp;
-using namespace threepp::motion;
+using namespace chrononmotion;
+using namespace chrononmotion::motion;
 
 MotionScene scene("promo", 30.f);
 scene.addNull(10, "Null_Main");
@@ -146,12 +148,12 @@ The result is one static library, `chrononmotion` (alias
 | `chrononmotion_canary` | the whole primitive set on one timeline (see below), plus the annotated-pivot/lifetime composition |
 | `chrononmotion_boundary` | the architectural guardrail |
 
-Consumers include `threepp/threepp.hpp` or the individual headers, e.g.
+Consumers include `chrononmotion/chrononmotion.hpp` or the individual headers, e.g.
 
 ```cpp
-#include "threepp/threepp.hpp"
+#include "chrononmotion/chrononmotion.hpp"
 
-using namespace threepp;
+using namespace chrononmotion;
 
 int main() {
 

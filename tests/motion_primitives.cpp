@@ -5,14 +5,14 @@
 // channel (Track). Everything above them — layers, scenes, cameras, presets — is
 // only composition of these, so a regression here must fail here.
 
-#include "threepp/threepp.hpp"
+#include "chrononmotion/chrononmotion.hpp"
 
 #include "motion_check.hpp"
 
 #include <vector>
 
-using namespace threepp;
-using namespace threepp::motion;
+using namespace chrononmotion;
+using namespace chrononmotion::motion;
 using chrononmotion_test::check;
 using chrononmotion_test::checkNear;
 using chrononmotion_test::section;
@@ -280,6 +280,41 @@ namespace {
         checkNear(forward, again, 0.f, "sampling has no hidden state: the same time is the same value");
     }
 
+    // ------------------------------------------------- content measurement
+
+    void contentMeasurementFingerprint() {
+
+        section("content measurement fingerprint");
+
+        const ContentRef measured = ContentRef::measured("title", ContentKind::Text, "sha256:a1",
+                                                         Vector2(400.f, 120.f));
+        check(measured.metrics.measured(), "a measured ref carries its fingerprint");
+        check(measured.metrics.currentAgainst("sha256:a1"), "and knows when the measurement is current");
+        check(!measured.metrics.currentAgainst("sha256:b2"), "and when it is not");
+        check(measured.measurementState("sha256:a1") == MeasurementState::Current,
+              "the state is Current for the digest the rectangle was measured from");
+        check(measured.measurementState("sha256:b2") == MeasurementState::Stale,
+              "and Stale for a different one");
+        check(measured.isText(), "the measured factory keeps the content kind");
+
+        // Hand-authored geometry is legitimate, but never *checkable*: treating
+        // "no fingerprint" as "fine" is exactly the silent staleness the field
+        // exists to prevent, so it reports Unknown instead.
+        const ContentRef authored = ContentRef::text("title", Vector2(400.f, 120.f));
+        check(!authored.metrics.measured(), "a hand-authored ref carries no measurement");
+        check(authored.measurementState("sha256:a1") == MeasurementState::Unknown,
+              "so its measurement state is Unknown, not silently Current");
+
+        // The fingerprint belongs to the measurement, never to the identity: the
+        // same asset re-measured is still the same asset.
+        const ContentRef refingerprinted = ContentRef::text("title", Vector2(400.f, 120.f)).withFingerprint("sha256:b2");
+        check(refingerprinted == authored, "a re-measurement is still the same asset");
+        check(refingerprinted.measurementState("sha256:b2") == MeasurementState::Current,
+              "and carries the new measurement");
+        check(authored.measurementState("sha256:b2") == MeasurementState::Unknown,
+              "while the original still knows nothing");
+    }
+
 }// namespace
 
 int main() {
@@ -288,6 +323,7 @@ int main() {
     transformComposition();
     transformBlending();
     trackSampling();
+    contentMeasurementFingerprint();
 
     return chrononmotion_test::report();
 }

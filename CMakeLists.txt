@@ -21,63 +21,67 @@ endif()
 
 add_library(chrononmotion STATIC
         # math — the transform/curve foundation
-        src/threepp/math/Box2.cpp
-        src/threepp/math/Box3.cpp
-        src/threepp/math/Color.cpp
-        src/threepp/math/Euler.cpp
-        src/threepp/math/Interpolant.cpp
-        src/threepp/math/Line3.cpp
-        src/threepp/math/MathUtils.cpp
-        src/threepp/math/Matrix3.cpp
-        src/threepp/math/Matrix4.cpp
-        src/threepp/math/Plane.cpp
-        src/threepp/math/Quaternion.cpp
-        src/threepp/math/Sphere.cpp
-        src/threepp/math/Spherical.cpp
-        src/threepp/math/Triangle.cpp
-        src/threepp/math/Vector2.cpp
-        src/threepp/math/Vector3.cpp
-        src/threepp/math/Vector4.cpp
+        src/chrononmotion/math/Box2.cpp
+        src/chrononmotion/math/Box3.cpp
+        src/chrononmotion/math/Color.cpp
+        src/chrononmotion/math/Euler.cpp
+        src/chrononmotion/math/Interpolant.cpp
+        src/chrononmotion/math/Line3.cpp
+        src/chrononmotion/math/MathUtils.cpp
+        src/chrononmotion/math/Matrix3.cpp
+        src/chrononmotion/math/Matrix4.cpp
+        src/chrononmotion/math/Plane.cpp
+        src/chrononmotion/math/Quaternion.cpp
+        src/chrononmotion/math/Sphere.cpp
+        src/chrononmotion/math/Spherical.cpp
+        src/chrononmotion/math/Triangle.cpp
+        src/chrononmotion/math/Vector2.cpp
+        src/chrononmotion/math/Vector3.cpp
+        src/chrononmotion/math/Vector4.cpp
         # core — the node/transform graph
-        src/threepp/core/BufferGeometry.cpp
-        src/threepp/core/EventDispatcher.cpp
-        src/threepp/core/Object3D.cpp
+        src/chrononmotion/core/BufferGeometry.cpp
+        src/chrononmotion/core/EventDispatcher.cpp
+        src/chrononmotion/core/Object3D.cpp
+        # geometries — the primitives a Mesh can carry
+        src/chrononmotion/geometries/BoxGeometry.cpp
+        src/chrononmotion/geometries/PlaneGeometry.cpp
+        src/chrononmotion/geometries/SphereGeometry.cpp
         # animation — clips and keyframe tracks
-        src/threepp/animation/AnimationClip.cpp
-        src/threepp/animation/KeyframeTrack.cpp
+        src/chrononmotion/animation/AnimationClip.cpp
+        src/chrononmotion/animation/KeyframeTrack.cpp
         # materials — the abstract material base only
-        src/threepp/materials/Material.cpp
+        src/chrononmotion/materials/Material.cpp
         # objects
-        src/threepp/objects/Group.cpp
-        src/threepp/objects/Mesh.cpp
-        src/threepp/objects/ObjectWithMaterials.cpp
+        src/chrononmotion/objects/Group.cpp
+        src/chrononmotion/objects/Mesh.cpp
+        src/chrononmotion/objects/ObjectWithMaterials.cpp
         # cameras
-        src/threepp/cameras/Camera.cpp
-        src/threepp/cameras/OrthographicCamera.cpp
-        src/threepp/cameras/PerspectiveCamera.cpp
+        src/chrononmotion/cameras/Camera.cpp
+        src/chrononmotion/cameras/OrthographicCamera.cpp
+        src/chrononmotion/cameras/PerspectiveCamera.cpp
         # scenes
-        src/threepp/scenes/Scene.cpp
+        src/chrononmotion/scenes/Scene.cpp
         # motion — the layer/transform/timeline/camera model Chronon samples from
-        src/threepp/motion/Easing.cpp
-        src/threepp/motion/Transform.cpp
-        src/threepp/motion/Layer.cpp
-        src/threepp/motion/MotionScene.cpp
-        src/threepp/motion/MotionPath.cpp
-        src/threepp/motion/MotionPlane.cpp
-        src/threepp/motion/CameraRig.cpp
-        src/threepp/motion/Presets.cpp
+        src/chrononmotion/motion/Easing.cpp
+        src/chrononmotion/motion/Transform.cpp
+        src/chrononmotion/motion/Layer.cpp
+        src/chrononmotion/motion/MotionScene.cpp
+        src/chrononmotion/motion/MotionPath.cpp
+        src/chrononmotion/motion/MotionPlane.cpp
+        src/chrononmotion/motion/CameraRig.cpp
+        src/chrononmotion/motion/Presets.cpp
         # curves
-        src/threepp/extras/core/Curve.cpp
-        src/threepp/extras/core/CurvePath.cpp
-        src/threepp/extras/core/Path.cpp
-        src/threepp/extras/curves/CatmullRomCurve3.cpp
-        src/threepp/extras/curves/CubicBezierCurve.cpp
-        src/threepp/extras/curves/CubicBezierCurve3.cpp
-        src/threepp/extras/curves/EllipseCurve.cpp
-        src/threepp/extras/curves/LineCurve.cpp
-        src/threepp/extras/curves/QuadraticBezierCurve.cpp
-        src/threepp/extras/curves/QuadraticBezierCurve3.cpp
-        src/threepp/extras/curves/SplineCurve.cpp)
+        src/chrononmotion/extras/core/Curve.cpp
+        src/chrononmotion/extras/core/CurvePath.cpp
+        src/chrononmotion/extras/core/Path.cpp
+        src/chrononmotion/extras/curves/CatmullRomCurve3.cpp
+        src/chrononmotion/extras/curves/CubicBezierCurve.cpp
+        src/chrononmotion/extras/curves/CubicBezierCurve3.cpp
+        src/chrononmotion/extras/curves/EllipseCurve.cpp
+        src/chrononmotion/extras/curves/LineCurve.cpp
+        src/chrononmotion/extras/curves/QuadraticBezierCurve.cpp
+        src/chrononmotion/extras/curves/QuadraticBezierCurve3.cpp
+        src/chrononmotion/extras/curves/SplineCurve.cpp)
 
 add_library(ChrononMotion::chrononmotion ALIAS chrononmotion)
 

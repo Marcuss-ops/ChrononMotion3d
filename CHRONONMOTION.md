@@ -168,7 +168,7 @@ in declaration order, so the tree builds clean under `-Wall -Wextra -Werror`.
 
 ## The motion model (landed)
 
-The fork above is the *maths* half. `include/threepp/motion/` is the *motion*
+The fork above is the *maths* half. `include/chrononmotion/motion/` is the *motion*
 half a deterministic compiler samples from — eleven headers, eight translation
 units, no new dependency, and no content machinery:
 
@@ -184,7 +184,7 @@ units, no new dependency, and no content machinery:
 | `motion/MotionPlane.hpp` | `MotionPlane`, `ScreenPlane`, `PerspectiveView` — 2.5D planes, Z depth, projection, parallax |
 | `motion/CameraRig.hpp` | `CameraPose`, `CameraRig` — a perspective camera plus dolly/pan/tilt/orbit/roll/look-at/animated FOV |
 | `motion/Presets.hpp` | the preset list, written as keyframe authoring on the primitives above |
-| `motion/Motion.hpp` | the umbrella include, re-exported from `threepp/threepp.hpp` |
+| `motion/Motion.hpp` | the umbrella include, re-exported from `chrononmotion/chrononmotion.hpp` |
 
 ### The composition rules, stated once
 
@@ -260,7 +260,7 @@ presets stay dependency-free.
 
 The library is one target, `chrononmotion` (alias `ChrononMotion::chrononmotion`),
 with `include/` as its only include path and no dependency to fetch. Consumers
-link it and include `threepp/threepp.hpp` (the umbrella was trimmed to the
+link it and include `chrononmotion/chrononmotion.hpp` (the umbrella was trimmed to the
 keep-set and then extended with `motion/Motion.hpp`) or the individual headers.
 
 The compile-time contract is split across six binaries:
@@ -357,8 +357,8 @@ last one can: anchoring a text asset needed an id and a rectangle, not a font.
 ## Deliberately not done yet
 
 1. **Mesh layers, lights and real 3D objects.** The model stops at text planes,
-   image planes, nulls and a camera. `MeshLayer`, lights and true 3D geometry are
-   the step *after* this set, not part of it.
+   image planes, nulls and a camera. Box, Plane and Sphere geometries are now
+   available to `Mesh`, but the motion model still has no `MeshLayer` or lights.
 2. **`Object3D` and `Layer` do not share a graph.** `Object3D` is the three.js
    node the kept maths, curves and cameras are written against; `Layer` is the
    motion model. `MotionScene` composes world matrices itself and a `CameraRig`
@@ -371,10 +371,9 @@ last one can: anchoring a text asset needed an id and a rectangle, not a font.
    glTF/GLB reader that produces `BufferGeometry` + `Mesh` with no material
    system — is the better next step, and `Mesh`/`BufferGeometry` are already the
    containers it would fill.
-4. **Geometry primitives.** `geometries/` (Box, Plane, Sphere, …) was removed
-   with the rest. A `Mesh` can be built by hand from a `BufferGeometry` today
-   (see the smoke test), but a handful of primitives is probably worth
-   re-importing now that the layer model has settled.
+4. **More geometry primitives.** Box, Plane and Sphere are re-imported as small,
+   renderer-free `BufferGeometry` builders. The rest of upstream's geometry
+   system (shape/extrusion and specialized primitives) remains deferred.
 5. **`ContentMetrics` is not fingerprinted.** It carries a size and an anchor but
    nothing binds them to the asset they measured, so this side cannot detect a
    stale measurement when the content changes. The fingerprint belongs to
@@ -387,11 +386,8 @@ last one can: anchoring a text asset needed an id and a rectangle, not a font.
    and `Layers`-style filtering have no consumer yet. Any per-layer attachment
    the engine needs later should be a typed field, not a return of the
    `userData` bag.
-8. **Naming.** The namespace is still `threepp` and the include prefix is still
-   `threepp/` — deliberately, so a future upstream diff stays readable. Renaming
-   to `chrononmotion/` is a mechanical change and should be its own commit.
-9. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`. The
-   fork's own behaviour is now covered by one smoke binary plus the four motion
-   binaries and the boundary guardrail; re-importing the upstream tests for
+8. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`. The
+   fork's own behaviour is covered by one smoke binary, five motion binaries
+   and the boundary guardrail; re-importing the upstream tests for
    `math/`, `core/` and `animation/` would still give the fork real regression
    depth.

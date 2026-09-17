@@ -1,0 +1,27 @@
+
+#include "chrononmotion/cameras/Camera.hpp"
+
+using namespace chrononmotion;
+
+Camera::Camera(float _near, float _far)
+    : nearPlane(_near), farPlane(_far) {}
+
+void Camera::getWorldDirection(Vector3& target) {
+
+    Object3D::getWorldDirection(target);
+    target.negate();
+}
+
+void Camera::updateMatrixWorld(bool force) {
+
+    Object3D::updateMatrixWorld(force);
+
+    this->matrixWorldInverse.copy(*this->matrixWorld).invert();
+}
+
+void Camera::updateWorldMatrix(bool updateParents, bool updateChildren) {
+
+    Object3D::updateWorldMatrix(updateParents, updateChildren);
+
+    this->matrixWorldInverse.copy(*this->matrixWorld).invert();
+}

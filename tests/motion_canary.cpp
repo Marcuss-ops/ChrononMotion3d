@@ -19,15 +19,15 @@
 // Z-depth, Camera, Parallax, Opacity and Timing are all demonstrated on the same
 // deterministic evaluation — which is the whole point of the primitive set.
 
-#include "threepp/threepp.hpp"
+#include "chrononmotion/chrononmotion.hpp"
 
 #include "motion_check.hpp"
 
 #include <cmath>
 #include <string>
 
-using namespace threepp;
-using namespace threepp::motion;
+using namespace chrononmotion;
+using namespace chrononmotion::motion;
 using chrononmotion_test::check;
 using chrononmotion_test::checkNear;
 using chrononmotion_test::section;

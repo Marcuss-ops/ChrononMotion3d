@@ -1,0 +1,57 @@
+// https://github.com/mrdoob/three.js/blob/r129/src/cameras/Camera.js
+
+#ifndef CHRONONMOTION_CAMERA_HPP
+#define CHRONONMOTION_CAMERA_HPP
+
+#include "chrononmotion/core/Object3D.hpp"
+#include "chrononmotion/math/Matrix4.hpp"
+
+namespace chrononmotion {
+
+    struct CameraView {
+
+        bool enabled{};
+        int fullWidth{};
+        int fullHeight{};
+        int offsetX{};
+        int offsetY{};
+        int width{};
+        int height{};
+    };
+
+    // Abstract base class for cameras. This class should always be inherited when you build a new camera.
+    class Camera: public Object3D {
+
+    public:
+        float zoom = 1;
+
+        float nearPlane {};
+        float farPlane {};
+
+        std::optional<CameraView> view;
+
+        // This is the inverse of matrixWorld. MatrixWorld contains the Matrix which has the world transform of the Camera.
+        Matrix4 matrixWorldInverse;
+
+        // This is the matrix which contains the projection.
+        Matrix4 projectionMatrix;
+        // The inverse of projectionMatrix.
+        Matrix4 projectionMatrixInverse;
+
+        Camera() = default;
+        Camera(float _near, float _far);
+
+        // Copies the world space direction in which the camera is looking into target.
+        // (Note: A camera looks down its local, negative z-axis).
+        void getWorldDirection(Vector3& target) override;
+
+        void updateMatrixWorld(bool force = false) override;
+
+        void updateWorldMatrix(bool updateParents, bool updateChildren) override;
+
+        virtual void updateProjectionMatrix() {}
+    };
+
+}// namespace chrononmotion
+
+#endif//CHRONONMOTION_CAMERA_HPP

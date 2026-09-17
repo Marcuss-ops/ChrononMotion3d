@@ -5,15 +5,15 @@
 // seen through (MotionPlane / PerspectiveView), and the animated camera
 // (CameraRig) with its classic moves.
 
-#include "threepp/threepp.hpp"
+#include "chrononmotion/chrononmotion.hpp"
 
 #include "motion_check.hpp"
 
 #include <cmath>
 #include <vector>
 
-using namespace threepp;
-using namespace threepp::motion;
+using namespace chrononmotion;
+using namespace chrononmotion::motion;
 using chrononmotion_test::check;
 using chrononmotion_test::checkNear;
 using chrononmotion_test::section;
@@ -155,6 +155,83 @@ namespace {
         transform.scale.set(1.5f, 1.5f, 1.f);
         checkNear(transform.applyPoint(corner.anchorPoint()), Vector3(7.f, -2.f, 1.f), 1e-4f,
                   "the plane's anchor is the transform's fixed point");
+    }
+
+    void planeRefreshDerivesFromTheMeasurement() {
+
+        section("plane re-derivation from a re-measurement");
+
+        // A text run measured at 200x100, pivoted on its left edge.
+        const ContentRef first = ContentRef::measured("title", ContentKind::Text, "sha256:a1",
+                                                      Vector2(200.f, 100.f), Vector2(0.f, 0.5f));
+        MotionPlane plane = MotionPlane::fitted(first, 10.f);
+        plane.depth = -4.f;
+
+        Layer layer(1, "Title");
+        layer.content = first;
+        plane.applyTo(layer);
+
+        check(plane.derivedFrom(first), "a plane knows the measurement it was derived from");
+        checkNear(plane.size, Vector2(10.f, 5.f), 1e-5f, "its size comes from the measured aspect ratio");
+        checkNear(layer.transform.anchor, Vector3(-5.f, 0.f, 0.f), 1e-5f,
+                  "and its pivot from the measured anchor");
+
+        // The same measurement again: nothing to derive, so nothing is written.
+        const ContentRef unchanged = ContentRef::measured("title", ContentKind::Text, "sha256:a1",
+                                                          Vector2(200.f, 100.f), Vector2(0.f, 0.5f));
+        check(!plane.refresh(layer, unchanged), "an unchanged measurement is not re-applied");
+        checkNear(layer.transform.anchor, Vector3(-5.f, 0.f, 0.f), 1e-5f, "and the pivot is left alone");
+
+        // Chronon re-measures the same asset: wider, and centred.
+        const ContentRef wider = ContentRef::measured("title", ContentKind::Text, "sha256:b2",
+                                                      Vector2(400.f, 100.f), Vector2(0.5f, 0.5f));
+        check(plane.refresh(layer, wider), "a new measurement re-derives the plane");
+        check(plane.derivedFrom(wider) && !plane.derivedFrom(first),
+              "the plane derives from the new measurement and not the old one");
+        checkNear(plane.size, Vector2(10.f, 2.5f), 1e-5f, "the fitted plane follows the new aspect ratio");
+        checkNear(layer.transform.anchor, Vector3(0.f, 0.f, 0.f), 1e-5f, "and the pivot follows the new anchor");
+        checkNear(layer.transform.position, Vector3(0.f, 0.f, -4.f), 1e-4f, "the depth is preserved");
+        checkNear(plane.depth, -4.f, 1e-5f, "refresh does not move the plane in Z");
+        check(layer.content == wider, "the layer carries the re-measured content");
+
+        // A sized plane keeps the extent its author chose and takes only the pivot.
+        const ContentRef recentered = ContentRef::measured("title", ContentKind::Text, "sha256:c3",
+                                                           Vector2(400.f, 100.f), Vector2(0.5f, 0.5f));
+        Layer sizedLayer(2, "Sized");
+        sizedLayer.content = first;
+        MotionPlane sized = MotionPlane::sized(first, Vector2(6.f, 3.f));
+        sized.applyTo(sizedLayer);
+        check(sized.refresh(sizedLayer, recentered), "a sized plane re-derives too");
+        checkNear(sized.size, Vector2(6.f, 3.f), 1e-5f, "but keeps the explicit extent");
+        checkNear(sizedLayer.transform.anchor, Vector3(0.f, 0.f, 0.f), 1e-5f, "while taking the new pivot");
+
+        // A plane built by hand has no source, so nothing can be re-derived.
+        Layer handmadeLayer(3, "Handmade");
+        handmadeLayer.content = first;
+        MotionPlane handmade;
+        handmade.applyTo(handmadeLayer);
+        check(!handmade.derivedFrom(first) && !handmade.refresh(handmadeLayer, wider),
+              "a hand-built plane carries no derivation to refresh");
+
+        // Re-pointing the layer at another asset is not a re-measurement.
+        const ContentRef other = ContentRef::measured("other", ContentKind::Image, "sha256:d4", Vector2(10.f, 10.f));
+        Layer otherLayer(4, "Other");
+        otherLayer.content = other;
+        MotionPlane otherPlane = MotionPlane::fitted(other, 4.f);
+        check(!otherPlane.refresh(otherLayer, wider), "a different asset is not a re-measurement");
+        checkNear(otherPlane.size, Vector2(4.f, 4.f), 1e-5f, "and the plane is left untouched");
+
+        // The derived pivot is the static pose: a keyed anchor channel still wins,
+        // exactly as it does over `applyTo`.
+        Layer keyed(5, "Keyed");
+        keyed.content = first;
+        MotionPlane keyedPlane = MotionPlane::fitted(first, 10.f);
+        keyedPlane.applyTo(keyed);
+        keyed.tracks.anchor.add(0.f, Vector3(9.f, 9.f, 0.f));
+        keyed.tracks.anchor.add(1.f, Vector3(9.f, 9.f, 0.f));
+        check(keyedPlane.refresh(keyed, wider), "the plane re-derives onto a layer with a keyed anchor");
+        checkNear(keyed.sample(0.5f).anchor, Vector3(9.f, 9.f, 0.f), 1e-5f,
+                  "the animated anchor channel remains the authority after a refresh");
     }
 
     void textAndImagePlanesAreTheSameType() {
@@ -414,6 +491,7 @@ int main() {
 
     pathTrajectories();
     planeGeometry();
+    planeRefreshDerivesFromTheMeasurement();
     textAndImagePlanesAreTheSameType();
     perspectiveViewProjectsAndParallaxes();
     cameraRigMoves();
