@@ -174,6 +174,62 @@ namespace threepp::motion {
             layer.tracks.opacity.add(t1, layer.transform.opacity, Easing::linear());
         }
 
+        void anchorTo(Layer& layer, const Vector3& to, int inFrame, int duration, float fps,
+                      const Easing& easing) {
+
+            const Transform rest = restOf(layer, inFrame, fps);
+            const float t0 = frameToTime(inFrame, fps);
+            const float t1 = frameToTime(inFrame + duration, fps);
+
+            keyVector3(layer.tracks.anchor, t0, t1, rest.anchor, to, easing);
+        }
+
+        LifetimeWindows lifetimeWindows(const Layer& layer, int duration) {
+
+            LifetimeWindows windows;
+            if (duration <= 0) return windows;
+
+            if (layer.lifetime.openEnded()) {
+                windows.in = FrameRange::between(layer.lifetime.inFrame, layer.lifetime.inFrame + duration);
+                windows.hasIn = true;
+                return windows;
+            }
+
+            const int span = layer.lifetime.duration();
+            if (span < duration) return windows;
+
+            windows.in = FrameRange::between(layer.lifetime.inFrame, layer.lifetime.inFrame + duration);
+            windows.hasIn = true;
+
+            // The exit has to start after the entrance has finished, so both can
+            // only fit when the lifetime holds two whole windows.
+            if (duration <= span / 2) {
+                windows.out = FrameRange::between(layer.lifetime.outFrame - duration, layer.lifetime.outFrame);
+                windows.hasOut = true;
+            }
+
+            return windows;
+        }
+
+        void lifetimeSlide(Layer& layer, Direction inDirection, Direction outDirection,
+                           int duration, float distance, float fps,
+                           const Easing& inEasing, const Easing& outEasing) {
+
+            const LifetimeWindows windows = lifetimeWindows(layer, duration);
+
+            if (windows.hasIn) {
+                const int frames = windows.in.duration();
+                slideIn(layer, inDirection, windows.in.inFrame, frames, distance, fps, inEasing);
+                fadeIn(layer, windows.in.inFrame, frames, fps, inEasing);
+            }
+
+            if (windows.hasOut) {
+                const int frames = windows.out.duration();
+                slideOut(layer, outDirection, windows.out.inFrame, frames, distance, fps, outEasing);
+                fadeOut(layer, windows.out.inFrame, frames, fps, outEasing);
+            }
+        }
+
         void flip(Layer& layer, Axis axis, int inFrame, int duration, float fps, float degrees) {
 
             const float t0 = frameToTime(inFrame, fps);

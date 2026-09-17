@@ -85,6 +85,51 @@ namespace threepp::motion {
         /// Fade while scaling up into place.
         void fadeScale(Layer& layer, int inFrame, int duration, float from, float fps);
 
+        // ----------------------------------------------------------------- pivot
+
+        /// Move the pivot from the layer's resting anchor to `to`, keyed over time.
+        ///
+        /// The anchor is the single fixed point of *both* scale and rotation, so an
+        /// animated anchor is what makes a spin turn about a moving point instead of
+        /// about a pivot fixed once at author time.
+        void anchorTo(Layer& layer, const Vector3& to, int inFrame, int duration, float fps,
+                      const Easing& easing = Easing::easeInOut());
+
+        // -------------------------------------------------------- lifetime in/out
+
+        /// The frame windows a layer's own lifetime implies for a `duration`-frame
+        /// entrance and an exit.
+        ///
+        /// Both windows are *derived from the lifetime*, never invented. A window
+        /// the lifetime cannot hold is reported as absent rather than moved to a
+        /// frame the layer is not alive for: an open-ended lifetime has no exit, and
+        /// a closed lifetime shorter than the window has no entrance.
+        struct LifetimeWindows {
+            /// Frames of the entrance, when it fits.
+            FrameRange in{};
+            /// Frames of the exit, when the lifetime is long enough for both.
+            FrameRange out{};
+            bool hasIn{false};
+            bool hasOut{false};
+        };
+
+        /// The entrance/exit windows the layer's lifetime implies. A closed
+        /// lifetime must be at least `duration` frames long to hold the entrance,
+        /// and at least twice that to hold the entrance *and* the exit.
+        [[nodiscard]] LifetimeWindows lifetimeWindows(const Layer& layer, int duration);
+
+        /// Key a fade + slide entrance and exit *inside* the layer's declared
+        /// lifetime: the entrance starts on `inFrame` and the exit finishes on
+        /// `outFrame`, both read from the lifetime itself.
+        ///
+        /// This is what ties an in/out animation to a layer's lifetime — the
+        /// animation cannot drift from the range the layer is visible for, because
+        /// nothing here takes a frame the lifetime did not supply.
+        void lifetimeSlide(Layer& layer, Direction inDirection, Direction outDirection,
+                           int duration, float distance, float fps,
+                           const Easing& inEasing = Easing::easeOut(),
+                           const Easing& outEasing = Easing::easeIn());
+
         // --------------------------------------------------------------- rotation
 
         /// Turn the layer `degrees` about an axis, as a quaternion (shortest path).

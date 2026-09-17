@@ -129,6 +129,16 @@ namespace {
         return out;
     }
 
+    /// The world position of a layer's *pivot*. The anchor is the point the
+    /// transform pins to `position`, so `world * anchor` is where that point
+    /// lands — which is not the matrix origin unless the anchor is zero.
+    Vector3 worldPivotOf(const MotionScene& scene, Layer::Id id) {
+
+        Vector3 pivot = scene.state(id).local.anchor;
+        pivot.applyMatrix4(scene.worldMatrix(id));
+        return pivot;
+    }
+
     Quaternion worldRotationOf(const MotionScene& scene, Layer::Id id) {
 
         Quaternion out;
@@ -392,6 +402,91 @@ namespace {
         check(!first.empty(), "the determinism check actually captured state");
     }
 
+    // A second, small composition for the two capabilities the main canary does not
+    // exercise on its own: a pivot that travels over time, and an entrance/exit
+    // keyed from the layer's own declared lifetime. Nothing here is a special case
+    // — it is the same Layer/Transform/Track evaluation as everywhere above.
+    void thePivotTravelsAndTheLifetimeDrivesTheEntrance() {
+
+        section("canary: animated pivot and lifetime-driven entrance/exit");
+
+        constexpr Layer::Id kRig = 1;
+        constexpr Layer::Id kCard = 2;
+
+        MotionScene scene("pivot", kFps);
+
+        Layer& rig = scene.addNull(kRig, "Card_Rig");
+        rig.transform.position.set(0.f, 1.f, 0.f);// a controller offset, so world != local
+
+        Layer& card = scene.addContent(kCard, "Card", ContentRef::image("card.png", Vector2(4.f, 4.f)), kRig);
+        card.alive(10, 70);// 60 frames of lifetime, holding a 10-frame entrance and exit
+
+        // The plane's pivot starts on the card's bottom-left corner ...
+        MotionPlane plane = MotionPlane::sized(card.content, Vector2(4.f, 4.f));
+        plane.anchor = Vector2(0.f, 0.f);
+        plane.applyTo(card);
+
+        // ... and travels to its top-right corner over frames 10-40, while the card
+        // turns a quarter turn about whatever pivot it has at that instant.
+        presets::anchorTo(card, Vector3(2.f, 2.f, 0.f), 10, 30, kFps);
+        card.tracks.rotation.add(10.f * kFrameSeconds, Vector3(0.f, 0.f, 0.f), Easing::linear());
+        card.tracks.rotation.add(40.f * kFrameSeconds, Vector3(0.f, 0.f, math::degToRad(90.f)),
+                                Easing::linear());
+
+        // The entrance and the exit come from the lifetime itself, never from
+        // hand-picked frames: the slide starts on frame 10 and finishes on frame 70.
+        presets::lifetimeSlide(card, presets::Direction::Left, presets::Direction::Right, 10, 5.f, kFps);
+
+        const Layer* sampled = scene.findLayer(kCard);
+        check(sampled != nullptr, "the card exists");
+
+        const presets::LifetimeWindows windows = presets::lifetimeWindows(*sampled, 10);
+        check(windows.hasIn && windows.hasOut, "the declared lifetime holds both the entrance and the exit");
+        check(windows.in.inFrame == 10 && windows.out.outFrame == 70,
+              "the entrance starts on the in frame and the exit finishes on the out frame");
+
+        scene.evaluate(10);
+        checkNear(worldPivotOf(scene, kCard), Vector3(-5.f, 1.f, 0.f), 1e-3f,
+                  "the card enters from the lifetime's in frame, offset by its controller");
+        checkNear(scene.worldOpacity(kCard), 0.f, 1e-4f, "the card enters transparent");
+
+        scene.evaluate(20);
+        checkNear(worldPivotOf(scene, kCard), Vector3(0.f, 1.f, 0.f), 1e-3f,
+                  "the card settles on its resting position one window later");
+        checkNear(scene.worldOpacity(kCard), 1.f, 1e-4f, "the card is fully opaque inside its lifetime");
+
+        scene.evaluate(40);
+        checkNear(worldPivotOf(scene, kCard), Vector3(0.f, 1.f, 0.f), 1e-3f,
+                  "the card holds its position while only the pivot travels");
+
+        const Transform pose = sampled->sample(40.f * kFrameSeconds);
+        checkNear(pose.anchor, Vector3(2.f, 2.f, 0.f), 1e-4f, "the pivot has reached the far corner");
+        checkNear(sampled->transform.anchor, Vector3(-2.f, -2.f, 0.f), 0.f,
+                  "the static anchor is untouched: the pivot animation lives in the track, not the pose");
+        // A point one unit right of the moved pivot has turned a quarter turn about
+        // it, which is only true if the pivot really travelled with the animation.
+        checkNear(pose.applyPoint(Vector3(3.f, 2.f, 0.f)), Vector3(0.f, 1.f, 0.f), 1e-4f,
+                  "the card turns about the pivot it has at that frame, not the authored one");
+
+        scene.evaluate(5);
+        check(!scene.visible(kCard), "the card is hidden before its lifetime starts");
+        scene.evaluate(75);
+        check(!scene.visible(kCard), "the card is hidden after its lifetime ends");
+
+        scene.evaluate(70);
+        checkNear(worldPivotOf(scene, kCard), Vector3(5.f, 1.f, 0.f), 1e-3f,
+                  "the exit finishes on the out frame");
+        checkNear(scene.worldOpacity(kCard), 0.f, 1e-4f, "the exit fades out on the out frame");
+
+        // The second composition is a pure function of the frame too.
+        scene.evaluate(33);
+        const Vector3 first = worldPivotOf(scene, kCard);
+        scene.evaluate(70);
+        scene.evaluate(33);
+        checkNear(worldPivotOf(scene, kCard), first, 0.f,
+                  "re-evaluating a frame reproduces it exactly");
+    }
+
 }// namespace
 
 int main() {
@@ -402,6 +497,7 @@ int main() {
     cameraDolliesAndParallaxFollowsDepth();
     subtitleTravelsACurvedPath();
     canaryIsDeterministicAndAnchored();
+    thePivotTravelsAndTheLifetimeDrivesTheEntrance();
 
     return chrononmotion_test::report();
 }

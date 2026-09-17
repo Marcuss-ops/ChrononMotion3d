@@ -17,6 +17,18 @@
       }
     },
     {
+      "name": "dev-fast",
+      "inherits": "dev",
+      "displayName": "Development, cached and linked fast",
+      "description": "`dev` with ccache, mold and Ninja. Needs ccache and mold on PATH; the build preset uses 16 jobs, so budget roughly 16 GB of RAM.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dev-fast",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=mold"
+      }
+    },
+    {
       "name": "release",
       "displayName": "Release (warnings as errors)",
       "description": "Optimised build with -Wall -Wextra -Werror, the gate a change must pass.",
@@ -25,6 +37,18 @@
         "CMAKE_BUILD_TYPE": "Release",
         "CHRONONMOTION_BUILD_TESTS": "ON",
         "CHRONONMOTION_WERROR": "ON"
+      }
+    },
+    {
+      "name": "release-fast",
+      "inherits": "release",
+      "displayName": "Release, cached and linked fast (the gate, fast)",
+      "description": "`release` with ccache, mold and Ninja: same -Wall -Wextra -Werror gate, warm-cache rebuilds in seconds. Needs ccache and mold on PATH; the build preset uses 16 jobs, so budget roughly 16 GB of RAM.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release-fast",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=mold"
       }
     }
   ],
@@ -36,6 +60,16 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "dev-fast",
+      "configurePreset": "dev-fast",
+      "jobs": 16
+    },
+    {
+      "name": "release-fast",
+      "configurePreset": "release-fast",
+      "jobs": 16
     }
   ],
   "testPresets": [
@@ -49,6 +83,20 @@
     {
       "name": "release",
       "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "dev-fast",
+      "configurePreset": "dev-fast",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release-fast",
+      "configurePreset": "release-fast",
       "output": {
         "outputOnFailure": true
       }

@@ -55,18 +55,13 @@ Transform          Position/Anchor/Scale XYZ, Rotation X/Y/Z, Orientation, Opaci
 Track              keyframes, per-segment easing, deterministic sampling
 Easing             linear / ease in-out / custom cubic Bézier / overshoot / bounce
 Layer              identity, parent, content, in/out lifetime, animated transform
+Lifetime           inFrame/outFrame; the entrance and exit are keyed from it
 MotionScene        hierarchy (Parent, Null) + deterministic frame/PTS evaluation
 MotionPath         line / cubic Bézier / Catmull-Rom + orient-to-path
 MotionPlane        2.5D text and image planes, Z depth, perspective + parallax
 CameraRig          perspective, look-at, dolly/pan/tilt/orbit/roll, FOV/focal
 Presets            the YouTube presets, built on the primitives above
-```
-
-The presets cover the list a text/image promo actually needs: slide in/out on
-all four sides, push/pull on Z, scale pop and overshoot, fade + slide, fade +
-scale, flip X/Y, card turn, 3D tilt, spin Z, spin XYZ, parallax entrance, camera
-push/pull/pan/orbit/shake, floating hover, drift, arc and path motion, staggered
-entrance and parent-group reveal.
+```The presets cover the list a text/image promo actually needs: slide in/out on all four sides, push/pull on Z, scale pop and overshoot, fade + slide, fade + scale, flip X/Y, card turn, 3D tilt, spin Z, spin XYZ, parallax entrance, camera push/pull/pan/orbit/shake, floating hover, drift, arc and path motion, staggered entrance and parent-group reveal — plus an animated pivot (`anchorTo`) and an entrance/exit keyed from the layer's own lifetime (`lifetimeSlide`).
 
 The composition rules, in one place:
 
@@ -74,7 +69,12 @@ The composition rules, in one place:
   `R = orientation · euler(rotation)` — the anchor is the single pivot for both
   rotation and scale;
 * a channel with keys overrides the layer's static pose, so a preset can shape a
-  whole transform or touch one axis;
+  whole transform or touch one axis — including `anchor`, so the pivot a layer
+  turns about can itself be keyed;
+* `lifetime` (`inFrame`, `outFrame`) gates a layer *and* its subtree, and the
+  arrival/departure animations are keyed from those two frames rather than from
+  hand-picked ones: an in/out animation cannot drift from the range the layer is
+  visible for;
 * `evaluate(frame)` is a pure function of `(scene, frame, fps)`: the same frame
   always produces the same matrices, whatever was evaluated before it;
 * **text and image planes are the same type.** The only difference between a text
@@ -122,6 +122,16 @@ cmake --build --preset release
 ctest --preset release
 ```
 
+`dev-fast` and `release-fast` are the same two builds with ccache, mold and
+Ninja, at 16 parallel jobs (they need ccache and mold on `PATH`, and about 16 GB
+of RAM). They are the same gate, just seconds faster on a warm cache:
+
+```shell
+cmake --preset release-fast
+cmake --build --preset release-fast
+ctest --preset release-fast
+```
+
 The result is one static library, `chrononmotion` (alias
 `ChrononMotion::chrononmotion`), plus the test binaries below with
 `CHRONONMOTION_BUILD_TESTS=ON`:
@@ -132,8 +142,8 @@ The result is one static library, `chrononmotion` (alias
 | `chrononmotion_primitives` | `Easing`, `Transform`, `Track` |
 | `chrononmotion_timeline` | `Layer`, `MotionScene`, lifetimes, determinism, validation |
 | `chrononmotion_view` | `MotionPath`, `MotionPlane`/`PerspectiveView`, `CameraRig` |
-| `chrononmotion_presets` | every preset in the list, by its defining property |
-| `chrononmotion_canary` | the whole primitive set on one timeline (see below) |
+| `chrononmotion_presets` | every preset in the list, by its defining property (including the animated pivot and the lifetime-driven entrance/exit) |
+| `chrononmotion_canary` | the whole primitive set on one timeline (see below), plus the annotated-pivot/lifetime composition |
 | `chrononmotion_boundary` | the architectural guardrail |
 
 Consumers include `threepp/threepp.hpp` or the individual headers, e.g.

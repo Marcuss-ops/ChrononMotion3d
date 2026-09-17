@@ -196,6 +196,17 @@ units, no new dependency, and no content machinery:
   are independently keyed. A channel with keys overrides the layer's static
   pose; the un-keyed channels keep it. That is what lets one preset shape a whole
   transform and another touch a single axis.
+* **The pivot is a channel too.** `anchor` is keyed like anything else, so the
+  point a layer rotates and scales about can travel over time instead of being
+  fixed at author time: `presets::anchorTo` keys it and the transform composes
+  against whatever the track sampled at that frame.
+* **Lifetime.** `Layer::lifetime` (`inFrame`/`outFrame`) gates a layer and its
+  whole subtree at frame-evaluation time. `presets::lifetimeWindows` derives the
+  arrival and departure windows from those two frames and
+  `presets::lifetimeSlide` keys them, so an in/out animation is tied to the
+  declared lifetime rather than to frames an author picked by hand. A window the
+  lifetime cannot hold is reported absent and left un-keyed — never moved to a
+  frame the layer is not alive for.
 * **Orientation is a quaternion, not Euler.** It is slerped, and `slerpQuaternions`
   fixes the antipodal sign, so an orientation track never takes the long way
   through ±180°. `rotation` stays XYZ Euler because that is what an author edits.
@@ -242,12 +253,17 @@ cmake --build --preset release
 ctest --preset release
 ```
 
+`dev-fast` and `release-fast` are those same two configurations built with
+ccache, mold and Ninja at 16 jobs (ccache and mold must be on `PATH`). They are
+for running the gate repeatedly without paying for a full rebuild; the plain
+presets stay dependency-free.
+
 The library is one target, `chrononmotion` (alias `ChrononMotion::chrononmotion`),
 with `include/` as its only include path and no dependency to fetch. Consumers
 link it and include `threepp/threepp.hpp` (the umbrella was trimmed to the
 keep-set and then extended with `motion/Motion.hpp`) or the individual headers.
 
-The compile-time contract is split across five binaries:
+The compile-time contract is split across six binaries:
 
 * `chrononmotion_smoke` pins the fork itself — hierarchy and world transforms,
   `localToWorld`/`worldToLocal`, the camera vs node `lookAt` conventions, the
@@ -275,7 +291,10 @@ The compile-time contract is split across five binaries:
   neighbour (an overshoot that actually overshoots, a shake that always resolves
   where it started, a stagger whose layers are actually offset).
 * `chrononmotion_canary` pins the whole primitive set at once, on the canary
-  composition described in that file.
+  composition described in that file, plus a second composition for the two
+  capabilities the first does not exercise on its own — a pivot that travels
+  while the layer turns about it, and an entrance and exit keyed from the
+  layer's declared lifetime.
 
 `chrononmotion_boundary` runs separately and is the architectural guardrail.
 
