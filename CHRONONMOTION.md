@@ -190,6 +190,60 @@ length/`CurvePath` traversal, keyframe interpolation and clamping, clip duration
 resolution, geometry bounds, the empty-material contract, `clone()` through
 `createDefault`, and parent/child detach.
 
+## The boundary this tree sits on
+
+The rule, stated once:
+
+> **Chronon owns content. ChrononMotion owns space and time.**
+
+```text
+        Chronon                                  ChrononMotion
+   (content authority)                        (motion authority)
+──────────────────────────                 ──────────────────────────
+TextAsset / ImageAsset / VideoAsset        Layer
+TextStyle                                  parent / anchor
+font resolution                            position / rotation / scale
+HarfBuzz shaping, ICU/bidi                 transform tracks, opacity track
+layout, line breaking                      lifetime (in/out frame)
+bounds and glyph metrics                   timeline, camera
+rasterization, glyph atlas                 frame → value compilation
+──────────────────────────                 ──────────────────────────
+                     │                              │
+                     └──────────► AssetId ──────────┘
+                            + ContentMetrics
+                            + compiled world matrix / opacity
+```
+
+ChrononMotion therefore must not grow a font stack, a text shaper, a glyph
+atlas, a text layout engine, an image decoder or a rasterizer — and it must not
+grow a second `TextStyle`, a second definition of "bounds", or a second `Text`
+type. If it needs one of those, the answer is a smaller `ContentRef`, not a copy
+of the content engine.
+
+The measurable form of the rule is the architectural guardrail:
+
+```shell
+cmake -DSOURCE_DIR=$(pwd) -P tests/check_motion_boundary.cmake
+```
+
+`tests/check_motion_boundary.cmake` (run by CTest as `chrononmotion_boundary`,
+and by CI on every push) scans **code, not prose** — comments are blanked first,
+so a doc comment may name a library this tree is forbidden to *use* — and fails on
+any reference to text/shaping (`harfbuzz`, `freetype`, `fribidi`, `mtsdf`,
+`glyph`, `typeface`, `font_cache`, `shaping`, `text_layout`, `kerning`, `bidi`,
+font extensions), media decoding (`stb_image`, `libpng`, `jpeglib`, `libwebp`,
+`ffmpeg`/`libavcodec`, `nvdec`/`nvenc`), raster/GPU (`blend2d`, `skia`, `cairo`,
+`vulkan`, `opengl`, `glsl`, `shader`, `swapchain`, `glfw`), or a configure-time
+dependency (`find_package`, `FetchContent`, `pkg_check_modules`, `vcpkg`). It also
+asserts the library target links nothing. A line can opt out with a reasoned
+`boundary-guardrail: allowed` comment; that is a design decision, not a
+convenience.
+
+What the guardrail guarantees today is a **property**, not a hope: this tree is
+verified to build and pass its tests with zero content machinery. The current `math/`
+and `core/` sources mention none of it (the only hit in the whole tree before the
+comment-stripping pass was the word "rasterizes" in one `Material` comment).
+
 ## Deliberately not done yet
 
 1. **`Object3D` → `LayerNode`.** The node still speaks three.js. The target is a
@@ -214,9 +268,15 @@ resolution, geometry bounds, the empty-material contract, `clone()` through
    `threepp/` — deliberately, so a future upstream diff stays readable. Renaming
    to `chrononmotion/` is a mechanical change and should be its own commit.
 6. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`; the
-   keep-set's behaviour is currently covered by one smoke binary. Re-importing
-   the upstream tests for `math/`, `core/` and `animation/` would give the fork
-   real regression depth.
+   keep-set's behaviour is currently covered by one smoke binary plus the
+   boundary guardrail. Re-importing the upstream tests for `math/`, `core/` and
+   `animation/` would give the fork real regression depth.
+8. **The layer/content contract.** The node is still `Object3D`; the target model
+   is a generic `Layer` (`LayerId` + parent, `ContentRef` standing for an opaque
+   content asset, transform tracks, an opacity track, a lifetime frame range)
+   plus a neutral `ContentMetrics` snapshot bound to an asset fingerprint, so this
+   side can anchor and place a text/image/video asset without knowing what it is.
+   None of those types exist yet — see the open design questions below.
 7. **No serialization, no layers, no userData.** The loader/exporter pair is
    gone, so `uuid()`/`setUuid()` and `Layers`-style filtering have no consumer
    yet. Any per-node attachment the engine needs later should be a typed field,

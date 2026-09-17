@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [dev, release]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      # chrononmotion_smoke pins the surviving motion core;
+      # chrononmotion_boundary fails if this tree starts referencing content
+      # machinery (text shaping, fonts, glyphs, raster, image/video decoding) or
+      # acquires a dependency. See tests/check_motion_boundary.cmake.
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure

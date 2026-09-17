@@ -92,4 +92,12 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_smoke tests/motion_smoke.cpp)
     target_link_libraries(chrononmotion_smoke PRIVATE chrononmotion)
     add_test(NAME chrononmotion_smoke COMMAND chrononmotion_smoke)
+
+    # Architectural guardrail: this tree must not reference content machinery
+    # (text shaping, fonts, glyphs, raster, image/video decoding) or acquire a
+    # dependency. See tests/check_motion_boundary.cmake.
+    add_test(NAME chrononmotion_boundary
+            COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_motion_boundary.cmake)
 endif()
