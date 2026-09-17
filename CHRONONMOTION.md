@@ -13,17 +13,18 @@ Measured against the checkout this fork starts from (library sources only:
 
 | | upstream threepp | ChrononMotion |
 |---|---|---|
-| files | ~2.160 | 99 |
-| lines | ~259.300 | ~14.100 (5.4%) |
+| files | ~2.160 | 125 |
+| lines | ~259.300 | ~17.700 (6.8%) |
 | third-party deps at configure time | vcpkg features, FetchContent (GLFW, glslang, V-HACD, PhysX, pybind11, …) | none |
-| build products | shared/static lib, editor, player, Python module, examples, tests | one static library + one smoke test |
+| build products | shared/static lib, editor, player, Python module, examples, tests | one static library + six test binaries |
 
-The deletions are **uncommitted until they are committed**, so they are a diff,
-not a fait accompli:
+The deletions are **committed**, so this file is the ledger for them rather than
+a pending diff. Every removed file is still reachable from the history, and any
+single one can be put back to inspect it:
 
 ```shell
-git status --short          # 2064 deletions, 28 modified, tests/ + this file untracked
-git checkout -- <path>      # put any single file back
+git log --oneline --diff-filter=D --name-only   # every deleted path
+git show <pre-fork>:<path>                      # its bytes
 ```
 
 ## What was kept
@@ -37,6 +38,7 @@ git checkout -- <path>      # put any single file back
 | `cameras/` | 450 | `Camera`, `PerspectiveCamera`, `OrthographicCamera` — 2.5D, parallax, depth, camera moves |
 | `objects/` | 224 | `Group` (null/parent container) and `Mesh` (geometry + materials), isolated |
 | `materials/` | 119 | one abstract `Material` base — identity, version, side, opacity, alpha |
+| `geometries/` | 579 | `BoxGeometry`, `PlaneGeometry`, `SphereGeometry` — re-imported after the cut: plain `BufferGeometry` builders with no material, texture or loader behind them |
 | `scenes/` | 51 | `Scene` as a light root container |
 | `constants.hpp` | 63 | the six enums the above actually use |
 
@@ -44,7 +46,8 @@ git checkout -- <path>      # put any single file back
 
 **Wave 1 — the engine halves.** `renderers/` (OpenGL + Vulkan + shaders, 75k
 lines), `loaders/` (glTF, OBJ, FBX, COLLADA, STL, USD, URDF/xacro, SVG,
-DDS/HDR/EXR, …), `geometries/`, `materials/` (the ~40-material zoo + capability
+DDS/HDR/EXR, …), `geometries/` (all but the three re-imported below),
+`materials/` (the ~40-material zoo + capability
 mixins), `lights/`, `helpers/`, `utils/`, `textures/`, `canvas/`, `controls/`,
 `input/`, `postprocessing/`, `splats/`, `audio/`, `extras/` (physx, terrain,
 vegetation, sensors, road, imgui, kinematics, pointcloud, fauna, uav, conveyor,
@@ -169,12 +172,12 @@ in declaration order, so the tree builds clean under `-Wall -Wextra -Werror`.
 ## The motion model (landed)
 
 The fork above is the *maths* half. `include/chrononmotion/motion/` is the *motion*
-half a deterministic compiler samples from — eleven headers, eight translation
+half a deterministic compiler samples from — eleven headers, twelve translation
 units, no new dependency, and no content machinery:
 
 | file | responsibility |
 |---|---|
-| `motion/Content.hpp` | `ContentRef` / `ContentKind` / `ContentMetrics`: the opaque handle to Chronon's content, plus the neutral rectangle that placement needs |
+| `motion/Content.hpp` | `ContentRef` / `ContentKind` / `ContentMetrics` / `MeasurementState`: the opaque handle to Chronon's content, the neutral rectangle placement needs, and the fingerprint that says which measurement of that content the rectangle came from |
 | `motion/Easing.hpp` | the timing curve — linear, ease in/out/in-out, custom cubic Bézier, overshoot, bounce, elastic |
 | `motion/Transform.hpp` | Position/Anchor/Scale XYZ, Rotation X/Y/Z, Orientation quaternion, Opacity |
 | `motion/Track.hpp` | keyframes with per-segment easing; scalar and vector lerp, quaternion slerp |
@@ -185,6 +188,17 @@ units, no new dependency, and no content machinery:
 | `motion/CameraRig.hpp` | `CameraPose`, `CameraRig` — a perspective camera plus dolly/pan/tilt/orbit/roll/look-at/animated FOV |
 | `motion/Presets.hpp` | the preset list, written as keyframe authoring on the primitives above |
 | `motion/Motion.hpp` | the umbrella include, re-exported from `chrononmotion/chrononmotion.hpp` |
+
+`presets::` is the one part of that list implemented as several files, and the
+split is by *family* rather than by size: `Presets_Common.cpp` holds the one
+frame→seconds conversion and the direction/axis tables, then one translation unit
+per family — `Presets_Place` (slides, depth, lifetime windows, 2.5D travel),
+`Presets_Transform` (scale, opacity, pivot, orientation), `Presets_Motion` (paths,
+hierarchies) and `Presets_Camera` — over a shared internal `Presets_detail.hpp`.
+The three helpers in that header (`restOf`, `uniform`, `keyVector3`) exist
+precisely because the families must key their curves *identically*; a per-family
+copy is how one of them would quietly grow a different end-of-segment convention.
+The public surface is unchanged: `motion/Presets.hpp` is still the whole list.
 
 ### The composition rules, stated once
 
@@ -200,6 +214,14 @@ units, no new dependency, and no content machinery:
   point a layer rotates and scales about can travel over time instead of being
   fixed at author time: `presets::anchorTo` keys it and the transform composes
   against whatever the track sampled at that frame.
+* **A measurement is labelled, and a re-measurement re-derives.** `ContentMetrics`
+  carries a `fingerprint` — Chronon's digest of the content the rectangle was
+  measured from — so "these numbers were taken from that content" is a fact a
+  caller can check (`ContentRef::measurementState`) instead of an assumption.
+  `MotionPlane::refresh(layer, remeasured)` rebuilds the plane when that digest
+  changes — the anchor always, the aspect ratio too for a `fitted` plane — and
+  writes it back to the layer. What it writes stays the *static* pose: a keyed
+  `anchor` track still wins, exactly as it does over `applyTo`.
 * **Lifetime.** `Layer::lifetime` (`inFrame`/`outFrame`) gates a layer and its
   whole subtree at frame-evaluation time. `presets::lifetimeWindows` derives the
   arrival and departure windows from those two frames and
@@ -227,9 +249,11 @@ units, no new dependency, and no content machinery:
 ### What the guardrail still guarantees
 
 The boundary is unchanged: `motion/` mentions no shaping, no font stack, no
-raster and no decoder. `ContentRef` is an id, a kind, and a rectangle — so a
-system that anchors and places a text asset without knowing what it is remains
-the only thing this tree can do.
+raster and no decoder. `ContentRef` is an id, a kind, a rectangle and an opaque
+measurement fingerprint — so a system that anchors and places a text asset
+without knowing what it is remains the only thing this tree can do. The
+fingerprint is a string it never computes and never parses; it is Chronon's, and
+this side only carries it.
 
 ### What the presets are, and are not
 
@@ -270,12 +294,17 @@ The compile-time contract is split across six binaries:
   perspective projection term, curve endpoints/`getPoints`/arc length/`CurvePath`
   traversal, keyframe interpolation and clamping, clip duration resolution,
   geometry bounds, the empty-material contract, `clone()` through
-  `createDefault`, and parent/child detach.
-* `chrononmotion_primitives` pins `Easing`, `Transform` and `Track`: curve
-  endpoints and the overshoot that must still land on 1, the anchor as the fixed
-  point of *both* scale and rotation, `orientation` composing on top of
-  `rotation`, shortest-path blending across ±180°, per-segment easing, discrete
-  holds, and sampling that is a pure function of time.
+  `createDefault`, and parent/child detach. It also pins the re-imported
+  primitives: `PlaneGeometry`/`BoxGeometry`/`SphereGeometry` vertex and index
+  counts, the per-face groups, the bounds they produce, the retained construction
+  parameters and the unit-length sphere normals.
+* `chrononmotion_primitives` pins `Easing`, `Transform`, `Track` and the content
+  measurement: curve endpoints and the overshoot that must still land on 1, the
+  anchor as the fixed point of *both* scale and rotation, `orientation` composing
+  on top of `rotation`, shortest-path blending across ±180°, per-segment easing,
+  discrete holds, sampling that is a pure function of time, and the measurement
+  fingerprint's `Current`/`Stale`/`Unknown` verdict (including that a
+  re-measured asset is still the *same* asset).
 * `chrononmotion_timeline` pins `Layer` and `MotionScene`: a channel with keys
   overriding the static pose, the closed and open `FrameRange`, parents-first
   world composition, a hidden Null hiding its subtree, multiplicative world
@@ -348,9 +377,10 @@ asserts the library target links nothing. A line can opt out with a reasoned
 convenience.
 
 What the guardrail guarantees today is a **property**, not a hope: this tree is
-verified to build and pass its tests with zero content machinery. `math/`, `core/`
-and `motion/` all mention none of it — and `motion/Content.hpp` is the reason the
-last one can: anchoring a text asset needed an id and a rectangle, not a font.
+verified to build and pass its tests with zero content machinery. `math/`, `core/`,
+`geometries/` and `motion/` all mention none of it — and `motion/Content.hpp` is
+the reason the last one can: anchoring a text asset needed an id, a rectangle and
+an opaque fingerprint, not a font.
 (The only hit in the whole tree before the comment-stripping pass was the word
 "rasterizes" in one `Material` comment.)
 
@@ -374,20 +404,26 @@ last one can: anchoring a text asset needed an id and a rectangle, not a font.
 4. **More geometry primitives.** Box, Plane and Sphere are re-imported as small,
    renderer-free `BufferGeometry` builders. The rest of upstream's geometry
    system (shape/extrusion and specialized primitives) remains deferred.
-5. **`ContentMetrics` is not fingerprinted.** It carries a size and an anchor but
-   nothing binds them to the asset they measured, so this side cannot detect a
-   stale measurement when the content changes. The fingerprint belongs to
-   Chronon; carrying it across `ContentRef` is the fix.
-6. **`Transform::anchor` is set, not derived.** `MotionPlane::applyTo` writes the
-   pivot the plane computed; nothing recomputes it from the bounds. An author who
-   changes a layer's content size therefore has to re-apply the plane. Deriving
-   the anchor from a fingerprinted `ContentMetrics` would close that gap.
-7. **No serialization.** The loader/exporter pair is gone, so `uuid()`/`setUuid()`
+5. **No serialization.** The loader/exporter pair is gone, so `uuid()`/`setUuid()`
    and `Layers`-style filtering have no consumer yet. Any per-layer attachment
    the engine needs later should be a typed field, not a return of the
    `userData` bag.
-8. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`. The
+6. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`. The
    fork's own behaviour is covered by one smoke binary, five motion binaries
    and the boundary guardrail; re-importing the upstream tests for
    `math/`, `core/` and `animation/` would still give the fork real regression
    depth.
+
+### Closed since the fork
+
+Three items this file used to list as open are now landed and pinned, so they are
+recorded here instead of above:
+
+* **`ContentMetrics` is fingerprinted** (`ContentMetrics::fingerprint`,
+  `ContentRef::measured`, `ContentRef::measurementState`). An un-fingerprinted
+  ref reports `Unknown`, never a silent `Current`.
+* **The anchor is derived, not only set**
+  (`MotionPlane::derivedFrom` / `MotionPlane::refresh`). A re-measurement moves
+  the pivot, and the aspect ratio of a `fitted` plane with it.
+* **The namespace and include prefix are `chrononmotion/`**, not `threepp/`, so
+  the public names no longer advertise a fork that this tree is not.

@@ -69,7 +69,12 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/MotionPath.cpp
         src/chrononmotion/motion/MotionPlane.cpp
         src/chrononmotion/motion/CameraRig.cpp
-        src/chrononmotion/motion/Presets.cpp
+        # presets — one translation unit per family, plus the shared vocabulary
+        src/chrononmotion/motion/Presets_Common.cpp
+        src/chrononmotion/motion/Presets_Place.cpp
+        src/chrononmotion/motion/Presets_Transform.cpp
+        src/chrononmotion/motion/Presets_Motion.cpp
+        src/chrononmotion/motion/Presets_Camera.cpp
         # curves
         src/chrononmotion/extras/core/Curve.cpp
         src/chrononmotion/extras/core/CurvePath.cpp

@@ -23,10 +23,13 @@ postprocessing/ splats/ extras/        deleted
 apps/ examples/ tests/ python/         deleted
 ```
 
-Roughly **5.4% of the upstream library sources survive** (~14.1k of ~259.3k lines,
-99 files), and nothing is fetched at configure time. What grows back on top is the
+Roughly **6.9% of the upstream library sources survive** (~17.8k of ~259.3k lines,
+130 files across `include/` and `src/`), and nothing is fetched at configure time. What grows back on top is the
 half threepp does not have: the deterministic motion model in
 `include/chrononmotion/motion/` — see [The motion model](#the-motion-model).
+Three geometry primitives (`BoxGeometry`, `PlaneGeometry`, `SphereGeometry`)
+were re-imported with it, so a `Mesh` has something to carry that is not built
+by hand.
 
 The fork is not a rewrite: `Object3D` is still the three.js node — parent and
 children, position/rotation/quaternion/scale, local and world matrices,
@@ -73,6 +76,9 @@ The composition rules, in one place:
 * a channel with keys overrides the layer's static pose, so a preset can shape a
   whole transform or touch one axis — including `anchor`, so the pivot a layer
   turns about can itself be keyed;
+* a measurement carries a fingerprint, and `MotionPlane::refresh` re-derives the
+  pivot — and a `fitted` plane's aspect ratio — when the content is re-measured;
+  what it writes is the static pose, so a keyed `anchor` track still wins;
 * `lifetime` (`inFrame`, `outFrame`) gates a layer *and* its subtree, and the
   arrival/departure animations are keyed from those two frames rather than from
   hand-picked ones: an in/out animation cannot drift from the range the layer is
@@ -126,7 +132,9 @@ ctest --preset release
 
 `dev-fast` and `release-fast` are the same two builds with ccache, mold and
 Ninja, at 16 parallel jobs (they need ccache and mold on `PATH`, and about 16 GB
-of RAM). They are the same gate, just seconds faster on a warm cache:
+of RAM). They are the same gate, just seconds faster on a warm cache. Measured on
+this tree, a full cold `-j16` rebuild peaks at roughly 2 GB of compiler RSS, so
+the budget is a ceiling and not a requirement:
 
 ```shell
 cmake --preset release-fast
