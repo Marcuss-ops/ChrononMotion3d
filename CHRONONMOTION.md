@@ -166,10 +166,74 @@ left is dependency-clean and compiles without any object header.
 index) were cleaned up, and `AnimationClip`'s constructor now initialises members
 in declaration order, so the tree builds clean under `-Wall -Wextra -Werror`.
 
+## The motion model (landed)
+
+The fork above is the *maths* half. `include/threepp/motion/` is the *motion*
+half a deterministic compiler samples from — eleven headers, eight translation
+units, no new dependency, and no content machinery:
+
+| file | responsibility |
+|---|---|
+| `motion/Content.hpp` | `ContentRef` / `ContentKind` / `ContentMetrics`: the opaque handle to Chronon's content, plus the neutral rectangle that placement needs |
+| `motion/Easing.hpp` | the timing curve — linear, ease in/out/in-out, custom cubic Bézier, overshoot, bounce, elastic |
+| `motion/Transform.hpp` | Position/Anchor/Scale XYZ, Rotation X/Y/Z, Orientation quaternion, Opacity |
+| `motion/Track.hpp` | keyframes with per-segment easing; scalar and vector lerp, quaternion slerp |
+| `motion/Layer.hpp` | `FrameRange`, `LayerTracks`, `Layer` — identity, parent, content, lifetime, animated pose |
+| `motion/MotionScene.hpp` | `MotionTime`, `LayerState`, `MotionScene` — hierarchy and deterministic frame/PTS evaluation |
+| `motion/MotionPath.hpp` | line / quadratic and cubic Bézier / Catmull-Rom, arc-length sampling, orient-to-path |
+| `motion/MotionPlane.hpp` | `MotionPlane`, `ScreenPlane`, `PerspectiveView` — 2.5D planes, Z depth, projection, parallax |
+| `motion/CameraRig.hpp` | `CameraPose`, `CameraRig` — a perspective camera plus dolly/pan/tilt/orbit/roll/look-at/animated FOV |
+| `motion/Presets.hpp` | the preset list, written as keyframe authoring on the primitives above |
+| `motion/Motion.hpp` | the umbrella include, re-exported from `threepp/threepp.hpp` |
+
+### The composition rules, stated once
+
+* **Transform.** `local = T(position) · R · S(scale) · T(-anchor)` with
+  `R = orientation · eulerToQuaternion(rotation)`. The anchor is the single
+  pivot for rotation *and* scale, and the point `p` lands at
+  `position + R·S·(p - anchor)`.
+* **Channels.** `position`/`anchor`/`scale`/`rotation`/`orientation`/`opacity`
+  are independently keyed. A channel with keys overrides the layer's static
+  pose; the un-keyed channels keep it. That is what lets one preset shape a whole
+  transform and another touch a single axis.
+* **Orientation is a quaternion, not Euler.** It is slerped, and `slerpQuaternions`
+  fixes the antipodal sign, so an orientation track never takes the long way
+  through ±180°. `rotation` stays XYZ Euler because that is what an author edits.
+* **Evaluation.** `MotionScene::evaluate(frame)` samples every layer at
+  `frame / fps` and composes world matrices parents-first, so a Null layer's
+  motion propagates to everything under it and a hidden Null hides its subtree.
+  It is a pure function of `(scene, frame, fps)`: the same frame always produces
+  the same matrices, whatever was evaluated before it. `MotionTime::atPts`
+  rounds, so a PTS one ulp below an exact frame still lands on that frame.
+* **Text and image are the same type.** `MotionPlane` does not know or care what
+  a layer draws — text planes and image planes are *the same struct*, driven
+  through the same `Transform`. The only difference is the opaque `ContentRef`.
+  There is no separate text-animation path to drift out of sync.
+* **Parallax is automatic.** `PerspectiveView::pixelsPerUnit(distance)` shrinks
+  with distance, so the same camera move shifts a near plane more than a far one
+  and a dolly enlarges it more. No parallax is authored anywhere.
+
+### What the guardrail still guarantees
+
+The boundary is unchanged: `motion/` mentions no shaping, no font stack, no
+raster and no decoder. `ContentRef` is an id, a kind, and a rectangle — so a
+system that anchors and places a text asset without knowing what it is remains
+the only thing this tree can do.
+
+### What the presets are, and are not
+
+`presets::` holds no engine. Every preset writes keyframes into a `Layer`'s (or a
+`CameraRig`'s) channels, so a preset is a starting point a caller keeps editing,
+never a sealed animation. `cameraShake` is deterministic too: its offsets come
+from decaying whole sine cycles, not from an RNG, because a frame that shakes
+differently on a re-render is not a frame a compiler can promise. (Whole cycles
+and a decay that reaches zero also mean the shake starts and resolves exactly on
+the base pose, with no pop at either end.)
+
 ## Build
 
 ```shell
-cmake --preset dev        # Debug + smoke test
+cmake --preset dev        # Debug + tests
 cmake --build --preset dev
 ctest --preset dev
 
@@ -181,14 +245,39 @@ ctest --preset release
 The library is one target, `chrononmotion` (alias `ChrononMotion::chrononmotion`),
 with `include/` as its only include path and no dependency to fetch. Consumers
 link it and include `threepp/threepp.hpp` (the umbrella was trimmed to the
-keep-set) or the individual headers.
+keep-set and then extended with `motion/Motion.hpp`) or the individual headers.
 
-The compile-time contract is pinned by `tests/motion_smoke.cpp`: hierarchy and
-world transforms, `localToWorld`/`worldToLocal`, the camera vs node `lookAt`
-conventions, the perspective projection term, curve endpoints/`getPoints`/arc
-length/`CurvePath` traversal, keyframe interpolation and clamping, clip duration
-resolution, geometry bounds, the empty-material contract, `clone()` through
-`createDefault`, and parent/child detach.
+The compile-time contract is split across five binaries:
+
+* `chrononmotion_smoke` pins the fork itself — hierarchy and world transforms,
+  `localToWorld`/`worldToLocal`, the camera vs node `lookAt` conventions, the
+  perspective projection term, curve endpoints/`getPoints`/arc length/`CurvePath`
+  traversal, keyframe interpolation and clamping, clip duration resolution,
+  geometry bounds, the empty-material contract, `clone()` through
+  `createDefault`, and parent/child detach.
+* `chrononmotion_primitives` pins `Easing`, `Transform` and `Track`: curve
+  endpoints and the overshoot that must still land on 1, the anchor as the fixed
+  point of *both* scale and rotation, `orientation` composing on top of
+  `rotation`, shortest-path blending across ±180°, per-segment easing, discrete
+  holds, and sampling that is a pure function of time.
+* `chrononmotion_timeline` pins `Layer` and `MotionScene`: a channel with keys
+  overriding the static pose, the closed and open `FrameRange`, parents-first
+  world composition, a hidden Null hiding its subtree, multiplicative world
+  opacity, frame/PTS equivalence, evaluation that does not depend on evaluation
+  history, and `validate()` reporting unknown parents, self-parenting and cycles
+  without hanging.
+* `chrononmotion_view` pins `MotionPath`, `MotionPlane`/`PerspectiveView` and
+  `CameraRig`: waypoint interpolation, arc-length sampling, orient-to-path, the
+  anchor as a plane pivot, projected size scaling with 1/distance, automatic
+  parallax, behind-camera rejection, and every camera move.
+* `chrononmotion_presets` pins every preset in the list by its defining property
+  — where it starts, where it ends, and what makes it that preset rather than a
+  neighbour (an overshoot that actually overshoots, a shake that always resolves
+  where it started, a stagger whose layers are actually offset).
+* `chrononmotion_canary` pins the whole primitive set at once, on the canary
+  composition described in that file.
+
+`chrononmotion_boundary` runs separately and is the architectural guardrail.
 
 ## The boundary this tree sits on
 
@@ -240,20 +329,23 @@ asserts the library target links nothing. A line can opt out with a reasoned
 convenience.
 
 What the guardrail guarantees today is a **property**, not a hope: this tree is
-verified to build and pass its tests with zero content machinery. The current `math/`
-and `core/` sources mention none of it (the only hit in the whole tree before the
-comment-stripping pass was the word "rasterizes" in one `Material` comment).
+verified to build and pass its tests with zero content machinery. `math/`, `core/`
+and `motion/` all mention none of it — and `motion/Content.hpp` is the reason the
+last one can: anchoring a text asset needed an id and a rectangle, not a font.
+(The only hit in the whole tree before the comment-stripping pass was the word
+"rasterizes" in one `Material` comment.)
 
 ## Deliberately not done yet
 
-1. **`Object3D` → `LayerNode`.** The node still speaks three.js. The target is a
-   node that owns `anchorPoint`, `opacity`, `inFrame`/`outFrame`, `is3D`,
-   `parentId` and the track set (`positionTrack`, `anchorTrack`, `scaleTrack`,
-   `orientationTrack`, `rotationX/Y/ZTrack`, `opacityTrack`) — i.e. a node whose
-   transform is *sampled from tracks at a frame*, not mutated by a render loop.
-2. **The deterministic evaluator.** `MotionEvaluator(frame, pts)` over the
-   `AnimationClip`/`KeyframeTrack` representation now in the tree, with the
-   frame→value mapping a function of the frame number only.
+1. **Mesh layers, lights and real 3D objects.** The model stops at text planes,
+   image planes, nulls and a camera. `MeshLayer`, lights and true 3D geometry are
+   the step *after* this set, not part of it.
+2. **`Object3D` and `Layer` do not share a graph.** `Object3D` is the three.js
+   node the kept maths, curves and cameras are written against; `Layer` is the
+   motion model. `MotionScene` composes world matrices itself and a `CameraRig`
+   writes its sampled pose into a `PerspectiveCamera` node. Each is the single
+   authority for its own role today, but unifying them is a real design decision,
+   not a rename, and it is deliberately not taken here.
 3. **glTF.** Deferred on purpose. `GLTFLoader` is the single most expensive item
    on the keep-list: it pulls the material zoo, textures, geometries and
    `MaterialVariants` back in. The cheap version of the same capability — a small
@@ -263,21 +355,24 @@ comment-stripping pass was the word "rasterizes" in one `Material` comment).
 4. **Geometry primitives.** `geometries/` (Box, Plane, Sphere, …) was removed
    with the rest. A `Mesh` can be built by hand from a `BufferGeometry` today
    (see the smoke test), but a handful of primitives is probably worth
-   re-importing once the node/layer model settles.
-5. **Naming.** The namespace is still `threepp` and the include prefix is still
+   re-importing now that the layer model has settled.
+5. **`ContentMetrics` is not fingerprinted.** It carries a size and an anchor but
+   nothing binds them to the asset they measured, so this side cannot detect a
+   stale measurement when the content changes. The fingerprint belongs to
+   Chronon; carrying it across `ContentRef` is the fix.
+6. **`Transform::anchor` is set, not derived.** `MotionPlane::applyTo` writes the
+   pivot the plane computed; nothing recomputes it from the bounds. An author who
+   changes a layer's content size therefore has to re-apply the plane. Deriving
+   the anchor from a fingerprinted `ContentMetrics` would close that gap.
+7. **No serialization.** The loader/exporter pair is gone, so `uuid()`/`setUuid()`
+   and `Layers`-style filtering have no consumer yet. Any per-layer attachment
+   the engine needs later should be a typed field, not a return of the
+   `userData` bag.
+8. **Naming.** The namespace is still `threepp` and the include prefix is still
    `threepp/` — deliberately, so a future upstream diff stays readable. Renaming
    to `chrononmotion/` is a mechanical change and should be its own commit.
-6. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`; the
-   keep-set's behaviour is currently covered by one smoke binary plus the
-   boundary guardrail. Re-importing the upstream tests for `math/`, `core/` and
-   `animation/` would give the fork real regression depth.
-8. **The layer/content contract.** The node is still `Object3D`; the target model
-   is a generic `Layer` (`LayerId` + parent, `ContentRef` standing for an opaque
-   content asset, transform tracks, an opacity track, a lifetime frame range)
-   plus a neutral `ContentMetrics` snapshot bound to an asset fingerprint, so this
-   side can anchor and place a text/image/video asset without knowing what it is.
-   None of those types exist yet — see the open design questions below.
-7. **No serialization, no layers, no userData.** The loader/exporter pair is
-   gone, so `uuid()`/`setUuid()` and `Layers`-style filtering have no consumer
-   yet. Any per-node attachment the engine needs later should be a typed field,
-   not a return of the `userData` bag.
+9. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`. The
+   fork's own behaviour is now covered by one smoke binary plus the four motion
+   binaries and the boundary guardrail; re-importing the upstream tests for
+   `math/`, `core/` and `animation/` would still give the fork real regression
+   depth.

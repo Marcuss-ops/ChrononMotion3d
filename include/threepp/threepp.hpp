@@ -50,4 +50,6 @@
 #include "threepp/cameras/OrthographicCamera.hpp"
 #include "threepp/cameras/PerspectiveCamera.hpp"
 
+#include "threepp/motion/Motion.hpp"
+
 #endif//THREEPP_THREEPP_HPP

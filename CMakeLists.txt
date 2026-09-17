@@ -57,6 +57,15 @@ add_library(chrononmotion STATIC
         src/threepp/cameras/PerspectiveCamera.cpp
         # scenes
         src/threepp/scenes/Scene.cpp
+        # motion — the layer/transform/timeline/camera model Chronon samples from
+        src/threepp/motion/Easing.cpp
+        src/threepp/motion/Transform.cpp
+        src/threepp/motion/Layer.cpp
+        src/threepp/motion/MotionScene.cpp
+        src/threepp/motion/MotionPath.cpp
+        src/threepp/motion/MotionPlane.cpp
+        src/threepp/motion/CameraRig.cpp
+        src/threepp/motion/Presets.cpp
         # curves
         src/threepp/extras/core/Curve.cpp
         src/threepp/extras/core/CurvePath.cpp
@@ -92,6 +101,28 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_smoke tests/motion_smoke.cpp)
     target_link_libraries(chrononmotion_smoke PRIVATE chrononmotion)
     add_test(NAME chrononmotion_smoke COMMAND chrononmotion_smoke)
+
+    # The motion model: value primitives, the evaluated hierarchy, the 2.5D view
+    # and the camera rig, and finally the canary scene the presets are built for.
+    add_executable(chrononmotion_primitives tests/motion_primitives.cpp)
+    target_link_libraries(chrononmotion_primitives PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_primitives COMMAND chrononmotion_primitives)
+
+    add_executable(chrononmotion_timeline tests/motion_timeline.cpp)
+    target_link_libraries(chrononmotion_timeline PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_timeline COMMAND chrononmotion_timeline)
+
+    add_executable(chrononmotion_view tests/motion_view.cpp)
+    target_link_libraries(chrononmotion_view PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_view COMMAND chrononmotion_view)
+
+    add_executable(chrononmotion_presets tests/motion_presets.cpp)
+    target_link_libraries(chrononmotion_presets PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_presets COMMAND chrononmotion_presets)
+
+    add_executable(chrononmotion_canary tests/motion_canary.cpp)
+    target_link_libraries(chrononmotion_canary PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_canary COMMAND chrononmotion_canary)
 
     # Architectural guardrail: this tree must not reference content machinery
     # (text shaping, fonts, glyphs, raster, image/video decoding) or acquire a

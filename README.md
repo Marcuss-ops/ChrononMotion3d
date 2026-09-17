@@ -23,7 +23,9 @@ apps/ examples/ tests/ python/         deleted
 ```
 
 Roughly **5.4% of the upstream library sources survive** (~14.1k of ~259.3k lines,
-99 files), and nothing is fetched at configure time.
+99 files), and nothing is fetched at configure time. What grows back on top is the
+half threepp does not have: the deterministic motion model in
+`include/threepp/motion/` — see [The motion model](#the-motion-model).
 
 The fork is not a rewrite: `Object3D` is still the three.js node — parent and
 children, position/rotation/quaternion/scale, local and world matrices,
@@ -40,11 +42,69 @@ deliberately not done yet. Read it before changing anything here.
 
 ## Status
 
-This is a fresh cut. The library builds, the smoke test passes, and the shape of
-the "motion engine" half is settled — but the node model is still three.js, not
-yet the layer node (`anchorPoint`, `inFrame`/`outFrame`, `opacity`, per-property
-tracks) the compiler will sample from, and there is no glTF import yet. See the
-deferred list at the end of [CHRONONMOTION.md](CHRONONMOTION.md).
+The motion model is landed on top of the fork. The three.js half still provides
+the maths, the curves, the cameras and the keyframe vocabulary; `threepp/motion/`
+is the layer/transform/timeline/camera model a deterministic compiler samples
+from. glTF import, geometry primitives and the namespace rename are still
+deferred — see the list at the end of [CHRONONMOTION.md](CHRONONMOTION.md).
+
+## The motion model
+
+```text
+Transform          Position/Anchor/Scale XYZ, Rotation X/Y/Z, Orientation, Opacity
+Track              keyframes, per-segment easing, deterministic sampling
+Easing             linear / ease in-out / custom cubic Bézier / overshoot / bounce
+Layer              identity, parent, content, in/out lifetime, animated transform
+MotionScene        hierarchy (Parent, Null) + deterministic frame/PTS evaluation
+MotionPath         line / cubic Bézier / Catmull-Rom + orient-to-path
+MotionPlane        2.5D text and image planes, Z depth, perspective + parallax
+CameraRig          perspective, look-at, dolly/pan/tilt/orbit/roll, FOV/focal
+Presets            the YouTube presets, built on the primitives above
+```
+
+The presets cover the list a text/image promo actually needs: slide in/out on
+all four sides, push/pull on Z, scale pop and overshoot, fade + slide, fade +
+scale, flip X/Y, card turn, 3D tilt, spin Z, spin XYZ, parallax entrance, camera
+push/pull/pan/orbit/shake, floating hover, drift, arc and path motion, staggered
+entrance and parent-group reveal.
+
+The composition rules, in one place:
+
+* a layer's local matrix is `T(position) · R · S(scale) · T(-anchor)`, with
+  `R = orientation · euler(rotation)` — the anchor is the single pivot for both
+  rotation and scale;
+* a channel with keys overrides the layer's static pose, so a preset can shape a
+  whole transform or touch one axis;
+* `evaluate(frame)` is a pure function of `(scene, frame, fps)`: the same frame
+  always produces the same matrices, whatever was evaluated before it;
+* **text and image planes are the same type.** The only difference between a text
+  layer and an image layer is the opaque `ContentRef` they carry, so their
+  transform, anchor and parallax semantics cannot drift apart.
+
+```cpp
+#include "threepp/threepp.hpp"
+
+using namespace threepp;
+using namespace threepp::motion;
+
+MotionScene scene("promo", 30.f);
+scene.addNull(10, "Null_Main");
+
+Layer& title = scene.addContent(11, "Title", ContentRef::text("title", {800.f, 120.f}), 10);
+MotionPlane(title).applyTo(title);           // 2.5D plane: anchor + Z depth
+title.transform.position.y = 2.f;
+
+presets::slideIn(title, presets::Direction::Left, 0, 30, 6.f, 30.f);
+presets::fadeIn(title, 0, 30, 30.f);
+
+CameraRig camera(20, 60.f, 16.f / 9.f);
+camera.setPosition({0.f, 0.f, 14.f}).setTarget({0.f, 0.f, 0.f});
+presets::cameraPush(camera, 45, 30, 4.f, 30.f);
+
+auto cameraNode = camera.makeCamera();
+scene.evaluate(45);                          // deterministic: frame in, state out
+camera.apply(45.f / 30.f, *cameraNode);
+```
 
 ## Build
 
@@ -63,9 +123,20 @@ ctest --preset release
 ```
 
 The result is one static library, `chrononmotion` (alias
-`ChrononMotion::chrononmotion`), plus `chrononmotion_smoke` with
-`CHRONONMOTION_BUILD_TESTS=ON`. Consumers include `threepp/threepp.hpp` or the
-individual headers, e.g.
+`ChrononMotion::chrononmotion`), plus the test binaries below with
+`CHRONONMOTION_BUILD_TESTS=ON`:
+
+| binary | what it pins |
+|---|---|
+| `chrononmotion_smoke` | hierarchy/transform/curve/keyframe behaviour of the fork itself |
+| `chrononmotion_primitives` | `Easing`, `Transform`, `Track` |
+| `chrononmotion_timeline` | `Layer`, `MotionScene`, lifetimes, determinism, validation |
+| `chrononmotion_view` | `MotionPath`, `MotionPlane`/`PerspectiveView`, `CameraRig` |
+| `chrononmotion_presets` | every preset in the list, by its defining property |
+| `chrononmotion_canary` | the whole primitive set on one timeline (see below) |
+| `chrononmotion_boundary` | the architectural guardrail |
+
+Consumers include `threepp/threepp.hpp` or the individual headers, e.g.
 
 ```cpp
 #include "threepp/threepp.hpp"

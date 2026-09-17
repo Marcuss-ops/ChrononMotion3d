@@ -23,9 +23,11 @@ jobs:
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
 
-      # chrononmotion_smoke pins the surviving motion core;
-      # chrononmotion_boundary fails if this tree starts referencing content
-      # machinery (text shaping, fonts, glyphs, raster, image/video decoding) or
-      # acquires a dependency. See tests/check_motion_boundary.cmake.
+      # ctest runs the whole suite: chrononmotion_smoke pins the surviving fork;
+      # chrononmotion_primitives/timeline/view/presets/canary pin the motion
+      # model (`include/threepp/motion/`); chrononmotion_boundary fails if this
+      # tree starts referencing content machinery (text shaping, fonts, glyphs,
+      # raster, image/video decoding) or acquires a dependency. See
+      # tests/check_motion_boundary.cmake.
       - name: Test
         run: ctest --preset ${{ matrix.preset }} --output-on-failure
