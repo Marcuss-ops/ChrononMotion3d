@@ -1,4 +1,12 @@
 // https://github.com/mrdoob/three.js/blob/r129/src/core/BufferGeometry.js
+//
+// ChrononMotion: upstream's BufferGeometry also carried the data paths a
+// renderer reads but which nothing in this tree can ever fill — the
+// morph-target attribute set (morph attributes, `morphTargetsRelative`, and
+// their handling in bounds/normal/transform/copy) and `drawRange` (a draw
+// limiter whose only consumer was Mesh's deleted raycast). `groups` survives:
+// "which index range uses which material" is geometry semantics, not renderer
+// state, and a multi-material mesh needs it.
 
 #ifndef THREEPP_BUFFERGEOMETRY_HPP
 #define THREEPP_BUFFERGEOMETRY_HPP
@@ -30,14 +38,10 @@ namespace threepp {
 
         std::string name;
 
-        bool morphTargetsRelative{false};
-
         std::vector<GeometryGroup> groups;
 
         std::optional<Box3> boundingBox;
         std::optional<Sphere> boundingSphere;
-
-        DrawRange drawRange{0, std::numeric_limits<int>::max() / 2};
 
         BufferGeometry();
 
@@ -76,12 +80,12 @@ namespace threepp {
         }
 
         // Internal STRUCTURAL version of the attribute set: bumped whenever an
-        // attribute (or the index, or a morph-attribute list) is added,
-        // replaced or removed — NOT when attribute *contents* mutate (that is
-        // BufferAttribute::version). Renderers use it to cache attribute
-        // lookups safely across frames: an unchanged value guarantees the
-        // attribute map still holds the same objects, so cached pointers
-        // cannot dangle. Plain polling — no user action ever required.
+        // attribute (or the index) is added, replaced or removed — NOT when
+        // attribute *contents* mutate (that is BufferAttribute::version).
+        // Consumers use it to cache attribute lookups safely across frames: an
+        // unchanged value guarantees the attribute map still holds the same
+        // objects, so cached pointers cannot dangle. Plain polling — no user
+        // action ever required.
         [[nodiscard]] unsigned int attributesVersion() const { return attributesVersion_; }
 
         BufferAttribute* getAttribute(const std::string& name);
@@ -104,10 +108,6 @@ namespace threepp {
             return dynamic_cast<TypedBufferAttribute<T>*>(attributes_.at(name).get());
         }
 
-        std::vector<std::shared_ptr<BufferAttribute>>* getMorphAttribute(const std::string& name);
-
-        std::vector<std::shared_ptr<BufferAttribute>>* getOrCreateMorphAttribute(const std::string& name);
-
         [[nodiscard]] const std::unordered_map<std::string, std::shared_ptr<BufferAttribute>>& getAttributes() const;
 
         void setAttribute(const std::string& name, std::shared_ptr<BufferAttribute> attribute);
@@ -116,13 +116,9 @@ namespace threepp {
 
         [[nodiscard]] bool hasAttribute(const std::string& name) const;
 
-        [[nodiscard]] const std::unordered_map<std::string, std::vector<std::shared_ptr<BufferAttribute>>>& getMorphAttributes() const;
-
         void addGroup(int start, int count, unsigned int materialIndex = 0);
 
         void clearGroups();
-
-        BufferGeometry& setDrawRange(int start, int count);
 
         BufferGeometry& applyMatrix4(const Matrix4& matrix);
 
@@ -168,7 +164,6 @@ namespace threepp {
         bool disposed_ = false;
         std::unique_ptr<IntBufferAttribute> index_;
         std::unordered_map<std::string, std::shared_ptr<BufferAttribute>> attributes_;
-        std::unordered_map<std::string, std::vector<std::shared_ptr<BufferAttribute>>> morphAttributes_;
         unsigned int attributesVersion_ = 0;// see attributesVersion()
 
         inline static std::atomic<unsigned int> _id{0};

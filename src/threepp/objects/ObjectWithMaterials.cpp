@@ -1,4 +1,3 @@
-
 #include "threepp/objects/ObjectWithMaterials.hpp"
 
 #include <algorithm>
@@ -12,19 +11,11 @@ ObjectWithMaterials::ObjectWithMaterials(std::vector<std::shared_ptr<Material>> 
 
 std::shared_ptr<Material> ObjectWithMaterials::material() const {
 
-    return materials_.front();
+    return materials_.empty() ? nullptr : materials_.front();
 }
 
 void ObjectWithMaterials::setMaterial(const std::shared_ptr<Material>& material) {
 
-    setMaterials({material});
-}
-
-void ObjectWithMaterials::replaceMaterial(const std::shared_ptr<Material>& material) {
-
-    if (!materials_.empty() && materials_.front()) {
-        material->copyCompatibleFrom(*materials_.front());
-    }
     setMaterials({material});
 }
 

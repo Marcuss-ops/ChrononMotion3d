@@ -1,4 +1,3 @@
-
 #ifndef THREEPP_OBJECTWITHMATERIALS_HPP
 #define THREEPP_OBJECTWITHMATERIALS_HPP
 
@@ -12,11 +11,11 @@ namespace threepp {
     class ObjectWithMaterials: public virtual Object3D {
 
     public:
-        std::shared_ptr<Material> material() const override;
+        // The first material, or nullptr when this object carries none. A node
+        // is allowed to have no material at all — nothing here invents one.
+        std::shared_ptr<Material> material() const;
 
         void setMaterial(const std::shared_ptr<Material>& material);
-
-        void replaceMaterial(const std::shared_ptr<Material>& material);
 
         const std::vector<std::shared_ptr<Material>>& materials() const;
 

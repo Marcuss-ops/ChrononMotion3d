@@ -11,27 +11,21 @@
 #include "threepp/math/Vector3.hpp"
 
 #include "threepp/core/EventDispatcher.hpp"
-#include "threepp/core/Layers.hpp"
 
 #include "misc.hpp"
 
-#include <any>
 #include <array>
 #include <atomic>
 #include <functional>
 #include <memory>
-#include <optional>
+#include <string>
+#include <vector>
 
 namespace threepp {
 
-    class Material;
-    class Raycaster;
-    struct Intersection;
     class Object3D;
     class BufferGeometry;
     class AnimationClip;
-
-    typedef std::function<void(void*, Object3D*, Camera*, BufferGeometry*, Material*, std::optional<GeometryGroup>)> RenderCallback;
 
     // This is the base class for most objects in three.js and provides a set of properties and methods for manipulating objects in 3D space.
     //Note that this can be used for grouping objects via the .add( object ) method which adds the object as a child, however it is better to use Group for this.
@@ -84,13 +78,6 @@ namespace threepp {
         // The object's local scale. Default is Vector3( 1, 1, 1 ).
         Vector3 scale{1, 1, 1};
 
-        // This is passed to the shader and used to calculate the position of the object.
-        Matrix4 modelViewMatrix;
-        // This is passed to the shader and used to calculate lighting for the object. It is the transpose of the inverse of the upper left 3x3 sub-matrix of this object's modelViewMatrix.
-        //The reason for this special matrix is that simply using the modelViewMatrix could result in a non-unit length of normals (on scaling) or in a non-perpendicular direction (on non-uniform scaling)
-        //On the other hand the translation part of the modelViewMatrix is not relevant for the calculation of normals. Thus a Matrix3 is sufficient.
-        Matrix3 normalMatrix;
-
         // The local transform matrix.
         //
         // The Matrix4 lives by VALUE inside this object (matrixLocal_ below);
@@ -113,38 +100,10 @@ namespace threepp {
         bool matrixWorldNeedsUpdate = false;
 
         // The layer membership of the object.
-        // The object is only visible if it has at least one layer in common with the Camera in use.
-        // This property can also be used to filter out unwanted objects in ray-intersection tests when using Raycaster.
-        Layers layers;
-        // Object gets rendered if true. Default is true.
+        // Object is part of the engine's output when true. Default is true.
         bool visible = true;
 
-        // Whether the object gets rendered into shadow map. Default is false.
-        bool castShadow = false;
-        bool receiveShadow = false;
-
-        // When this is set, it checks every frame if the object is in the frustum of the camera before rendering the object.
-        // If set to false the object gets rendered every frame even if it is not in the frustum of the camera. Default is true.
-        bool frustumCulled = true;
-        // Opt-out for the renderer's automatic mesh LOD (Vulkan setAutoLod).
-        // Set false on meshes that manage their own level of detail (e.g.
-        // TileTerrain quadtree tiles) — stacking automatic simplification on
-        // top of system-managed LOD flattens shading against neighbours at
-        // other levels for little performance return. Default is true
-        // (checked on the mesh itself, not inherited).
-        bool autoLod = true;
-        // This value allows the default rendering order of scene graph objects to be overridden although opaque and transparent objects remain sorted independently.
-        // When this property is set for an instance of Group, all descendants objects will be sorted and rendered together. Sorting is from lowest to highest renderOrder. Default value is 0.
-        // Signed, as in three.js: a negative value pushes an object behind the
-        // default-ordered ones (the usual way to pin a skybox or backdrop).
-        int renderOrder = 0;
-
-        std::unordered_map<std::string, std::any> userData;
-
         std::vector<std::shared_ptr<AnimationClip>> animations;
-
-        std::optional<RenderCallback> onBeforeRender;
-        std::optional<RenderCallback> onAfterRender;
 
         Object3D();
 
@@ -198,12 +157,12 @@ namespace threepp {
         // Rotates the object to face a point in world space.
         void lookAt(float x, float y, float z);
 
-        // Which way lookAt() faces this object: false (the default) turns
-        // local +Z toward the target; true turns local -Z toward it, the way
-        // a camera looks. Cameras and Lights are detected by type inside
-        // lookAt(); a node that is neither but still images along its local
-        // -Z (the pinhole sensors) overrides this so lookAt() aims its beams
-        // rather than its back.
+        // Rotates the object to face a point in world space.
+        //
+        // Convention: false (the default) turns local +Z toward the target;
+        // true turns local -Z toward it, the way a camera looks. Cameras are
+        // detected by type inside lookAt(); a node that is neither a camera
+        // but still images along its local -Z overrides this.
         [[nodiscard]] virtual bool usesCameraLookAtConvention() const { return false; }
 
         // Adds object as child of this object. An arbitrary number of objects may be added.
@@ -268,8 +227,6 @@ namespace threepp {
         // Returns a vector representing the direction of object's positive z-axis in world space.
         virtual void getWorldDirection(Vector3& target);
 
-        virtual void raycast(const Raycaster&, std::vector<Intersection>&) {}
-
         void traverse(const std::function<void(Object3D&)>& callback);
 
         void traverseVisible(const std::function<void(Object3D&)>& callback);
@@ -311,12 +268,9 @@ namespace threepp {
             return std::make_shared<Object3D>();
         }
 
+        // Geometry carried by this node, or nullptr for a node that has none
+        // (Object3D, Group, Camera). Mesh overrides it.
         [[nodiscard]] virtual std::shared_ptr<BufferGeometry> geometry() const {
-
-            return nullptr;
-        }
-
-        [[nodiscard]] virtual std::shared_ptr<Material> material() const {
 
             return nullptr;
         }
@@ -343,22 +297,11 @@ namespace threepp {
         }
 
         /**
-         * @brief Convenience for the common material()->as<T>() downcast.
+         * @brief Convenience for the common geometry()->as<T>() style downcast.
          *
-         * Returns this object's material viewed as T*, or nullptr if there is no material or it
-         * is not a T. T may be a concrete material (e.g. MeshStandardMaterial) or a capability
-         * mixin (e.g. MaterialWithColor). Null-safe (never dereferences a missing material) and
-         * returns nullptr rather than throwing on a type mismatch, so it doubles as a test:
-         *   if (auto* m = mesh->materialAs<MeshStandardMaterial>()) m->roughness = 0.4f;
+         * Null-safe (never dereferences missing geometry) and returns nullptr
+         * rather than throwing on a type mismatch, so it doubles as a test.
          */
-        template<class T>
-            requires std::is_base_of<Material, T>::value
-        [[nodiscard]] T* materialAs() const {
-
-            const auto m = material();
-            return m ? dynamic_cast<T*>(m.get()) : nullptr;
-        }
-
         virtual void copy(const Object3D& source, bool recursive = true);
 
         template<class T = Object3D>

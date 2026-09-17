@@ -1,4 +1,0 @@
-*.csv
-*_diag.txt
-__pycache__/
-spot_policy.json

@@ -3,8 +3,8 @@
 
 #include "threepp/core/BufferGeometry.hpp"
 #include "threepp/core/Object3D.hpp"
-#include "threepp/objects/InstancedMesh.hpp"
 
+#include "threepp/math/Plane.hpp"
 #include "threepp/math/Triangle.hpp"
 
 
@@ -198,21 +198,12 @@ Box3& Box3::expandByObject(Object3D& object, bool presice) {
     // Computes the world-axis-aligned bounding box of an object (including its children),
     // accounting for both the object's, and children's, world transforms
 
-    object.updateWorldMatrix(false, false);
+    object.updateWorldMatrix(false, false);    // ChrononMotion: upstream first asked an InstancedMesh for its own box.
+    // InstancedMesh is not part of this tree, so a node is measured through the
+    // geometry it carries.
+    {
 
-    if (auto instancedMesh = object.as<InstancedMesh>()) {
 
-        Box3 _box{};
-
-        if (!instancedMesh->boundingBox) instancedMesh->computeBoundingBox();
-
-        _box.copy(*instancedMesh->boundingBox);
-
-        _box.applyMatrix4(*object.matrixWorld);
-
-        this->union_(_box);
-
-    } else {
 
         const auto geometry = object.geometry();
 

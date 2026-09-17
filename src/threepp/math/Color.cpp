@@ -2,7 +2,6 @@
 #include "threepp/math/Color.hpp"
 
 #include "threepp/math/MathUtils.hpp"
-#include "threepp/utils/StringUtils.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -15,6 +14,28 @@
 using namespace threepp;
 
 namespace {
+
+    // ChrononMotion: upstream parsed the numeric captures of a CSS colour with
+    // threepp's own `utils::parseInt`/`parseFloat` (a helper header this fork
+    // does not carry). These read the same captures and answer 0 for anything
+    // unparseable, which is what the upstream helpers did.
+    int parseStyleInt(const std::string& text) {
+
+        try {
+            return std::stoi(text);
+        } catch (...) {
+            return 0;
+        }
+    }
+
+    float parseStyleFloat(const std::string& text) {
+
+        try {
+            return std::stof(text);
+        } catch (...) {
+            return 0.f;
+        }
+    }
 
     // sRGB <-> linear transfer functions. Must match the GLSL sRGBToLinear /
     // LinearTosRGB in ShaderChunk/encodings_pars_fragment.glsl so a color
@@ -552,18 +573,18 @@ Color& Color::setStyle(const std::string& style, ColorSpace colorSpace) {
 
                 // rgb(255,0,0) rgba(255,0,0,0.5)
                 return this->setRGB(
-                        std::min(255.f, static_cast<float>(utils::parseInt(match[1].str()))) / 255,
-                        std::min(255.f, static_cast<float>(utils::parseInt(match[2].str()))) / 255,
-                        std::min(255.f, static_cast<float>(utils::parseInt(match[3].str()))) / 255,
+                        std::min(255.f, static_cast<float>(parseStyleInt(match[1].str()))) / 255,
+                        std::min(255.f, static_cast<float>(parseStyleInt(match[2].str()))) / 255,
+                        std::min(255.f, static_cast<float>(parseStyleInt(match[3].str()))) / 255,
                         colorSpace);
 
             } else if (std::regex_match(components, match, rb)) {
 
                 // rgb(100%,0%,0%) rgba(100%,0%,0%,0.5)
                 return this->setRGB(
-                        std::min(100.f, static_cast<float>(utils::parseInt(match[1].str()))) / 100,
-                        std::min(100.f, static_cast<float>(utils::parseInt(match[2].str()))) / 100,
-                        std::min(100.f, static_cast<float>(utils::parseInt(match[3].str()))) / 100,
+                        std::min(100.f, static_cast<float>(parseStyleInt(match[1].str()))) / 100,
+                        std::min(100.f, static_cast<float>(parseStyleInt(match[2].str()))) / 100,
+                        std::min(100.f, static_cast<float>(parseStyleInt(match[3].str()))) / 100,
                         colorSpace);
             }
 
@@ -574,9 +595,9 @@ Color& Color::setStyle(const std::string& style, ColorSpace colorSpace) {
             if (std::regex_match(components, match, r)) {
 
                 // hsl(120,50%,50%) hsla(120,50%,50%,0.5)
-                const auto h = utils::parseFloat(match[1].str()) / 360;
-                const auto s = static_cast<float>(utils::parseInt(match[2].str())) / 100;
-                const auto l = static_cast<float>(utils::parseInt(match[3].str())) / 100;
+                const auto h = parseStyleFloat(match[1].str()) / 360;
+                const auto s = static_cast<float>(parseStyleInt(match[2].str())) / 100;
+                const auto l = static_cast<float>(parseStyleInt(match[3].str())) / 100;
 
                 return this->setHSL(h, s, l, colorSpace);
             }

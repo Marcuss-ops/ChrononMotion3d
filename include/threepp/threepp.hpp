@@ -1,48 +1,53 @@
-
 #ifndef THREEPP_THREEPP_HPP
 #define THREEPP_THREEPP_HPP
 
+// ChrononMotion — the motion-engine half of threepp.
+//
+// Everything that needs a windowing system, a GPU, a physics engine, a file
+// format loader or a material zoo is gone; what remains is the scene-graph,
+// math, camera, curve and keyframe core a deterministic motion compiler runs
+// on. See CHRONONMOTION.md for the keep/delete ledger.
 
 #include "threepp/constants.hpp"
 
-#if __has_include("threepp/canvas/Canvas.hpp")
-#include "threepp/canvas/Canvas.hpp"
-#endif
-
-#include "threepp/lights/lights.hpp"
-
-#include "threepp/controls/FlyControls.hpp"
-#include "threepp/controls/OrbitControls.hpp"
-#include "threepp/controls/TrackballControls.hpp"
-
-#include "threepp/geometries/geometries.hpp"
-#include "threepp/scenes/Scene.hpp"
-
-#include "threepp/materials/materials.hpp"
-
 #include "threepp/math/MathUtils.hpp"
 
-#include "threepp/helpers/helpers.hpp"
-
-#include "threepp/core/Clock.hpp"
+#include "threepp/core/BufferAttribute.hpp"
+#include "threepp/core/BufferGeometry.hpp"
 #include "threepp/core/Object3D.hpp"
-#include "threepp/core/Raycaster.hpp"
 
-#include "threepp/loaders/AsyncGroup.hpp"
+#include "threepp/animation/AnimationClip.hpp"
+#include "threepp/animation/AnimationUtils.hpp"
+#include "threepp/animation/KeyframeTrack.hpp"
+#include "threepp/animation/tracks/ColorKeyframeTrack.hpp"
+#include "threepp/animation/tracks/NumberKeyframeTrack.hpp"
+#include "threepp/animation/tracks/QuaternionKeyframeTrack.hpp"
+#include "threepp/animation/tracks/VectorKeyframeTrack.hpp"
+
+#include "threepp/extras/core/Curve.hpp"
+#include "threepp/extras/core/CurvePath.hpp"
+#include "threepp/extras/core/Interpolations.hpp"
+#include "threepp/extras/core/Path.hpp"
+
+#include "threepp/extras/curves/CatmullRomCurve3.hpp"
+#include "threepp/extras/curves/CubicBezierCurve.hpp"
+#include "threepp/extras/curves/CubicBezierCurve3.hpp"
+#include "threepp/extras/curves/EllipseCurve.hpp"
+#include "threepp/extras/curves/LineCurve.hpp"
+#include "threepp/extras/curves/QuadraticBezierCurve.hpp"
+#include "threepp/extras/curves/QuadraticBezierCurve3.hpp"
+#include "threepp/extras/curves/SplineCurve.hpp"
+
+#include "threepp/materials/Material.hpp"
+
 #include "threepp/objects/Group.hpp"
-#include "threepp/objects/InstancedMesh.hpp"
 #include "threepp/objects/Mesh.hpp"
-#include "threepp/objects/Points.hpp"
-#include "threepp/objects/Sprite.hpp"
-#include "threepp/objects/Text.hpp"
+#include "threepp/objects/ObjectWithMaterials.hpp"
 
+#include "threepp/scenes/Scene.hpp"
+
+#include "threepp/cameras/Camera.hpp"
 #include "threepp/cameras/OrthographicCamera.hpp"
 #include "threepp/cameras/PerspectiveCamera.hpp"
-
-#include "threepp/renderers/GLRenderer.hpp"
-
-#include "threepp/loaders/loaders.hpp"
-
-#include "threepp/utils/TaskManager.hpp"
 
 #endif//THREEPP_THREEPP_HPP

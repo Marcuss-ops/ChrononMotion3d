@@ -114,7 +114,9 @@ KeyframeTrack& KeyframeTrack::optimize() {
 
     const auto lastIndex = times.size() - 1;
 
-    auto writeIndex = 1;
+    // unsigned, to compare against the unsigned loop index without a
+    // sign-compare warning (and to keep the index arithmetic unsigned).
+    unsigned writeIndex = 1;
 
     for (unsigned i = 1; i < lastIndex; ++i) {
 

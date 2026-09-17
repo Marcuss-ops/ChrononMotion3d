@@ -11,7 +11,6 @@
 namespace threepp {
 
     class Object3D;
-    class AnimationAction;
 
     class AnimationClip {
 
@@ -51,8 +50,6 @@ namespace threepp {
         std::vector<std::shared_ptr<KeyframeTrack>> tracks;
         float duration;
 
-        friend class AnimationAction;
-        friend class AnimationMixer;
     };
 
 }// namespace threepp

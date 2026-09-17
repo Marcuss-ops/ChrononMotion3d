@@ -7,11 +7,6 @@
 
 #include "threepp/math/MathUtils.hpp"
 
-#include "threepp/core/BufferGeometry.hpp"
-#include "threepp/core/Raycaster.hpp"
-
-#include "threepp/lights/Light.hpp"
-
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -210,7 +205,7 @@ void Object3D::lookAt(float x, float y, float z) {
 
     _position.setFromMatrixPosition(*this->matrixWorld);
 
-    if (this->is<Camera>() || this->is<Light>() || this->usesCameraLookAtConvention()) {
+    if (this->is<Camera>() || this->usesCameraLookAtConvention()) {
 
         _m1.lookAt(_position, _target, this->up);
 
@@ -546,20 +541,8 @@ void Object3D::copy(const Object3D& source, bool recursive) {
     this->matrixAutoUpdate = source.matrixAutoUpdate;
     this->matrixWorldNeedsUpdate = source.matrixWorldNeedsUpdate;
 
-    this->layers.mask_ = source.layers.mask_;
     this->visible = source.visible;
-
-    this->castShadow = source.castShadow;
-    this->receiveShadow = source.receiveShadow;
-
-    this->frustumCulled = source.frustumCulled;
-    this->renderOrder = source.renderOrder;
-
-    // three.js copies userData too (Object3D.copy deep-clones it). Without this
-    // a clone silently loses everything attached to the object by application
-    // code - physics setup, gameplay tags, editor annotations - which is
-    // exactly the data a duplicate is expected to carry.
-    this->userData = source.userData;
+    this->animations = source.animations;
 
     if (recursive) {
 
@@ -626,17 +609,8 @@ Object3D::Object3D(Object3D&& source) noexcept: Object3D() {
     this->matrixAutoUpdate = source.matrixAutoUpdate;
     this->matrixWorldNeedsUpdate = source.matrixWorldNeedsUpdate;
 
-    this->layers.mask_ = source.layers.mask_;
     this->visible = source.visible;
-
-    this->castShadow = source.castShadow;
-    this->receiveShadow = source.receiveShadow;
-
-    this->frustumCulled = source.frustumCulled;
-    this->renderOrder = source.renderOrder;
-
-    this->onAfterRender = std::move(source.onAfterRender);
-    this->onBeforeRender = std::move(source.onBeforeRender);
+    this->animations = std::move(source.animations);
 
     this->rotation._onChange([this] {
         quaternion.setFromEuler(rotation, false);

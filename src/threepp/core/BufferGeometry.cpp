@@ -86,27 +86,9 @@ const BufferAttribute* BufferGeometry::getAttribute(const std::string& name) con
     return attributes_.at(name).get();
 }
 
-std::vector<std::shared_ptr<BufferAttribute>>* BufferGeometry::getMorphAttribute(const std::string& name) {
-
-    if (!morphAttributes_.count(name)) return nullptr;
-
-    return &morphAttributes_.at(name);
-}
-
-std::vector<std::shared_ptr<BufferAttribute>>* BufferGeometry::getOrCreateMorphAttribute(const std::string& name) {
-
-    ++attributesVersion_;// callers typically add morph targets through this
-    return &morphAttributes_[name];
-}
-
 const std::unordered_map<std::string, std::shared_ptr<BufferAttribute>>& BufferGeometry::getAttributes() const {
 
     return attributes_;
-}
-
-const std::unordered_map<std::string, std::vector<std::shared_ptr<BufferAttribute>>>& BufferGeometry::getMorphAttributes() const {
-
-    return morphAttributes_;
 }
 
 void BufferGeometry::setAttribute(const std::string& name, std::shared_ptr<BufferAttribute> attribute) {
@@ -137,14 +119,6 @@ void BufferGeometry::addGroup(int start, int count, unsigned int materialIndex) 
 void BufferGeometry::clearGroups() {
 
     groups.clear();
-}
-
-BufferGeometry& BufferGeometry::setDrawRange(int start, int count) {
-
-    this->drawRange.start = start;
-    this->drawRange.count = count;
-
-    return *this;
 }
 
 BufferGeometry& BufferGeometry::applyMatrix4(const Matrix4& matrix) {
@@ -319,32 +293,6 @@ void BufferGeometry::computeBoundingBox() {
 
         position->setFromBufferAttribute(*this->boundingBox);
 
-        if (const auto morphAttributesPosition = this->getMorphAttribute("position")) {
-
-            Box3 _box;
-            Vector3 _vector;
-
-            for (unsigned i = 0, il = morphAttributesPosition->size(); i < il; i++) {
-
-                auto morphAttribute = morphAttributesPosition->at(i)->typed<float>();
-                morphAttribute->setFromBufferAttribute(_box);
-
-                if (morphTargetsRelative) {
-
-                    _vector.addVectors(this->boundingBox->min(), _box.min());
-                    this->boundingBox->expandByPoint(_vector);
-
-                    _vector.addVectors(this->boundingBox->max(), _box.max());
-                    this->boundingBox->expandByPoint(_vector);
-
-                } else {
-
-                    this->boundingBox->expandByPoint(_box.min());
-                    this->boundingBox->expandByPoint(_box.max());
-                }
-            }
-        }
-
     } else {
 
         this->boundingBox->makeEmpty();
@@ -374,31 +322,6 @@ void BufferGeometry::computeBoundingSphere() {
         Box3 _box;
         position->setFromBufferAttribute(_box);
 
-        // process morph attributes if present
-
-        if (const auto morphAttributesPosition = getMorphAttribute("position")) {
-
-            Box3 _boxMorphTargets;
-
-            for (unsigned i = 0, il = morphAttributesPosition->size(); i < il; i++) {
-
-                auto morphAttribute = morphAttributesPosition->at(i)->typed<float>();
-                morphAttribute->setFromBufferAttribute(_boxMorphTargets);
-
-                if (this->morphTargetsRelative) {
-                    _vector.addVectors(_box.min(), _boxMorphTargets.min());
-                    _box.expandByPoint(_vector);
-
-                    _vector.addVectors(_box.max(), _boxMorphTargets.max());
-                    _box.expandByPoint(_vector);
-                } else {
-
-                    _box.expandByPoint(_boxMorphTargets.min());
-                    _box.expandByPoint(_boxMorphTargets.max());
-                }
-            }
-        }
-
         _box.getCenter(center);
 
         // second, try to find a boundingSphere with a radius smaller than the
@@ -411,31 +334,6 @@ void BufferGeometry::computeBoundingSphere() {
             position->setFromBufferAttribute(_vector, i);
 
             maxRadiusSq = std::max(maxRadiusSq, center.distanceToSquared(_vector));
-        }
-
-        // process morph attributes if present
-
-        if (const auto morphAttributesPosition = getMorphAttribute("position")) {
-
-            Vector3 _offset;
-
-            for (unsigned i = 0, il = morphAttributesPosition->size(); i < il; i++) {
-
-                auto morphAttribute = morphAttributesPosition->at(i)->typed<float>();
-
-                for (unsigned j = 0, jl = morphAttribute->count(); j < jl; j++) {
-
-                    morphAttribute->setFromBufferAttribute(_vector, j);
-
-                    if (morphTargetsRelative) {
-
-                        position->setFromBufferAttribute(_offset, j);
-                        _vector.add(_offset);
-                    }
-
-                    maxRadiusSq = std::max(maxRadiusSq, center.distanceToSquared(_vector));
-                }
-            }
         }
 
         this->boundingSphere->radius = std::sqrt(maxRadiusSq);
@@ -522,10 +420,6 @@ void BufferGeometry::copy(const BufferGeometry& source) {
         this->boundingSphere = boundingSphere;
     }
 
-    // draw range
-
-    this->drawRange.start = source.drawRange.start;
-    this->drawRange.count = source.drawRange.count;
 }
 
 std::shared_ptr<BufferGeometry> BufferGeometry::toNonIndexed() const {
@@ -549,25 +443,6 @@ std::shared_ptr<BufferGeometry> BufferGeometry::toNonIndexed() const {
 
         geometry2->setAttribute(name, std::move(newAttribute));
     }
-
-    // morph attributes
-
-    for (auto& [name, attr] : morphAttributes_) {
-
-        std::vector<std::shared_ptr<BufferAttribute>> morphArray;
-        auto& morphAttribute = morphAttributes_.at(name);// morphAttribute: array of Float32BufferAttributes
-
-        for (const auto& attribute : morphAttribute) {
-
-            auto newAttribute = convertBufferAttribute(*attribute, indices);
-
-            morphArray.emplace_back(std::move(newAttribute));
-        }
-
-        geometry2->morphAttributes_[name] = morphArray;
-    }
-
-    geometry2->morphTargetsRelative = this->morphTargetsRelative;
 
     // groups
 

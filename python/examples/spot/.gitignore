@@ -1,7 +1,0 @@
-﻿*.pt
-!spot_steps.pt
-!scratch_distillation/scratch_flat_best.pt
-
-
-__pycache__/
-*.csv

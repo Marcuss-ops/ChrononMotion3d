@@ -98,11 +98,15 @@ namespace threepp {
         return value;
     }
 
+    // ChrononMotion: upstream's attribute also carried GPU upload state — a
+    // partial `updateRange`, a `DrawUsage` hint (StaticDraw/DynamicDraw) and an
+    // `InstancedBufferAttribute` with a vertex-attrib divisor. All three only
+    // mean something to a renderer that uploads the buffer, and nothing in this
+    // tree consumes them, so they are gone. What is left is the data: the
+    // backing array, its item size, and a version a consumer can poll.
     class BufferAttribute {
 
     public:
-        UpdateRange updateRange{0, -1};
-
         unsigned int version = 0;
 
         [[nodiscard]] virtual int count() const = 0;
@@ -128,19 +132,9 @@ namespace threepp {
             return normalized_;
         }
 
-        [[nodiscard]] DrawUsage getUsage() const {
-
-            return usage_;
-        }
-
         void needsUpdate() {
 
             ++version;
-        }
-
-        void setUsage(DrawUsage value) {
-
-            this->usage_ = value;
         }
 
         template<class T>
@@ -155,8 +149,6 @@ namespace threepp {
         int itemSize_{};
         bool normalized_{};
 
-        DrawUsage usage_{DrawUsage::Static};
-
         BufferAttribute() = default;
 
         BufferAttribute(int itemSize, bool normalized)
@@ -166,8 +158,6 @@ namespace threepp {
 
             this->itemSize_ = source.itemSize_;
             this->normalized_ = source.normalized_;
-
-            this->usage_ = source.usage_;
         }
     };
 
@@ -618,48 +608,6 @@ namespace threepp {
     typedef TypedBufferAttribute<std::int16_t> Int16BufferAttribute;
     typedef TypedBufferAttribute<std::uint8_t> Uint8BufferAttribute;
     typedef TypedBufferAttribute<std::int8_t> Int8BufferAttribute;
-
-    // A per-INSTANCE attribute: the vertex fetch advances once every
-    // `meshPerAttribute` instances instead of once per vertex (glVertexAttrib-
-    // Divisor). It lives in the geometry's ordinary attribute map alongside the
-    // per-vertex ones, so it is uploaded and bound by the same code — only the
-    // divisor differs, which GLBindingStates decides by dynamic_cast.
-    //
-    // `count()` is therefore the INSTANCE count, not the vertex count, and an
-    // InstancedBufferAttribute only means anything on an InstancedBufferGeometry
-    // (nothing else tells the renderer how many instances to draw).
-    class InstancedBufferAttribute: public TypedBufferAttribute<float> {
-
-    public:
-        // Instances between advances. 1 is per-instance data, the only value
-        // anything in this repo uses; three.js allows N for shared blocks.
-        int meshPerAttribute = 1;
-
-        static std::unique_ptr<InstancedBufferAttribute> create(std::vector<float>&& array, int itemSize,
-                                                                int meshPerAttribute = 1) {
-
-            return std::unique_ptr<InstancedBufferAttribute>(
-                    new InstancedBufferAttribute(std::move(array), itemSize, meshPerAttribute));
-        }
-
-        // The base clone() builds a plain TypedBufferAttribute, which would drop
-        // the divisor silently and turn a copied geometry into one that draws
-        // instance 0 for every vertex. Overridden so BufferGeometry::clone, which
-        // goes through cloneUntyped, keeps what makes this attribute what it is.
-        [[nodiscard]] std::unique_ptr<BufferAttribute> cloneUntyped() const override {
-
-            auto clone = std::unique_ptr<InstancedBufferAttribute>(
-                    new InstancedBufferAttribute(std::vector<float>{}, itemSize_, meshPerAttribute));
-            clone->copy(*this);
-
-            return clone;
-        }
-
-    protected:
-        InstancedBufferAttribute(std::vector<float>&& array, int itemSize, int meshPerAttribute)
-            : TypedBufferAttribute<float>(std::move(array), itemSize, false),
-              meshPerAttribute(meshPerAttribute) {}
-    };
 
 }// namespace threepp
 

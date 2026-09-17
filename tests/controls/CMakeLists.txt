@@ -1,1 +1,0 @@
-add_test_executable(TrackballControls_test)

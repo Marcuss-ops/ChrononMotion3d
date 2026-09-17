@@ -58,9 +58,6 @@ namespace threepp {
 
     private:
         Sample _resultBuffer;
-
-        friend class AnimationAction;
-        friend class AnimationMixer;
     };
 
 }// namespace threepp
