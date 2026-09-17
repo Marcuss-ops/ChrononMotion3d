@@ -1,0 +1,19 @@
+.idea
+.vscode
+.cache
+
+build
+build-asan
+cmake-build-*
+compile_commands.json
+
+# CMakePresets.json is the project's, and is tracked. CMakeUserPresets.json is
+# yours: machine-specific paths, your own configurations. Presets in it may
+# `inherit` from the tracked ones. IDEs (CLion) write it for you.
+CMakeUserPresets.json
+
+temp/
+.claude
+
+# Local planning / strategy scratch docs — kept on disk, not tracked
+plans/
