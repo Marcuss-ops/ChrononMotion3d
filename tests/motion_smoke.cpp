@@ -295,6 +295,53 @@ namespace {
         check(objectClone != nullptr && objectClone->type() == "Object3D", "a bare node clones through createDefault");
     }
 
+    // ----------------------------------------------------------- content invariance
+
+    void textAndImageShareTransformSemantics() {
+
+        section("text/image transform invariance");
+
+        // Content stays on Chronon's side of the boundary. ChrononMotion only
+        // sees two opaque scene nodes, so text and image must produce the same
+        // matrix for the same anchor/transform inputs.
+        auto parent = Group::create();
+        parent->position.set(100.f, 50.f, 20.f);
+        parent->rotation.y = math::degToRad(20.f);
+
+        auto text = Object3D::create();
+        text->name = "TextLayer";
+        text->position.set(200.f, 300.f, 40.f);
+        text->rotation.y = math::degToRad(-30.f);
+        text->scale.set(1.25f, 0.8f, 1.f);
+
+        auto image = Object3D::create();
+        image->name = "ImageLayer";
+        image->position.copy(text->position);
+        image->rotation.copy(text->rotation);
+        image->scale.copy(text->scale);
+
+        parent->add(text);
+        parent->add(image);
+        parent->updateMatrixWorld(true);
+
+        for (int i = 0; i < 16; ++i) {
+            checkNear((*text->matrixWorld)[i], (*image->matrixWorld)[i], 1e-5f,
+                      "text and image world matrices are identical");
+        }
+
+        // The anchor is a transform concern, not a content concern.
+        text->position.set(400.f, 300.f, 0.f);
+        image->position.copy(text->position);
+        text->rotation.z = math::degToRad(90.f);
+        image->rotation.copy(text->rotation);
+        text->updateMatrixWorld(true);
+        image->updateMatrixWorld(true);
+        for (int i = 0; i < 16; ++i) {
+            checkNear((*text->matrixWorld)[i], (*image->matrixWorld)[i], 1e-5f,
+                      "anchor/rotation changes remain content-independent");
+        }
+    }
+
     // --------------------------------------------------------------------- run
 
 }// namespace
@@ -307,6 +354,7 @@ int main() {
     curvesSampleDeterministically();
     keyframeTracksInterpolate();
     geometryBoundsAndContainers();
+    textAndImageShareTransformSemantics();
 
     std::printf("\n%d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;
