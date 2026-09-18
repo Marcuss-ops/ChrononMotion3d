@@ -81,6 +81,14 @@ namespace chrononmotion::motion::presets {
         keyVector3(layer.tracks.anchor, t0, t1, rest.anchor, to, easing);
     }
 
+    void flipX(Layer& layer, int inFrame, int duration, float fps, float degrees) {
+        flip(layer, Axis::X, inFrame, duration, fps, degrees);
+    }
+
+    void flipY(Layer& layer, int inFrame, int duration, float fps, float degrees) {
+        flip(layer, Axis::Y, inFrame, duration, fps, degrees);
+    }
+
     void flip(Layer& layer, Axis axis, int inFrame, int duration, float fps, float degrees) {
 
         const float t0 = frameToTime(inFrame, fps);

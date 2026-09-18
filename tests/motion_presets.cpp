@@ -518,6 +518,27 @@ namespace {
         }
     }
 
+    void namedPresetAliases() {
+
+        section("named preset aliases");
+        Layer layer(1, "Aliases");
+        presets::flipX(layer, 0, 10, kFps);
+        presets::flipY(layer, 12, 10, kFps);
+        presets::arcEntrance(layer, Vector3(4.f, 0.f, 0.f), Vector3(2.f, 3.f, 0.f), 24, 12, kFps);
+        checkNear(layer.sample(at(0)).orientation.angleTo(Quaternion(0.f, 0.f, 0.f, 1.f)), 0.f, 1e-3f,
+                  "flipX is a stable named alias");
+        checkNear(layer.sample(at(36)).position, Vector3(4.f, 0.f, 0.f), 1e-3f,
+                  "arcEntrance is a stable named alias");
+
+        CameraRig rig(30, 60.f, 16.f / 9.f, 0.1f, 2000.f);
+        rig.setPosition(Vector3(0.f, 0.f, 12.f)).setTarget(Vector3(0.f, 0.f, 0.f));
+        presets::orbitMild(rig, 0, 30, kFps);
+        presets::cameraFovBreath(rig, 0, 30, 60.f, 54.f, kFps);
+        presets::shakeMild(rig, 30, 15, 0.2f, kFps);
+        presets::focusPush(rig, 50, 10, 1.f, kFps);
+        check(rig.endTime() >= at(60), "named camera aliases compose on the same timeline");
+    }
+
     void presetTimingUsesFrames() {
 
         section("presets are authored in frames");
@@ -545,6 +566,7 @@ int main() {
     groupPresets();
     pivotAndLifetimePresets();
     cameraPresets();
+    namedPresetAliases();
     presetTimingUsesFrames();
 
     return chrononmotion_test::report();

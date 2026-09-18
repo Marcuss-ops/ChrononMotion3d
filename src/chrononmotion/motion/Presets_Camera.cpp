@@ -45,6 +45,10 @@ namespace chrononmotion::motion::presets {
         keyVector3(rig.positionTrack(), t0, t1, start.position, end.position, Easing::easeInOut());
     }
 
+    void orbitMild(CameraRig& rig, int inFrame, int duration, float fps) {
+        cameraOrbit(rig, inFrame, duration, math::degToRad(12.f), math::degToRad(4.f), fps);
+    }
+
     void cameraOrbit(CameraRig& rig, int inFrame, int duration, float yaw, float pitch, float fps) {
 
         const float t0 = frameToTime(inFrame, fps);
@@ -55,6 +59,14 @@ namespace chrononmotion::motion::presets {
         CameraRig::orbit(end, yaw, pitch);
 
         keyVector3(rig.positionTrack(), t0, t1, start.position, end.position, Easing::easeInOut());
+    }
+
+    void shakeMild(CameraRig& rig, int inFrame, int duration, float amplitude, float fps) {
+        cameraShake(rig, inFrame, duration, amplitude, fps);
+    }
+
+    void focusPush(CameraRig& rig, int inFrame, int duration, float distance, float fps) {
+        cameraPush(rig, inFrame, duration, distance, fps);
     }
 
     void cameraShake(CameraRig& rig, int inFrame, int duration, float amplitude, float fps) {
@@ -84,6 +96,10 @@ namespace chrononmotion::motion::presets {
                               base.position.z),
                       Easing::linear());
         }
+    }
+
+    void cameraFovBreath(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps) {
+        cameraFov(rig, inFrame, duration, fromFov, toFov, fps);
     }
 
     void cameraFov(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps) {

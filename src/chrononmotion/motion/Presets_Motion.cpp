@@ -23,6 +23,11 @@ namespace chrononmotion::motion::presets {
         pathMotion(layer, path, inFrame, duration, fps, false, 16);
     }
 
+    void arcEntrance(Layer& layer, const Vector3& to, const Vector3& apex,
+                     int inFrame, int duration, float fps) {
+        arcMotion(layer, to, apex, inFrame, duration, fps);
+    }
+
     void pathMotion(Layer& layer, const MotionPath& path, int inFrame, int duration, float fps,
                     bool orient, unsigned int steps) {
 

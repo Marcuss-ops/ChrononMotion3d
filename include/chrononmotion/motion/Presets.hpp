@@ -95,6 +95,12 @@ namespace chrononmotion::motion {
         void anchorTo(Layer& layer, const Vector3& to, int inFrame, int duration, float fps,
                       const Easing& easing = Easing::easeInOut());
 
+        /// Named aliases for the stable authoring vocabulary.
+        void arcEntrance(Layer& layer, const Vector3& to, const Vector3& apex,
+                         int inFrame, int duration, float fps);
+        void flipX(Layer& layer, int inFrame, int duration, float fps, float degrees = 180.f);
+        void flipY(Layer& layer, int inFrame, int duration, float fps, float degrees = 180.f);
+
         // -------------------------------------------------------- lifetime in/out
 
         /// The frame windows a layer's own lifetime implies for a `duration`-frame
@@ -190,6 +196,12 @@ namespace chrononmotion::motion {
 
         /// Orbit the camera around its look-at target.
         void cameraOrbit(CameraRig& rig, int inFrame, int duration, float yaw, float pitch, float fps);
+
+        /// Named aliases for common template-level motion vocabulary.
+        void orbitMild(CameraRig& rig, int inFrame, int duration, float fps);
+        void cameraFovBreath(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps);
+        void shakeMild(CameraRig& rig, int inFrame, int duration, float amplitude, float fps);
+        void focusPush(CameraRig& rig, int inFrame, int duration, float distance, float fps);
 
         /// A light, deterministic shake (no RNG: the same frames always shake the same way).
         void cameraShake(CameraRig& rig, int inFrame, int duration, float amplitude, float fps);
