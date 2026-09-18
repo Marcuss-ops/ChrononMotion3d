@@ -136,6 +136,10 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_link_libraries(chrononmotion_canary PRIVATE chrononmotion)
     add_test(NAME chrononmotion_canary COMMAND chrononmotion_canary)
 
+    add_executable(chrononmotion_foundation tests/motion_foundation.cpp)
+    target_link_libraries(chrononmotion_foundation PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_foundation COMMAND chrononmotion_foundation)
+
     # Architectural guardrail: this tree must not reference content machinery
     # (text shaping, fonts, glyphs, raster, image/video decoding) or acquire a
     # dependency. See tests/check_motion_boundary.cmake.
