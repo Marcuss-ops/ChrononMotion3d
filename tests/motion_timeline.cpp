@@ -8,6 +8,7 @@
 
 #include "motion_check.hpp"
 
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -83,6 +84,14 @@ namespace {
         check(!closed.contains(14), "the frame before the in point is outside");
         check(!closed.contains(46), "the frame after the out point is outside");
         check(closed.duration() == 30, "a closed range reports its length in frames");
+
+        bool rejectedRange = false;
+        try {
+            (void)FrameRange::between(20, 10);
+        } catch (const std::invalid_argument&) {
+            rejectedRange = true;
+        }
+        check(rejectedRange, "an inverted frame range is rejected at construction");
 
         Layer layer(1, "L");
         layer.alive(10, 20);
@@ -260,9 +269,21 @@ namespace {
         check(orphanProblems.size() == 1, "an unknown parent is reported once");
         check(orphanProblems[0].find("unknown parent") != std::string::npos,
               "the unknown-parent problem names the cause");
-        // It still evaluates deterministically, as a root.
-        orphan.evaluate(0);
-        check(orphan.state(11).evaluated, "a layer with a missing parent is still evaluated");
+        bool rejectedOrphan = false;
+        try {
+            orphan.evaluate(0);
+        } catch (const std::invalid_argument&) {
+            rejectedOrphan = true;
+        }
+        check(rejectedOrphan, "evaluation rejects a hierarchy with a missing parent");
+
+        bool rejectedMissingState = false;
+        try {
+            (void)orphan.state(404);
+        } catch (const std::out_of_range&) {
+            rejectedMissingState = true;
+        }
+        check(rejectedMissingState, "reading an unknown layer state is observable");
 
         MotionScene selfParent("self", 24.f);
         selfParent.addNull(10, "Null_Main");
@@ -277,10 +298,13 @@ namespace {
         const std::vector<std::string> cycleProblems = cyclic.validate();
         check(cycleProblems.size() == 1, "a parent cycle is reported exactly once");
         check(cycleProblems[0].find("cycle") != std::string::npos, "the cycle problem names the cause");
-        // A cycle must not hang or produce garbage: it evaluates deterministically.
-        cyclic.evaluate(5);
-        check(cyclic.state(10).evaluated && cyclic.state(11).evaluated,
-              "a cyclic hierarchy still evaluates every layer");
+        bool rejectedCycle = false;
+        try {
+            cyclic.evaluate(5);
+        } catch (const std::invalid_argument&) {
+            rejectedCycle = true;
+        }
+        check(rejectedCycle, "evaluation rejects a cyclic hierarchy");
     }
 
     void sceneEndFrameAndLookup() {
@@ -306,6 +330,14 @@ namespace {
         checkNear(scene.fps(), 24.f, 0.f, "the scene reports its fps");
         scene.setFps(30.f);
         checkNear(scene.fps(), 30.f, 0.f, "the scene accepts a new fps");
+
+        bool rejectedFps = false;
+        try {
+            scene.setFps(0.f);
+        } catch (const std::invalid_argument&) {
+            rejectedFps = true;
+        }
+        check(rejectedFps, "a non-positive fps is rejected");
 
         // Replacing a layer by id must not leave two entries behind.
         const std::size_t before = scene.layerCount();

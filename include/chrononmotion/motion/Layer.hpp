@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -29,6 +30,9 @@ namespace chrononmotion::motion {
 
         [[nodiscard]] static FrameRange between(int inFrame, int outFrame) {
 
+            if (inFrame < 0 || outFrame < inFrame) {
+                throw std::invalid_argument("FrameRange: expected 0 <= inFrame <= outFrame");
+            }
             return FrameRange{inFrame, outFrame};
         }
 

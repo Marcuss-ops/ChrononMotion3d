@@ -1,0 +1,57 @@
+#ifndef CHRONONMOTION_MOTION_COMPILED_SCENE_HPP
+#define CHRONONMOTION_MOTION_COMPILED_SCENE_HPP
+
+#include "chrononmotion/core/BufferGeometry.hpp"
+#include "chrononmotion/materials/Descriptors.hpp"
+#include "chrononmotion/motion/CameraRig.hpp"
+#include "chrononmotion/motion/Lighting.hpp"
+
+#include <cstddef>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace chrononmotion::motion {
+
+    struct CompiledTransform {
+        Layer::Id id{Layer::kRoot};
+        Matrix4 world{};
+        float opacity{1.f};
+        bool visible{true};
+    };
+
+    struct MeshDescriptor {
+        Layer::Id layerId{Layer::kRoot};
+        std::string name{};
+        std::shared_ptr<BufferGeometry> geometry{};
+        MaterialDescriptor material{MaterialDescriptor::unlit(0)};
+    };
+
+    /// Immutable-by-convention data plane handed to a future renderer. The
+    /// compiler owns no GPU state and does not resolve content bytes.
+    struct CompiledScene {
+        std::string name{};
+        int frame{0};
+        float fps{24.f};
+        std::vector<CompiledTransform> transforms{};
+        std::vector<LightState> lights{};
+        std::vector<MeshDescriptor> meshes{};
+        std::vector<MaterialDescriptor> materials{};
+        std::shared_ptr<CameraPose> camera{};
+
+        void addMaterial(MaterialDescriptor material) {
+            material.validate();
+            materials.push_back(std::move(material));
+        }
+
+        void addMesh(MeshDescriptor mesh) {
+            if (!mesh.geometry) throw std::invalid_argument("CompiledScene::addMesh: geometry is required");
+            mesh.material.validate();
+            meshes.push_back(std::move(mesh));
+        }
+    };
+
+}// namespace chrononmotion::motion
+
+#endif//CHRONONMOTION_MOTION_COMPILED_SCENE_HPP

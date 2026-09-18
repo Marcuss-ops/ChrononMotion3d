@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 using namespace chrononmotion;
 
@@ -47,14 +48,13 @@ std::vector<T> Curve<T>::getSpacedPoints(unsigned int divisions) const {
 template<class T>
 float Curve<T>::getLength() const {
 
-    const auto lengths = this->getLengths();
-    return lengths.back();
+    return this->getLengthsRef().back();
 }
 
 template<class T>
 std::vector<float> Curve<T>::getLengths() const {
 
-    return getLengths(this->arcLengthDivisions);
+    return getLengthsRef();
 }
 
 template<class T>
@@ -88,16 +88,42 @@ std::vector<float> Curve<T>::getLengths(int divisions) const {
 }
 
 template<class T>
+const std::vector<float>& Curve<T>::getLengthsRef() const {
+
+    const int divisions = this->arcLengthDivisions;
+    if (static_cast<int>(this->cacheArcLengths.size()) == divisions + 1 && !this->needsUpdate) {
+        return this->cacheArcLengths;
+    }
+
+    this->needsUpdate = false;
+    std::vector<float> cache;
+    T current, last;
+    this->getPoint(0, last);
+    float sum = 0.f;
+    cache.emplace_back(0.f);
+
+    for (int p = 1; p <= divisions; ++p) {
+        this->getPoint(static_cast<float>(p) / static_cast<float>(divisions), current);
+        sum += current.distanceTo(last);
+        cache.emplace_back(sum);
+        last = current;
+    }
+
+    this->cacheArcLengths = std::move(cache);
+    return this->cacheArcLengths;
+}
+
+template<class T>
 void Curve<T>::updateArcLengths() {
 
     this->needsUpdate = true;
-    this->getLengths();
+    this->getLengthsRef();
 }
 
 template<class T>
 float Curve<T>::getUtoTmapping(float u, std::optional<float> distance) const {
 
-    const auto arcLengths = this->getLengths();
+    const auto& arcLengths = this->getLengthsRef();
 
     const auto il = arcLengths.size();
 

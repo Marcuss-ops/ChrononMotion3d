@@ -3,12 +3,13 @@
 // them is how two families would disagree about "left" or about what a frame is.
 
 #include "chrononmotion/motion/Presets.hpp"
+#include "chrononmotion/motion/MotionScene.hpp"
 
 namespace chrononmotion::motion {
 
     float frameToTime(int frame, float fps) {
 
-        return fps > 0.f ? static_cast<float>(frame) / fps : 0.f;
+        return MotionTime::atFrame(frame, fps).pts();
     }
 
     namespace presets {

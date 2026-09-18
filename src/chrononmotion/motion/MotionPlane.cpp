@@ -5,10 +5,19 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 
 namespace chrononmotion::motion {
 
     MotionPlane MotionPlane::fitted(const ContentRef& content, float width) {
+
+        if (width <= 0.f || !std::isfinite(width)) {
+            throw std::invalid_argument("MotionPlane::fitted: width must be finite and positive");
+        }
+        if (content.metrics.naturalSize.x <= 0.f || content.metrics.naturalSize.y <= 0.f ||
+            !std::isfinite(content.metrics.naturalSize.x) || !std::isfinite(content.metrics.naturalSize.y)) {
+            throw std::invalid_argument("MotionPlane::fitted: content natural size must be finite and positive");
+        }
 
         MotionPlane plane;
         plane.anchor = content.metrics.anchor;
@@ -28,6 +37,10 @@ namespace chrononmotion::motion {
     }
 
     MotionPlane MotionPlane::sized(const ContentRef& content, const Vector2& size) {
+
+        if (size.x <= 0.f || size.y <= 0.f || !std::isfinite(size.x) || !std::isfinite(size.y)) {
+            throw std::invalid_argument("MotionPlane::sized: size must be finite and positive");
+        }
 
         MotionPlane plane;
         plane.anchor = content.metrics.anchor;

@@ -5,6 +5,8 @@
 #include "chrononmotion/extras/curves/LineCurve.hpp"
 #include "chrononmotion/extras/curves/SplineCurve.hpp"
 
+#include <utility>
+
 using namespace chrononmotion;
 
 template<class T>
@@ -32,7 +34,7 @@ template<class T>
 void CurvePath<T>::getPoint(float t, T& target) const {
 
     auto d = t * this->getLength();
-    auto curveLengths = this->getCurveLengths();
+    const auto& curveLengths = this->getCurveLengthsRef();
     size_t i = 0;
 
     // To think about boundaries points.
@@ -61,8 +63,24 @@ void CurvePath<T>::getPoint(float t, T& target) const {
 template<class T>
 float CurvePath<T>::getLength() const {
 
-    auto lens = this->getCurveLengths();
-    return lens.back();
+    return this->getCurveLengthsRef().back();
+}
+
+template<class T>
+const std::vector<float>& CurvePath<T>::getCurveLengthsRef() const {
+
+    if (this->cacheLengths && this->cacheLengths->size() == this->curves.size()) {
+        return *this->cacheLengths;
+    }
+
+    std::vector<float> lengths(curves.size());
+    float sums = 0.f;
+    for (unsigned i = 0, l = this->curves.size(); i < l; ++i) {
+        sums += this->curves[i]->getLength();
+        lengths[i] = sums;
+    }
+    this->cacheLengths = std::move(lengths);
+    return *this->cacheLengths;
 }
 
 template<class T>
@@ -70,34 +88,14 @@ void CurvePath<T>::updateArcLengths() {
 
     this->needsUpdate = true;
     this->cacheLengths = std::nullopt;
-    this->getCurveLengths();
+    this->getCurveLengthsRef();
 }
 
 template<class T>
 std::vector<float> CurvePath<T>::getCurveLengths() const {
 
-    // We use cache values if curves and cache array are same length
-
-    if (this->cacheLengths && this->cacheLengths->size() == this->curves.size()) {
-
-        return *this->cacheLengths;
-    }
-
-    // Get length of sub-curve
-    // Push sums into cached array
-
-    std::vector<float> lengths(curves.size());
-    float sums = 0;
-
-    for (unsigned i = 0, l = this->curves.size(); i < l; i++) {
-
-        sums += this->curves[i]->getLength();
-        lengths[i] = sums;
-    }
-
-    this->cacheLengths = lengths;
-
-    return lengths;
+    // Preserve the public copying API while using the non-copying cache internally.
+    return getCurveLengthsRef();
 }
 
 template<class T>

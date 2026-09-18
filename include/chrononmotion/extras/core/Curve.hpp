@@ -69,6 +69,9 @@ namespace chrononmotion {
 
         std::vector<float> getLengths(int divisions) const;
 
+        /// Internal sampling view; unlike getLengths(), this does not copy the cache.
+        const std::vector<float>& getLengthsRef() const;
+
         virtual void updateArcLengths();
 
         // Given u ( 0 .. 1 ), get a t to find p. This gives you points which are equidistant

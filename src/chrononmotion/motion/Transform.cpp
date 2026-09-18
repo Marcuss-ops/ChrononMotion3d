@@ -18,6 +18,16 @@ namespace chrononmotion::motion {
 
     void Transform::localQuaternion(Quaternion& out) const {
 
+        if (rotation.x == 0.f && rotation.y == 0.f && rotation.z == 0.f) {
+            // No Euler rotation: the local quaternion is the orientation alone.
+            // setFromEuler(0,0,0) is exactly the identity quaternion and
+            // q * identity == q term-for-term, so skipping it skips six trig
+            // calls per layer per frame and changes no bit.
+            out.copy(orientation);
+            out.normalize();
+            return;
+        }
+
         Euler euler(rotation.x, rotation.y, rotation.z);
         Quaternion eulerRotation;
         eulerRotation.setFromEuler(euler);
@@ -32,9 +42,17 @@ namespace chrononmotion::motion {
         target.compose(position, rotationQuaternion, scale);
 
         if (anchor.x != 0.f || anchor.y != 0.f || anchor.z != 0.f) {
-            Matrix4 anchorMatrix;
-            anchorMatrix.makeTranslation(-anchor.x, -anchor.y, -anchor.z);
-            target.multiply(anchorMatrix);
+            // The anchor is T(-anchor) on the right of the product, and
+            // multiplying by a pure translation only moves the translation
+            // column (elements 12..14, column-strided). Folding it here is the
+            // same arithmetic, in the same order, as target * T(-anchor) —
+            // without the 4x4 temporary and the full 16-element multiply.
+            const float ax = -anchor.x;
+            const float ay = -anchor.y;
+            const float az = -anchor.z;
+            target.elements[12] += target.elements[0] * ax + target.elements[4] * ay + target.elements[8] * az;
+            target.elements[13] += target.elements[1] * ax + target.elements[5] * ay + target.elements[9] * az;
+            target.elements[14] += target.elements[2] * ax + target.elements[6] * ay + target.elements[10] * az;
         }
 
         return target;

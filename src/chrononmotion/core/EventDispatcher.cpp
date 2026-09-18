@@ -142,13 +142,25 @@ void EventDispatcher::dispatchEvent(const std::string& type, std::any target) {
 
     Event e{type, std::move(target)};
 
-    const auto snapshot = it->second;
-    for (const auto& entry : snapshot) {
-        if (!registry->contains(type, entry.id)) continue;// removed mid-dispatch
-        if (entry.raw) {
-            entry.raw->onEvent(e);
+    // Snapshot only stable IDs, not Entry objects: copying the vector used to
+    // copy every std::function and its captured state on every dispatch. IDs
+    // preserve the same add/remove semantics while keeping callable ownership
+    // in the registry.
+    std::vector<std::uint64_t> snapshot;
+    snapshot.reserve(it->second.size());
+    for (const auto& entry : it->second) snapshot.push_back(entry.id);
+
+    for (const auto id : snapshot) {
+        const auto current = registry->byType.find(type);
+        if (current == registry->byType.end()) continue;
+        const auto found = std::ranges::find_if(current->second, [id](const ListenerRegistry::Entry& entry) {
+            return entry.id == id;
+        });
+        if (found == current->second.end()) continue;// removed mid-dispatch
+        if (found->raw) {
+            found->raw->onEvent(e);
         } else {
-            entry.fn(e);
+            found->fn(e);
         }
     }
 }

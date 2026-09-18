@@ -11,6 +11,8 @@
 #include "chrononmotion/constants.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
+#include "chrononmotion/math/Ray.hpp"
+#include "chrononmotion/math/Frustum.hpp"
 
 #include "chrononmotion/core/BufferAttribute.hpp"
 #include "chrononmotion/core/BufferGeometry.hpp"
@@ -41,6 +43,7 @@
 #include "chrononmotion/geometries/geometries.hpp"
 
 #include "chrononmotion/materials/Material.hpp"
+#include "chrononmotion/materials/Descriptors.hpp"
 
 #include "chrononmotion/objects/Group.hpp"
 #include "chrononmotion/objects/Mesh.hpp"

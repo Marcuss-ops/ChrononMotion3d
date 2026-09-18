@@ -10,6 +10,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 using namespace chrononmotion;
@@ -258,6 +260,29 @@ namespace {
 
         check(geometry->hasAttribute("position"), "setAttribute is observable");
         check(geometry->getAttribute("uv") == nullptr, "a missing attribute reads as null");
+
+        bool rejectedMissingNormals = false;
+        try {
+            geometry->normalizeNormals();
+        } catch (const std::invalid_argument&) {
+            rejectedMissingNormals = true;
+        }
+        check(rejectedMissingNormals, "normalization rejects a missing normal attribute");
+
+        auto narrowIndexed = BufferGeometry::create();
+        narrowIndexed->setIndex(std::vector<unsigned int>{0u, 1u, 2u});
+        narrowIndexed->setAttribute("position",
+                                    Int16BufferAttribute::create(std::vector<std::int16_t>{0, 0, 0,
+                                                                                              1, 0, 0,
+                                                                                              0, 1, 0},
+                                                                                         3, true));
+        bool rejectedNarrowConversion = false;
+        try {
+            (void)narrowIndexed->toNonIndexed();
+        } catch (const std::invalid_argument&) {
+            rejectedNarrowConversion = true;
+        }
+        check(rejectedNarrowConversion, "non-float indexed conversion is rejected explicitly");
 
         geometry->computeBoundingSphere();
         geometry->computeBoundingBox();

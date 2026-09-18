@@ -1,12 +1,25 @@
 #include "chrononmotion/motion/CameraRig.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <stdexcept>
 #include <utility>
 
 namespace chrononmotion::motion {
 
     CameraRig::CameraRig(Id id, float fov, float aspect, float nearPlane, float farPlane)
-        : layer_(id, "Camera"), fov_(fov), aspect_(aspect), nearPlane_(nearPlane), farPlane_(farPlane) {}
+        : layer_(id, "Camera"), fov_(fov), aspect_(aspect), nearPlane_(nearPlane), farPlane_(farPlane) {
+
+        if (!std::isfinite(fov) || fov <= 0.f || fov >= 180.f) {
+            throw std::invalid_argument("CameraRig: fov must be finite and in (0, 180)");
+        }
+        if (!std::isfinite(aspect) || aspect <= 0.f) {
+            throw std::invalid_argument("CameraRig: aspect must be finite and positive");
+        }
+        if (!std::isfinite(nearPlane) || !std::isfinite(farPlane) || nearPlane <= 0.f || farPlane <= nearPlane) {
+            throw std::invalid_argument("CameraRig: expected 0 < nearPlane < farPlane");
+        }
+    }
 
     CameraRig& CameraRig::setPosition(const Vector3& value) {
 
@@ -35,12 +48,18 @@ namespace chrononmotion::motion {
 
     CameraRig& CameraRig::setFov(float degrees) {
 
+        if (!std::isfinite(degrees) || degrees <= 0.f || degrees >= 180.f) {
+            throw std::invalid_argument("CameraRig::setFov: fov must be finite and in (0, 180)");
+        }
         fov_ = degrees;
         return *this;
     }
 
     CameraRig& CameraRig::setFocalLength(float millimetres) {
 
+        if (!std::isfinite(millimetres) || millimetres <= 0.f) {
+            throw std::invalid_argument("CameraRig::setFocalLength: focal length must be finite and positive");
+        }
         focalLength_ = millimetres;
         return *this;
     }

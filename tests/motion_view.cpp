@@ -10,6 +10,7 @@
 #include "motion_check.hpp"
 
 #include <cmath>
+#include <stdexcept>
 #include <vector>
 
 using namespace chrononmotion;
@@ -106,6 +107,23 @@ namespace {
         section("2.5D plane geometry");
 
         const ContentRef image = ContentRef::image("logo.png", Vector2(200.f, 100.f));
+
+        bool rejectedWidth = false;
+        try {
+            (void)MotionPlane::fitted(image, 0.f);
+        } catch (const std::invalid_argument&) {
+            rejectedWidth = true;
+        }
+        check(rejectedWidth, "a non-positive fitted width is rejected");
+
+        bool rejectedSize = false;
+        try {
+            (void)MotionPlane::sized(image, Vector2(0.f, 2.f));
+        } catch (const std::invalid_argument&) {
+            rejectedSize = true;
+        }
+        check(rejectedSize, "a non-positive plane size is rejected");
+
         const MotionPlane fitted = MotionPlane::fitted(image, 10.f);
         checkNear(fitted.size, Vector2(10.f, 5.f), 1e-5f,
                   "a fitted plane keeps the content's aspect ratio");
@@ -355,8 +373,24 @@ namespace {
 
         section("camera rig");
 
+        bool rejectedCamera = false;
+        try {
+            CameraRig invalid(1, 0.f, 16.f / 9.f, 0.1f, 2000.f);
+        } catch (const std::invalid_argument&) {
+            rejectedCamera = true;
+        }
+        check(rejectedCamera, "an invalid camera fov is rejected");
+
         CameraRig rig(1, 60.f, 16.f / 9.f, 0.1f, 2000.f);
         rig.setPosition(Vector3(0.f, 0.f, 10.f));
+
+        bool rejectedFocalLength = false;
+        try {
+            rig.setFocalLength(0.f);
+        } catch (const std::invalid_argument&) {
+            rejectedFocalLength = true;
+        }
+        check(rejectedFocalLength, "a non-positive focal length is rejected");
 
         const CameraPose resting = rig.sample(0.f);
         checkNear(resting.position, Vector3(0.f, 0.f, 10.f), 1e-5f, "the rig samples its static position");

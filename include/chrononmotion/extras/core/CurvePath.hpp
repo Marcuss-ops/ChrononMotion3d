@@ -51,6 +51,8 @@ namespace chrononmotion {
         std::vector<T> getPoints(unsigned int divisions = 12) const override;
 
     private:
+        const std::vector<float>& getCurveLengthsRef() const;
+
         mutable std::optional<std::vector<float>> cacheLengths;
     };
 

@@ -25,6 +25,8 @@
 #include "chrononmotion/motion/MotionPath.hpp"
 #include "chrononmotion/motion/MotionPlane.hpp"
 #include "chrononmotion/motion/CameraRig.hpp"
+#include "chrononmotion/motion/Lighting.hpp"
+#include "chrononmotion/motion/CompiledScene.hpp"
 #include "chrononmotion/motion/Presets.hpp"
 
 #endif//CHRONONMOTION_MOTION_HPP

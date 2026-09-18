@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <stdexcept>
 #include <utility>
 
 using namespace chrononmotion;
@@ -40,7 +41,7 @@ namespace {
             return FloatBufferAttribute::create(array2, itemSize, normalized);
         }
 
-        throw std::runtime_error("Unsupported operation");
+        throw std::invalid_argument("BufferGeometry::toNonIndexed: only float attributes are supported");
     }
 
 }// namespace
@@ -348,6 +349,9 @@ void BufferGeometry::computeBoundingSphere() {
 void BufferGeometry::normalizeNormals() {
 
     auto normals = getAttribute<float>("normal");
+    if (!normals) {
+        throw std::invalid_argument("BufferGeometry::normalizeNormals: missing float normal attribute");
+    }
 
     Vector3 _vector{};
     for (int i = 0, il = normals->count(); i < il; i++) {

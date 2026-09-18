@@ -31,6 +31,8 @@ add_library(chrononmotion STATIC
         src/chrononmotion/math/Matrix3.cpp
         src/chrononmotion/math/Matrix4.cpp
         src/chrononmotion/math/Plane.cpp
+        src/chrononmotion/math/Ray.cpp
+        src/chrononmotion/math/Frustum.cpp
         src/chrononmotion/math/Quaternion.cpp
         src/chrononmotion/math/Sphere.cpp
         src/chrononmotion/math/Spherical.cpp
@@ -69,6 +71,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/MotionPath.cpp
         src/chrononmotion/motion/MotionPlane.cpp
         src/chrononmotion/motion/CameraRig.cpp
+        src/chrononmotion/motion/Lighting.cpp
         # presets — one translation unit per family, plus the shared vocabulary
         src/chrononmotion/motion/Presets_Common.cpp
         src/chrononmotion/motion/Presets_Place.cpp
