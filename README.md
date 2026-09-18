@@ -1,6 +1,6 @@
 # ChrononMotion
 
-**A motion engine, forked from [threepp](https://github.com/markaren/threepp).**
+**A Linux-only motion engine, forked from [threepp](https://github.com/markaren/threepp).**
 
 ChrononMotion keeps the half of threepp that a deterministic motion/transform
 compiler needs — the scene graph, the transform and quaternion/curve maths, the
@@ -50,9 +50,10 @@ The retained 3D foundation is intentionally renderer-agnostic: `Ray` and
 `Frustum` provide spatial queries, `AmbientLight`, `DirectionalLight`,
 `PointLight` and `SpotLight` provide data-only lighting descriptors, and
 `UnlitMaterial`, `LambertMaterial` and `EmissiveMaterial` describe material
-intent without shaders, textures or GPU state. `MotionScene::compile()` produces
-an evaluated `CompiledScene` snapshot containing layer states, light states,
-material descriptors and mesh descriptors for a future renderer. These types
+intent without shaders, textures or GPU state. `MotionScene::compile()` produces an evaluated `CompiledScene` snapshot with
+layer and light states; material and mesh descriptors can be appended explicitly
+at the renderer boundary. The snapshot is intended for a future renderer, with
+no GPU state or content bytes owned here. These types
 are ChrononMotion-owned; the upstream threepp renderer, shadow system and
 `Object3D` light graph are not restored.
 
@@ -126,9 +127,17 @@ scene.evaluate(45);                          // deterministic: frame in, state o
 camera.apply(45.f / 30.f, *cameraNode);
 ```
 
+Social/web-style scene recipes live in the separate sibling module
+`../ChrononTemplate`; this core exposes only the motion primitives and
+`MotionScene` contract they consume. The template module owns composition and
+timing while text/image bytes, font layout and rasterization remain outside
+ChrononMotion through `ContentRef`.
+
 ## Build
 
-No dependencies. CMake 3.20+ and a C++20 compiler:
+Linux is the only supported deployment target. No platform abstraction or
+Windows toolchain is kept. Dependencies are limited to CMake 3.20+ and a C++20
+compiler:
 
 ```shell
 cmake --preset dev
@@ -154,6 +163,19 @@ cmake --build --preset release-fast
 ctest --preset release-fast
 ```
 
+The optional evaluation benchmark is built without changing the library or test
+configuration:
+
+```shell
+cmake --preset release -DCHRONONMOTION_BUILD_BENCHMARKS=ON
+cmake --build --preset release --target chrononmotion_eval_bench
+./build/release/chrononmotion_eval_bench
+```
+
+It reports mean `evaluate()` time plus allocations and allocated bytes per frame
+for the measured run; the allocation counters cover the steady-state loop, not
+scene construction.
+
 The result is one static library, `chrononmotion` (alias
 `ChrononMotion::chrononmotion`), plus the test binaries below with
 `CHRONONMOTION_BUILD_TESTS=ON`:
@@ -166,6 +188,7 @@ The result is one static library, `chrononmotion` (alias
 | `chrononmotion_view` | `MotionPath`, `MotionPlane`/`PerspectiveView`, `CameraRig` |
 | `chrononmotion_presets` | every preset in the list, by its defining property (including the animated pivot and the lifetime-driven entrance/exit) |
 | `chrononmotion_canary` | the whole primitive set on one timeline (see below), plus the annotated-pivot/lifetime composition |
+| `chrononmotion_foundation` | Ray/Frustum, data-only lights, materials and CompiledScene |
 | `chrononmotion_boundary` | the architectural guardrail |
 
 Consumers include `chrononmotion/chrononmotion.hpp` or the individual headers, e.g.

@@ -12,7 +12,12 @@ project(ChrononMotion
         DESCRIPTION "Deterministic motion/transform engine for Chronon"
         LANGUAGES CXX)
 
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "ChrononMotion is Linux-only")
+endif()
+
 option(CHRONONMOTION_BUILD_TESTS "Build the ChrononMotion smoke tests" ${PROJECT_IS_TOP_LEVEL})
+option(CHRONONMOTION_BUILD_BENCHMARKS "Build the standalone evaluation benchmark" OFF)
 option(CHRONONMOTION_WERROR "Turn compiler warnings into errors" OFF)
 
 if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
@@ -93,19 +98,21 @@ add_library(chrononmotion STATIC
 
 add_library(ChrononMotion::chrononmotion ALIAS chrononmotion)
 
+if(CHRONONMOTION_BUILD_BENCHMARKS)
+    add_executable(chrononmotion_eval_bench bench/eval_bench.cpp)
+    target_link_libraries(chrononmotion_eval_bench PRIVATE chrononmotion)
+    target_compile_features(chrononmotion_eval_bench PRIVATE cxx_std_20)
+endif()
+
 target_include_directories(chrononmotion PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
 
 target_compile_features(chrononmotion PUBLIC cxx_std_20)
 
-if(MSVC)
-    target_compile_options(chrononmotion PRIVATE /W4 /permissive-)
-else()
-    target_compile_options(chrononmotion PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion PRIVATE -Werror)
-    endif()
+target_compile_options(chrononmotion PRIVATE -Wall -Wextra)
+if(CHRONONMOTION_WERROR)
+    target_compile_options(chrononmotion PRIVATE -Werror)
 endif()
 
 if(CHRONONMOTION_BUILD_TESTS)

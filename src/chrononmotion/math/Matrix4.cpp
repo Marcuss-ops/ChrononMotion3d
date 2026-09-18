@@ -12,14 +12,10 @@
 #include <string>
 
 // multiplyMatrices is the hottest function in the library — every object in the
-// scene graph runs one per frame to build its world matrix, and the renderer
-// runs another for its model-view matrix. The scalar form below is 64 multiplies
-// and 48 adds over column-strided loads, which no compiler vectorises: measured
-// 16.0 ns/multiply with MSVC /O2, unchanged by /GL /LTCG (the call overhead is
-// not the problem) and only 11% better with /arch:AVX2. The SSE2 path is
-// 3.9 ns — 4.1x. Everything not x86 keeps the scalar path; define
-// CHRONONMOTION_NO_SIMD to force it everywhere.
-#if !defined(CHRONONMOTION_NO_SIMD) && (defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2))
+// scene graph runs one per frame to build its world matrix. The scalar form below
+// remains available for non-SSE2 Linux targets; define CHRONONMOTION_NO_SIMD to
+// force it everywhere.
+#if !defined(CHRONONMOTION_NO_SIMD) && defined(__SSE2__)
 #define CHRONONMOTION_MATRIX4_SSE2
 #include <emmintrin.h>
 #endif

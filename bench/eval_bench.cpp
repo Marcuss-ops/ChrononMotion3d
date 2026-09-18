@@ -13,16 +13,46 @@
 #include "chrononmotion/chrononmotion.hpp"
 #include "chrononmotion/motion/Motion.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <cstdio>
+#include <new>
 #include <string>
 #include <vector>
 
-using namespace chrononmotion;
-using namespace chrononmotion::motion;
+namespace {
+
+    std::atomic<bool> g_measureAllocations{false};
+    std::atomic<std::uint64_t> g_allocationCount{0};
+    std::atomic<std::uint64_t> g_allocatedBytes{0};
+
+    void* allocate(std::size_t size) {
+        const std::size_t actual = size == 0 ? 1 : size;
+        void* pointer = std::malloc(actual);
+        if (!pointer) throw std::bad_alloc();
+        if (g_measureAllocations.load(std::memory_order_relaxed)) {
+            g_allocationCount.fetch_add(1, std::memory_order_relaxed);
+            g_allocatedBytes.fetch_add(actual, std::memory_order_relaxed);
+        }
+        return pointer;
+    }
+
+}// namespace
+
+void* operator new(std::size_t size) { return allocate(size); }
+void* operator new[](std::size_t size) { return allocate(size); }
+void operator delete(void* pointer) noexcept { std::free(pointer); }
+void operator delete[](void* pointer) noexcept { std::free(pointer); }
+void operator delete(void* pointer, std::size_t) noexcept { std::free(pointer); }
+void operator delete[](void* pointer, std::size_t) noexcept { std::free(pointer); }
 
 namespace {
+
+using namespace chrononmotion;
+using namespace chrononmotion::motion;
 
     constexpr int kLayers = 250;
     constexpr int kNulls = 5;
@@ -44,7 +74,7 @@ namespace {
             for (const float e : m.elements) {
                 std::uint32_t bits = 0;
                 static_assert(sizeof bits == sizeof e, "float size");
-                __builtin_memcpy(&bits, &e, sizeof e);
+                std::memcpy(&bits, &e, sizeof e);
                 mix(bits);
             }
             mix(static_cast<std::uint64_t>(scene.worldOpacity(layer.id) * 1e6f));
@@ -62,7 +92,7 @@ namespace {
         }
 
         for (int i = 0; i < kLayers; ++i) {
-            const auto id = static_cast<Layer::Id>(i);
+            const auto id = static_cast<Layer::Id>(1000 + i);
             Layer& layer = scene.addContent(id, "L" + std::to_string(i),
                                             ContentRef::text("asset" + std::to_string(i), {640.f, 120.f}),
                                             100u + static_cast<Layer::Id>(i % kNulls));
@@ -82,22 +112,36 @@ namespace {
         double totalNs = 0.0;
         std::uint64_t runDigest = 0;
 
+        // Build the cached hierarchy before measuring. This separates one-time
+        // authoring/cache preparation from the steady-state data plane.
+        g_measureAllocations.store(false, std::memory_order_release);
+        scene.evaluate(0);
+        firstDigest = digest(scene);
+        g_allocationCount.store(0, std::memory_order_relaxed);
+        g_allocatedBytes.store(0, std::memory_order_relaxed);
+        g_measureAllocations.store(true, std::memory_order_release);
+
         for (int repeat = 0; repeat < kRepeats; ++repeat) {
             const auto start = clock::now();
             for (int frame = 0; frame < kFrames; ++frame) {
                 scene.evaluate(frame);
-                if (repeat == 0 && frame == 0) firstDigest = digest(scene);
                 if (repeat == kRepeats - 1 && frame == 0) runDigest = digest(scene);
             }
             const auto end = clock::now();
             totalNs += static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count());
         }
 
+        g_measureAllocations.store(false, std::memory_order_release);
+
         if (runDigest != firstDigest) {
             std::fprintf(stderr, "NON-DETERMINISTIC: digest changed across runs!\n");
         }
 
-        return totalNs / static_cast<double>(kRepeats * kFrames) / 1000.0;
+        const double frameCount = static_cast<double>(kRepeats * kFrames);
+        std::printf("allocations: %.3f/frame  %.1f bytes/frame\n",
+                    static_cast<double>(g_allocationCount.load(std::memory_order_relaxed)) / frameCount,
+                    static_cast<double>(g_allocatedBytes.load(std::memory_order_relaxed)) / frameCount);
+        return totalNs / frameCount / 1000.0;
     }
 
 }// namespace

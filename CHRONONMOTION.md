@@ -1,4 +1,7 @@
-# ChrononMotion — the motion-engine fork of threepp
+# ChrononMotion — the Linux-only motion-engine fork of threepp
+
+Linux is the only supported deployment target. Platform-specific compatibility
+branches for other operating systems are intentionally not part of this tree.
 
 This tree is a **cut**, not a rewrite. threepp's value for a motion system is its
 scene graph, its transform math, its cameras, its curve library and its keyframe
@@ -16,7 +19,7 @@ Measured against the checkout this fork starts from (library sources only:
 | files | ~2.160 | 125 |
 | lines | ~259.300 | ~17.700 (6.8%) |
 | third-party deps at configure time | vcpkg features, FetchContent (GLFW, glslang, V-HACD, PhysX, pybind11, …) | none |
-| build products | shared/static lib, editor, player, Python module, examples, tests | one static library + six test binaries |
+| build products | shared/static lib, editor, player, Python module, examples, tests | one static library + seven test binaries + boundary gate |
 
 The deletions are **committed**, so this file is the ledger for them rather than
 a pending diff. Every removed file is still reachable from the history, and any
@@ -182,9 +185,10 @@ algorithms were selectively adapted where useful, while ownership, lifetime and
 scene compilation remain ChrononMotion-owned.
 
 `MotionScene::compile()` is a snapshot boundary. It evaluates the scene at one
-`MotionTime` and copies the resulting layer/light/material/mesh descriptors into
-`CompiledScene`; it does not allocate or invoke a renderer. The snapshot is
-intended for a future renderer or exporter to consume.
+`MotionTime` and copies the resulting layer and light states into `CompiledScene`;
+material and mesh descriptors are explicit data appended by the caller at that
+boundary. It does not allocate GPU resources or invoke a renderer, and the snapshot is intended
+for a future renderer or exporter to consume.
 
 `include/chrononmotion/motion/` is the *motion* half a deterministic compiler
 samples from — eleven headers, twelve translation units, no new dependency, and
@@ -282,6 +286,9 @@ the base pose, with no pop at either end.)
 
 ## Build
 
+Linux is the only supported deployment target; CMake rejects other system names
+at configure time. The build has no Windows toolchain branch or platform shim.
+
 ```shell
 cmake --preset dev        # Debug + tests
 cmake --build --preset dev
@@ -302,7 +309,7 @@ with `include/` as its only include path and no dependency to fetch. Consumers
 link it and include `chrononmotion/chrononmotion.hpp` (the umbrella was trimmed to the
 keep-set and then extended with `motion/Motion.hpp`) or the individual headers.
 
-The compile-time contract is split across six binaries:
+The compile-time contract is split across seven test binaries plus the boundary gate:
 
 * `chrononmotion_smoke` pins the fork itself — hierarchy and world transforms,
   `localToWorld`/`worldToLocal`, the camera vs node `lookAt` conventions, the
@@ -339,8 +346,20 @@ The compile-time contract is split across six binaries:
   capabilities the first does not exercise on its own — a pivot that travels
   while the layer turns about it, and an entrance and exit keyed from the
   layer's declared lifetime.
+* `chrononmotion_foundation` pins Ray/Frustum, data-only lights, material
+  descriptors and the `CompiledScene` boundary.
+
+`ChrononTemplate` is maintained as a separate sibling module. It consumes this
+core's `MotionScene`, `Layer`, `ContentRef` and preset APIs, and is intentionally
+not part of this library's source map or test target.
 
 `chrononmotion_boundary` runs separately and is the architectural guardrail.
+
+The optional `chrononmotion_eval_bench` target is enabled with
+`-DCHRONONMOTION_BUILD_BENCHMARKS=ON`. It measures steady-state
+`MotionScene::evaluate()` time, allocation count and allocated bytes per frame;
+scene construction is outside the measured interval. The benchmark is a
+consumer of the public compiled library, not part of the production data path.
 
 ## The boundary this tree sits on
 
