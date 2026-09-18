@@ -41,6 +41,9 @@ git show <pre-fork>:<path>                      # its bytes
 | `geometries/` | 579 | `BoxGeometry`, `PlaneGeometry`, `SphereGeometry` — re-imported after the cut: plain `BufferGeometry` builders with no material, texture or loader behind them |
 | `scenes/` | 51 | `Scene` as a light root container |
 | `constants.hpp` | 63 | the six enums the above actually use |
+| `math/Ray`, `math/Frustum` | — | dependency-free spatial queries for bounds, picking and future culling |
+| `motion/Lighting`, `motion/CompiledScene` | — | data-only lighting and the evaluated renderer boundary |
+| `materials/Descriptors` | — | Unlit/Lambert/Emissive material intent without renderer state |
 
 ## What was removed
 
@@ -114,8 +117,8 @@ declarations and the `<any>`/`<optional>` includes they needed).
 Kept: `geometry()` — it is how `Mesh` reports its buffer and how
 `Box3::expandByObject` measures a node, and it is not renderer-specific.
 `lookAt()` still detects a `Camera` by type (a camera turns its local **-Z**
-toward the target, a plain node turns its local **+Z**); the `Light` half of that
-test is gone with `lights/`. `copy()` and the move constructor no longer carry
+toward the target, a plain node turns its local **+Z**). Lighting is now represented
+by ChrononMotion-owned data descriptors and is not part of the `Object3D` graph. `copy()` and the move constructor no longer carry
 layers/shadow/culling/render-order/userData/render callbacks, and `copy()` now
 copies `animations` (the clip list belongs to the node).
 
@@ -183,9 +186,20 @@ scene compilation remain ChrononMotion-owned.
 `CompiledScene`; it does not allocate or invoke a renderer. The snapshot is
 intended for a future renderer or exporter to consume.
 
-The fork above is the *maths* half. `include/chrononmotion/motion/` is the *motion*
-half a deterministic compiler samples from — eleven headers, twelve translation
-units, no new dependency, and no content machinery:
+The fork above is the *maths* half. The minimum + 1 foundation extends it with
+small spatial primitives and renderer-neutral scene descriptors. The source of
+truth is the current ChrononMotion API, not a restored threepp runtime: upstream
+algorithms were selectively adapted where useful, while ownership, lifetime and
+scene compilation remain ChrononMotion-owned.
+
+`MotionScene::compile()` is a snapshot boundary. It evaluates one `MotionTime`
+and copies the resulting layer/light/material/mesh descriptors into
+`CompiledScene`; it does not allocate or invoke a renderer. The snapshot is
+intended for a future renderer or exporter to consume.
+
+`include/chrononmotion/motion/` is the *motion* half a deterministic compiler
+samples from — eleven headers, twelve translation units, no new dependency, and
+no content machinery:
 
 | file | responsibility |
 |---|---|
