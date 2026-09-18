@@ -74,11 +74,12 @@ renderer vocabulary that came along with them:
   only consumer was `Mesh`'s deleted raycast.
 * **`core/Clock`** — a wall-clock stopwatch. A frame-deterministic motion engine
   must not read a clock, and nothing called it but the umbrella header.
-* **`math/` renderer vocabulary with no consumer** — `Frustum` (culling),
-  `Ray` (picking, which existed for the deleted `Raycaster`), `Lut` (texture
-  colour lookup), `SphericalHarmonics3` (environment-map lighting probes),
+* **`math/` renderer vocabulary with no consumer** — `Lut` (texture colour
+  lookup), `SphericalHarmonics3` (environment-map lighting probes),
   `Capsule`/`Cylindrical` (collision/coordinate helpers), `ImprovedNoise`
-  (procedural terrain/vegetation noise), `Rng` (an unreferenced PRNG).
+  (procedural terrain/vegetation noise), and `Rng` (an unreferenced PRNG) stay
+  removed. `Ray` and `Frustum` were later reintroduced as small, dependency-free
+  spatial primitives for the minimum + 1 foundation.
   `Ray::intersectsPlane`, `Sphere::intersectsPlane` and friends went with `Ray`.
 * **`constants.hpp`** — from 273 to 63 lines: `CullFace`, `ShadowMap`,
   `ShadowMapConfig`, `Blending`, `BlendEquation`, `BlendFactor`, `DepthFunc`,
@@ -170,6 +171,17 @@ index) were cleaned up, and `AnimationClip`'s constructor now initialises member
 in declaration order, so the tree builds clean under `-Wall -Wextra -Werror`.
 
 ## The motion model (landed)
+
+The fork above is the *maths* half. The minimum + 1 foundation extends it with
+small spatial primitives and renderer-neutral scene descriptors. The source of
+truth is the current ChrononMotion API, not a restored threepp runtime: upstream
+algorithms were selectively adapted where useful, while ownership, lifetime and
+scene compilation remain ChrononMotion-owned.
+
+`MotionScene::compile()` is a snapshot boundary. It evaluates the scene at one
+`MotionTime` and copies the resulting layer/light/material/mesh descriptors into
+`CompiledScene`; it does not allocate or invoke a renderer. The snapshot is
+intended for a future renderer or exporter to consume.
 
 The fork above is the *maths* half. `include/chrononmotion/motion/` is the *motion*
 half a deterministic compiler samples from — eleven headers, twelve translation
@@ -386,9 +398,10 @@ an opaque fingerprint, not a font.
 
 ## Deliberately not done yet
 
-1. **Mesh layers, lights and real 3D objects.** The model stops at text planes,
-   image planes, nulls and a camera. Box, Plane and Sphere geometries are now
-   available to `Mesh`, but the motion model still has no `MeshLayer` or lights.
+1. **Mesh layers and real 3D objects.** The model stops at text planes, image
+   planes, nulls and a camera. Box, Plane and Sphere geometries are available to
+   `Mesh`, and the minimum + 1 light/material descriptors are available, but a
+   renderer-backed `MeshLayer` and GPU scene are intentionally still absent.
 2. **`Object3D` and `Layer` do not share a graph.** `Object3D` is the three.js
    node the kept maths, curves and cameras are written against; `Layer` is the
    motion model. `MotionScene` composes world matrices itself and a `CameraRig`

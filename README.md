@@ -17,7 +17,7 @@ objects/{Group,Mesh}, scenes/Scene     kept, narrowed
 materials/ (40 materials + mixins)     one abstract Material base
 renderers/ loaders/ material zoo        deleted
 geometries/                              Box, Plane and Sphere only
-lights/ helpers/ utils/ textures/      deleted
+lights/ helpers/ utils/ textures/      renderer/runtime parts deleted; data-only lights and spatial math kept
 canvas/ controls/ input/ audio/        deleted
 postprocessing/ splats/ extras/        deleted
 apps/ examples/ tests/ python/         deleted
@@ -43,6 +43,18 @@ sampling authority has to be Chronon's, not a second mixer's.
 **[CHRONONMOTION.md](CHRONONMOTION.md) is the ledger**: what was kept and why,
 what was deleted, every behaviour change against upstream, and what is
 deliberately not done yet. Read it before changing anything here.
+
+## Minimum + 1 foundation
+
+The retained 3D foundation is intentionally renderer-agnostic: `Ray` and
+`Frustum` provide spatial queries, `AmbientLight`, `DirectionalLight`,
+`PointLight` and `SpotLight` provide data-only lighting descriptors, and
+`UnlitMaterial`, `LambertMaterial` and `EmissiveMaterial` describe material
+intent without shaders, textures or GPU state. `MotionScene::compile()` produces
+an evaluated `CompiledScene` snapshot containing layer states, light states,
+material descriptors and mesh descriptors for a future renderer. These types
+are ChrononMotion-owned; the upstream threepp renderer, shadow system and
+`Object3D` light graph are not restored.
 
 ## Status
 
