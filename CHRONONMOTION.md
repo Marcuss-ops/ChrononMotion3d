@@ -186,17 +186,6 @@ scene compilation remain ChrononMotion-owned.
 `CompiledScene`; it does not allocate or invoke a renderer. The snapshot is
 intended for a future renderer or exporter to consume.
 
-The fork above is the *maths* half. The minimum + 1 foundation extends it with
-small spatial primitives and renderer-neutral scene descriptors. The source of
-truth is the current ChrononMotion API, not a restored threepp runtime: upstream
-algorithms were selectively adapted where useful, while ownership, lifetime and
-scene compilation remain ChrononMotion-owned.
-
-`MotionScene::compile()` is a snapshot boundary. It evaluates one `MotionTime`
-and copies the resulting layer/light/material/mesh descriptors into
-`CompiledScene`; it does not allocate or invoke a renderer. The snapshot is
-intended for a future renderer or exporter to consume.
-
 `include/chrononmotion/motion/` is the *motion* half a deterministic compiler
 samples from — eleven headers, twelve translation units, no new dependency, and
 no content machinery:
