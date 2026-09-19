@@ -272,7 +272,9 @@ raster and no decoder. `ContentRef` is an id, a kind, a rectangle and an opaque
 measurement fingerprint — so a system that anchors and places a text asset
 without knowing what it is remains the only thing this tree can do. The
 fingerprint is a string it never computes and never parses; it is Chronon's, and
-this side only carries it.
+this side only carries it. Any typewriter/cluster reveal must target Chronon-owned
+stable element IDs through an additive Chronon3D contract; this engine never
+splits text or recomputes advances.
 
 ### What the presets are, and are not
 
@@ -365,7 +367,16 @@ consumer of the public compiled library, not part of the production data path.
 
 The rule, stated once:
 
-> **Chronon owns content. ChrononMotion owns space and time.**
+> **Chronon owns content and pixels. ChrononMotion owns space and time.**
+>
+> ChrononTemplate owns composition; RenderingGen owns editorial intent.
+
+Motion3D receives only an opaque `ContentRef` plus Chronon-produced metrics and
+fingerprint. It never receives source text, font data, glyph ids, cluster
+positions, raster buffers or glow parameters that would require interpreting
+content. Typewriter/cluster animation must remain a Chronon3D-owned capability;
+the current layer ABI transports the complete content identity and transform,
+not a locally invented per-character layout.
 
 ```text
         Chronon                                  ChrononMotion
