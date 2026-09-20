@@ -255,10 +255,53 @@ namespace chrononmotion::motion {
             const std::size_t index = order_[position];
 
             LayerState& state = states_[index];
-            layers_[index].sample(seconds, state.local);
+            const float layerSeconds = layers_[index].timeRemap.mapFrame(static_cast<float>(time.frame)) / time.fps;
+            layers_[index].sample(layerSeconds, state.local);
+
+            for (const auto& constraint : layers_[index].constraints) {
+                const std::size_t target = indexOf(constraint.targetId);
+                Vector3 targetPosition;
+                if (constraint.targetId == Layer::kRoot &&
+                    constraint.kind == ConstraintKind::FollowPath) {
+                    targetPosition.set(0.f, 0.f, 0.f);
+                } else {
+                    if (target == npos || !states_[target].evaluated) {
+                        if (constraint.targetId != Layer::kRoot) {
+                            throw std::invalid_argument("MotionScene::evaluate: constraint has an unknown or unsolved target");
+                        }
+                        continue;
+                    }
+                    targetPosition.setFromMatrixPosition(states_[target].world);
+                }
+                (void)applyConstraint(constraint, state.local, targetPosition,
+                                layers_[target].transform.orientation,
+                                layers_[target].transform.scale, layerSeconds);
+            }
+            for (const auto& driver : layers_[index].drivers) {
+                const std::size_t target = indexOf(driver.targetId);
+                Vector3 targetPosition;
+                if (target != npos && states_[target].evaluated) {
+                    targetPosition.setFromMatrixPosition(states_[target].world);
+                }
+                const Vector3 offset = evaluateDriverOffset(
+                        driver, layerSeconds, state.local.position, targetPosition);
+                switch (driver.property) {
+                    case DriverProperty::Position: state.local.position.add(offset); break;
+                    case DriverProperty::Rotation: state.local.rotation.add(offset); break;
+                    case DriverProperty::Scale: state.local.scale.add(offset); break;
+                    case DriverProperty::Opacity: state.local.opacity += offset.x; break;
+                }
+            }
             state.local.compose(state.world);
 
+            Transform previousLocal;
+            const float previousSeconds =
+                    layers_[index].timeRemap.mapFrame(static_cast<float>(time.frame - 1)) / time.fps;
+            layers_[index].sample(previousSeconds, previousLocal);
+            previousLocal.compose(state.previousWorld);
+
             const bool alive = layers_[index].visibleAt(time.frame);
+            const bool previousAlive = layers_[index].visibleAt(time.frame - 1);
             const std::size_t parent = orderParents_[position];
 
             if (parent != npos && states_[parent].evaluated) {
@@ -273,9 +316,14 @@ namespace chrononmotion::motion {
                 // Lifetime hides the subtree: a hidden null hides its children.
                 state.visible = alive && states_[parent].visible;
                 state.worldOpacity = states_[parent].worldOpacity * state.local.opacity;
+                state.previousWorld.multiplyMatrices(states_[parent].previousWorld, state.previousWorld);
+                state.previousVisible = previousAlive && states_[parent].previousVisible;
+                state.previousWorldOpacity = states_[parent].previousWorldOpacity * previousLocal.opacity;
             } else {
                 state.visible = alive;
                 state.worldOpacity = state.local.opacity;
+                state.previousVisible = previousAlive;
+                state.previousWorldOpacity = previousLocal.opacity;
             }
 
             state.evaluated = true;
@@ -354,6 +402,14 @@ namespace chrononmotion::motion {
         std::vector<std::string> problems;
 
         for (const auto& layer : layers_) {
+            if (!layer.precomp.empty() && !layer.precomp.valid()) {
+                problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                   "'): invalid nested composition");
+            }
+            if (!layer.timeRemap.valid()) {
+                problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                   "'): invalid time remap");
+            }
             if (layer.parentId == Layer::kRoot) continue;
 
             if (!hasLayer(layer.parentId)) {
@@ -416,15 +472,32 @@ namespace chrononmotion::motion {
         result.frame = lastFrame_;
         result.fps = fps_;
         result.transforms.reserve(layers_.size());
+        result.precomps.reserve(layers_.size());
         for (std::size_t index = 0; index < layers_.size(); ++index) {
             if (!states_[index].evaluated) {
                 throw std::logic_error("MotionScene::compile: evaluate the scene before compiling");
             }
+            if (layers_[index].precomp.valid()) {
+                const int nestedFrame = static_cast<int>(std::lround(
+                        layers_[index].timeRemap.mapFrame(static_cast<float>(lastFrame_))));
+                layers_[index].precomp.scene->evaluate(nestedFrame);
+                auto nested = std::make_shared<CompiledScene>(layers_[index].precomp.scene->compile());
+                result.precomps.push_back(CompiledPrecomp{
+                    layers_[index].id, states_[index].world, states_[index].worldOpacity,
+                    states_[index].visible, std::move(nested)});
+            }
             result.transforms.push_back(CompiledTransform{
                     layers_[index].id,
                     states_[index].world,
+                    states_[index].previousWorld,
                     states_[index].worldOpacity,
-                    states_[index].visible});
+                    states_[index].previousWorldOpacity,
+                    states_[index].visible,
+                    states_[index].previousVisible,
+                    layers_[index].castsShadow,
+                    layers_[index].acceptsShadow,
+                    layers_[index].shadowOpacity,
+                    layers_[index].shadowBlur});
         }
         result.lights.reserve(lightStates_.size());
         for (const auto& state : lightStates_) {

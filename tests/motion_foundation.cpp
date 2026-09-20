@@ -74,6 +74,8 @@ namespace {
         point.range = 12.f;
         point.decay = 2.f;
         point.transform.position.set(2.f, 0.f, 1.f);
+        point.rangeTrack.add(0.f, 12.f);
+        point.rangeTrack.add(1.f, 20.f);
 
         AmbientLight& ambient = scene.addAmbientLight(22, "Ambient");
         ambient.color.setRGB(0.2f, 0.3f, 0.4f, ColorSpace::Linear);
@@ -84,10 +86,34 @@ namespace {
         check(key.evaluated && key.visible, "directional light is evaluated");
         checkNear(key.position, Vector3(0.f, 0.f, 5.f), 1e-5f, "light inherits its parent transform");
         checkNear(key.sample.intensity, 2.f, 1e-5f, "light intensity follows its track");
-        checkNear(key.direction, Vector3(0.f, 0.f, -1.f), 1e-5f, "directional target resolves through the layer graph");
+        directional.colorTrack.add(0.f, Color(0x0000ff));
+        directional.colorTrack.add(1.f, Color(0xff0000));
+        directional.positionTrack.add(0.f, Vector3(0.f, 0.f, 5.f));
+        directional.positionTrack.add(1.f, Vector3(0.f, 2.f, 5.f));
+        directional.rotationTrack.add(0.f, Vector3(0.f, 0.f, 0.f));
+        directional.rotationTrack.add(1.f, Vector3(0.f, math::degToRad(30.f), 0.f));
+        directional.castsShadow = true;
+        directional.shadowBias = 0.01f;
+        directional.shadowNormalBiasTrack.add(0.f, 0.f);
+        directional.shadowNormalBiasTrack.add(1.f, 0.2f);
+        directional.shadowRadiusTrack.add(0.f, 1.f);
+        directional.shadowRadiusTrack.add(1.f, 3.f);
+        scene.evaluate(15);
+        checkNear(key.sample.color.r, 0.5f, 0.1f, "light color follows its track");
+        checkNear(key.sample.local.position.y, 1.f, 1e-5f, "light position follows its track");
+        checkNear(key.sample.local.rotation.y, math::degToRad(15.f), 1e-5f,
+                  "light rotation follows its track");
+        check(key.sample.castsShadow && key.sample.shadowBias == 0.01f,
+              "shadow intent is carried as renderer-independent light state");
+        checkNear(key.sample.shadowNormalBias, 0.1f, 1e-5f,
+                  "shadow normal bias follows its track");
+        checkNear(key.sample.shadowRadius, 2.f, 1e-5f,
+                  "shadow radius follows its track");
+        checkNear(key.direction, Vector3(0.f, -1.f, -5.f).normalize(), 1e-5f,
+                  "directional target resolves through the layer graph");
 
         const LightState& fill = scene.lightState(21);
-        checkNear(fill.sample.range, 12.f, 1e-5f, "point light range is preserved");
+        checkNear(fill.sample.range, 16.f, 1e-5f, "point light range follows its track");
         checkNear(fill.sample.decay, 2.f, 1e-5f, "point light decay is preserved");
         check(scene.lightCount() == 3, "scene owns all light descriptors");
 
@@ -95,6 +121,30 @@ namespace {
         check(compiled.transforms.size() == 2, "compiled scene contains evaluated transforms");
         check(compiled.lights.size() == 3, "compiled scene contains evaluated lights");
         check(compiled.frame == 15 && compiled.fps == 30.f, "compiled scene preserves the time authority");
+    }
+
+    void nestedCompositionsCompileWithLocalTime() {
+        section("nested composition");
+
+        auto nested = std::make_shared<MotionScene>("nested", 24.f);
+        Layer& child = nested->addContent(101, "NestedTitle", ContentRef::text("nested", {10.f, 10.f}));
+        child.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+        child.tracks.position.add(1.f, Vector3(10.f, 0.f, 0.f));
+
+        MotionScene outer("outer", 24.f);
+        Layer& precomp = outer.addLayer(50, "Precomp");
+        precomp.precomp = CompositionRef{nested, 24.f};
+        precomp.transform.position.set(5.f, 0.f, 0.f);
+        precomp.timeRemap.stretch = 2.f;
+        outer.evaluate(12);
+        const CompiledScene compiled = outer.compile();
+        check(compiled.precomps.size() == 1, "nested composition is emitted as a compiled child");
+        check(compiled.precomps.front().scene && compiled.precomps.front().scene->frame == 6,
+              "nested composition receives deterministic local time");
+        Vector3 nestedPosition;
+        nestedPosition.setFromMatrixPosition(nested->worldMatrix(101));
+        checkNear(nestedPosition, Vector3(2.5f, 0.f, 0.f), 1e-4f,
+                  "nested composition evaluates its own timeline");
     }
 
     void materialDescriptorsAreRendererIndependent() {
@@ -132,6 +182,7 @@ namespace {
 int main() {
     spatialPrimitives();
     lightsEvaluateThroughMotionScene();
+    nestedCompositionsCompileWithLocalTime();
     materialDescriptorsAreRendererIndependent();
     return chrononmotion_test::report();
 }

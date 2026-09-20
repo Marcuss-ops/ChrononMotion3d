@@ -14,11 +14,28 @@
 
 namespace chrononmotion::motion {
 
-    struct CompiledTransform {
-        Layer::Id id{Layer::kRoot};
+    struct CompiledScene;
+
+    struct CompiledPrecomp {
+        Layer::Id layerId{Layer::kRoot};
         Matrix4 world{};
         float opacity{1.f};
         bool visible{true};
+        std::shared_ptr<const CompiledScene> scene{};
+    };
+
+    struct CompiledTransform {
+        Layer::Id id{Layer::kRoot};
+        Matrix4 world{};
+        Matrix4 previousWorld{};
+        float opacity{1.f};
+        float previousOpacity{1.f};
+        bool visible{true};
+        bool previousVisible{true};
+        bool castsShadow{false};
+        bool acceptsShadow{true};
+        float shadowOpacity{1.f};
+        float shadowBlur{0.f};
     };
 
     struct MeshDescriptor {
@@ -35,6 +52,7 @@ namespace chrononmotion::motion {
         int frame{0};
         float fps{24.f};
         std::vector<CompiledTransform> transforms{};
+        std::vector<CompiledPrecomp> precomps{};
         std::vector<LightState> lights{};
         std::vector<MeshDescriptor> meshes{};
         std::vector<MaterialDescriptor> materials{};

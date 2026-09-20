@@ -28,5 +28,8 @@
 #include "chrononmotion/motion/Lighting.hpp"
 #include "chrononmotion/motion/CompiledScene.hpp"
 #include "chrononmotion/motion/Presets.hpp"
+#include "chrononmotion/motion/Procedural.hpp"
+#include "chrononmotion/motion/Constraints.hpp"
+#include "chrononmotion/motion/Precomp.hpp"
 
 #endif//CHRONONMOTION_MOTION_HPP

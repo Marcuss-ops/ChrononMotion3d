@@ -77,6 +77,8 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/MotionPlane.cpp
         src/chrononmotion/motion/CameraRig.cpp
         src/chrononmotion/motion/Lighting.cpp
+        src/chrononmotion/motion/Procedural.cpp
+        src/chrononmotion/motion/Constraints.cpp
         # presets — one translation unit per family, plus the shared vocabulary
         src/chrononmotion/motion/Presets_Common.cpp
         src/chrononmotion/motion/Presets_Place.cpp

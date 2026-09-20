@@ -23,9 +23,14 @@ namespace chrononmotion::motion {
         Layer::Id parentId{Layer::kRoot};
         Layer::Id targetId{Layer::kRoot};
         Transform local{};
+        Vector3 direction{0.f, 0.f, -1.f};
         Color color{};
         float intensity{1.f};
         float range{0.f};
+        bool castsShadow{false};
+        float shadowBias{0.f};
+        float shadowNormalBias{0.f};
+        float shadowRadius{1.f};
         float angle{0.f};
         float penumbra{0.f};
         float decay{1.f};
@@ -47,6 +52,20 @@ namespace chrononmotion::motion {
         float intensity{1.f};
         Transform transform{};
         Track<float> intensityTrack{};
+        Track<Color> colorTrack{};
+        Track<Vector3> positionTrack{};
+        Track<Vector3> rotationTrack{};
+        Track<Vector3> directionTrack{};
+        bool castsShadow{false};
+        float shadowBias{0.f};
+        float shadowNormalBias{0.f};
+        float shadowRadius{1.f};
+        Track<float> shadowBiasTrack{};
+        Track<float> shadowNormalBiasTrack{};
+        Track<float> shadowRadiusTrack{};
+
+        [[nodiscard]] Color sampleColor(float seconds) const;
+        [[nodiscard]] Transform sampleTransform(float seconds) const;
 
         [[nodiscard]] LightKind kind() const { return kind_; }
         [[nodiscard]] float sampleIntensity(float seconds) const;
@@ -76,6 +95,8 @@ namespace chrononmotion::motion {
         [[nodiscard]] LightSample sample(float seconds) const override;
         float range{0.f};
         float decay{1.f};
+        Track<float> rangeTrack{};
+        Track<float> decayTrack{};
     };
 
     class SpotLight final: public Light {
@@ -88,6 +109,10 @@ namespace chrononmotion::motion {
         float angle{0.7853981633974483f};
         float penumbra{0.f};
         float decay{1.f};
+        Track<float> rangeTrack{};
+        Track<float> angleTrack{};
+        Track<float> penumbraTrack{};
+        Track<float> decayTrack{};
     };
 
     struct LightState {

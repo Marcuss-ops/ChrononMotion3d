@@ -1,6 +1,31 @@
 #include "chrononmotion/motion/Layer.hpp"
 
+#include <cmath>
+
 namespace chrononmotion::motion {
+
+    float TimeRemap::mapFrame(float frame) const {
+        if (!valid()) throw std::invalid_argument("TimeRemap: invalid stretch or loop range");
+        if (freeze) return offsetFrames;
+        float local = offsetFrames + (reverse ? -frame : frame) / stretch;
+        if (loopEnd < loopStart) return local;
+        const float length = static_cast<float>(loopEnd - loopStart);
+        if (length <= 0.f) return static_cast<float>(loopStart);
+        float phase = std::fmod(local - static_cast<float>(loopStart), length);
+        if (phase < 0.f) phase += length;
+        if (pingPong) {
+            const float doubled = length * 2.f;
+            const float pingPhase = std::fmod(local - static_cast<float>(loopStart), doubled);
+            const float normalized = pingPhase < 0.f ? pingPhase + doubled : pingPhase;
+            return static_cast<float>(loopStart) + (normalized <= length ? normalized : doubled - normalized);
+        }
+        return static_cast<float>(loopStart) + phase;
+    }
+
+    bool TimeRemap::valid() const {
+        return std::isfinite(offsetFrames) && std::isfinite(stretch) && stretch > 0.f &&
+               (loopEnd < loopStart || loopStart >= 0);
+    }
 
     bool LayerTracks::empty() const {
 

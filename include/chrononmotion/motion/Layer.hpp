@@ -11,12 +11,16 @@
 #include "chrononmotion/motion/Content.hpp"
 #include "chrononmotion/motion/Track.hpp"
 #include "chrononmotion/motion/Transform.hpp"
+#include "chrononmotion/motion/Constraints.hpp"
+#include "chrononmotion/motion/Procedural.hpp"
+#include "chrononmotion/motion/Precomp.hpp"
 
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace chrononmotion::motion {
 
@@ -51,6 +55,20 @@ namespace chrononmotion::motion {
         }
     };
 
+    /// Deterministic mapping from scene frames to a layer's local timeline.
+    struct TimeRemap {
+        float offsetFrames{0.f};
+        float stretch{1.f};
+        bool reverse{false};
+        int loopStart{0};
+        int loopEnd{-1};
+        bool pingPong{false};
+        bool freeze{false};
+
+        [[nodiscard]] float mapFrame(float frame) const;
+        [[nodiscard]] bool valid() const;
+    };
+
     /// The per-property animation channels of a layer.
     ///
     /// Every channel is independently keyed: a layer can animate only `opacity`,
@@ -82,11 +100,19 @@ namespace chrononmotion::motion {
         std::string name{};
         Id parentId{kRoot};
         ContentRef content{};
+        CompositionRef precomp{};
         FrameRange lifetime{};
+        TimeRemap timeRemap{};
         /// False for a 2.5D plane layer. See `flat()`.
         bool is3D{true};
+        bool castsShadow{false};
+        bool acceptsShadow{true};
+        float shadowOpacity{1.f};
+        float shadowBlur{0.f};
         Transform transform{};
         LayerTracks tracks{};
+        std::vector<ConstraintSpec> constraints{};
+        std::vector<DriverSpec> drivers{};
 
         Layer() = default;
         Layer(Id id, std::string name);

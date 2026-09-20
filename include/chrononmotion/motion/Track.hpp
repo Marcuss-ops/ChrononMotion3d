@@ -12,6 +12,7 @@
 
 #include "chrononmotion/math/Quaternion.hpp"
 #include "chrononmotion/math/Vector3.hpp"
+#include "chrononmotion/math/Color.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -51,6 +52,13 @@ namespace chrononmotion::motion {
 
         Quaternion out;
         out.slerpQuaternions(a, b, t);
+        return out;
+    }
+
+    [[nodiscard]] inline Color blendValue(const Color& a, const Color& b, float t) {
+
+        Color out;
+        out.lerpColors(a, b, t);
         return out;
     }
 

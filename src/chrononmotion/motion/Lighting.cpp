@@ -9,14 +9,30 @@ namespace chrononmotion::motion {
         return intensityTrack.empty() ? intensity : intensityTrack.sample(seconds);
     }
 
+    Color Light::sampleColor(float seconds) const {
+        return colorTrack.empty() ? color : colorTrack.sample(seconds);
+    }
+
+    Transform Light::sampleTransform(float seconds) const {
+        Transform result = transform;
+        if (!positionTrack.empty()) result.position = positionTrack.sample(seconds);
+        if (!rotationTrack.empty()) result.rotation = rotationTrack.sample(seconds);
+        return result;
+    }
+
     LightSample Light::sample(float seconds) const {
         LightSample result;
         result.kind = kind_;
         result.id = id;
         result.parentId = parentId;
-        result.local = transform;
-        result.color = color;
+        result.local = sampleTransform(seconds);
+        result.color = sampleColor(seconds);
         result.intensity = sampleIntensity(seconds);
+        result.castsShadow = castsShadow;
+        result.shadowBias = shadowBiasTrack.empty() ? shadowBias : shadowBiasTrack.sample(seconds);
+        result.shadowNormalBias = shadowNormalBiasTrack.empty() ? shadowNormalBias : shadowNormalBiasTrack.sample(seconds);
+        result.shadowRadius = shadowRadiusTrack.empty() ? shadowRadius : shadowRadiusTrack.sample(seconds);
+        if (!directionTrack.empty()) result.direction = directionTrack.sample(seconds);
         return result;
     }
 
@@ -37,8 +53,8 @@ namespace chrononmotion::motion {
 
     LightSample PointLight::sample(float seconds) const {
         LightSample result = Light::sample(seconds);
-        result.range = range;
-        result.decay = decay;
+        result.range = rangeTrack.empty() ? range : rangeTrack.sample(seconds);
+        result.decay = decayTrack.empty() ? decay : decayTrack.sample(seconds);
         return result;
     }
 
@@ -48,10 +64,10 @@ namespace chrononmotion::motion {
     LightSample SpotLight::sample(float seconds) const {
         LightSample result = Light::sample(seconds);
         result.targetId = targetId;
-        result.range = range;
-        result.angle = angle;
-        result.penumbra = penumbra;
-        result.decay = decay;
+        result.range = rangeTrack.empty() ? range : rangeTrack.sample(seconds);
+        result.angle = angleTrack.empty() ? angle : angleTrack.sample(seconds);
+        result.penumbra = penumbraTrack.empty() ? penumbra : penumbraTrack.sample(seconds);
+        result.decay = decayTrack.empty() ? decay : decayTrack.sample(seconds);
         return result;
     }
 

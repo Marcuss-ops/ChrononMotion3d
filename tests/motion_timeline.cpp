@@ -66,6 +66,75 @@ namespace {
         checkNear(layer.endTime(), 1.f, 1e-6f, "the layer reports the end of its keys");
     }
 
+    void timeRemapIsDeterministic() {
+
+        section("time remap");
+
+        TimeRemap remap;
+        remap.offsetFrames = 10.f;
+        remap.stretch = 2.f;
+        checkNear(remap.mapFrame(4.f), 12.f, 1e-5f, "stretch maps source frames into local time");
+
+        remap.reverse = true;
+        checkNear(remap.mapFrame(4.f), 8.f, 1e-5f, "reverse remap runs deterministically");
+
+        remap.reverse = false;
+        remap.loopStart = 0;
+        remap.loopEnd = 4;
+        checkNear(remap.mapFrame(9.f), 2.5f, 1e-5f, "loop remap wraps at its declared end");
+
+        remap.pingPong = true;
+        checkNear(remap.mapFrame(3.f), 3.5f, 1e-5f, "ping-pong remap follows its first half");
+
+        remap.freeze = true;
+        checkNear(remap.mapFrame(999.f), 10.f, 1e-5f, "freeze remap holds the offset");
+
+        remap.stretch = 0.f;
+        check(!remap.valid(), "a non-positive stretch is invalid");
+    }
+
+    void constraintsAndDriversAreDeterministic() {
+
+        section("constraints and procedural drivers");
+
+        MotionScene scene("operators", 30.f);
+        scene.addContent(1, "Target", ContentRef::image("target", {10.f, 10.f}));
+        scene.addContent(2, "Follower", ContentRef::image("follower", {10.f, 10.f}));
+        scene.findLayer(1)->transform.position.set(10.f, 0.f, 0.f);
+        Layer* follower = scene.findLayer(2);
+        follower->transform.position.set(0.f, 0.f, 0.f);
+        follower->constraints.push_back(ConstraintSpec{ConstraintKind::KeepDistance, 1, {}, {1.f, 1.f, 1.f}, 5.f, 1.f});
+        DriverSpec wiggle;
+        wiggle.kind = DriverKind::Wiggle;
+        wiggle.property = DriverProperty::Position;
+        wiggle.seed = 7;
+        wiggle.amplitude = 0.25f;
+        wiggle.frequency = 2.f;
+        follower->drivers.push_back(wiggle);
+
+        scene.evaluate(15);
+        Vector3 position;
+        position.setFromMatrixPosition(scene.worldMatrix(2));
+        checkNear(position.x, 5.f + evaluateDriverOffset(wiggle, 0.5f, Vector3(5.f, 0.f, 0.f)).x,
+                  1e-4f, "keep-distance and wiggle compose deterministically");
+        const Matrix4 first = scene.worldMatrix(2);
+        scene.evaluate(15);
+        check(sameMatrix(first, scene.worldMatrix(2)), "constraints and drivers are random-access deterministic");
+
+        Layer* pathLayer = scene.findLayer(2);
+        pathLayer->constraints.clear();
+        pathLayer->drivers.clear();
+        ConstraintSpec follow;
+        follow.kind = ConstraintKind::FollowPath;
+        follow.path = std::make_shared<MotionPath>(MotionPath::line(Vector3(0.f, 0.f, 0.f), Vector3(10.f, 0.f, 0.f)));
+        follow.amount = 1.f;
+        follow.progress = 0.25f;
+        pathLayer->constraints.push_back(follow);
+        scene.evaluate(0);
+        checkNear(worldPositionOf(scene, 2), Vector3(2.5f, 0.f, 0.f), 1e-4f,
+                  "follow-path constraint places a layer on its path");
+    }
+
     void frameRangeLifetime() {
 
         section("frame range");
@@ -214,30 +283,39 @@ namespace {
         controller->tracks.rotation.add(1.f, Vector3(0.f, math::degToRad(15.f), 0.f));
         title->tracks.opacity.add(0.f, 0.f);
         title->tracks.opacity.add(1.f, 1.f);
+        title->castsShadow = true;
+        title->shadowOpacity = 0.75f;
+        title->shadowBlur = 3.f;
 
-        scene.evaluate(37);
+        scene.evaluate(15);
         const Matrix4 first = scene.worldMatrix(11);
+        const Matrix4 previous = scene.state(11).previousWorld;
         const float firstOpacity = scene.worldOpacity(11);
         const bool firstVisible = scene.visible(11);
 
-        scene.evaluate(37);
+        scene.evaluate(15);
         check(sameMatrix(first, scene.worldMatrix(11)), "evaluating the same frame twice is identical");
+        check(!sameMatrix(first, previous), "motion-blur state carries a distinct previous transform");
+        const CompiledScene compiled = scene.compile();
+        check(compiled.transforms[1].castsShadow && compiled.transforms[1].shadowOpacity == 0.75f &&
+                      compiled.transforms[1].shadowBlur == 3.f,
+              "compiled transform carries layer shadow intent");
         checkNear(scene.worldOpacity(11), firstOpacity, 0.f, "opacity is identical across evaluations");
         check(scene.visible(11) == firstVisible, "visibility is identical across evaluations");
 
         // Calling a different frame in between must not change the answer: the
         // state is a function of the frame, not of the evaluation history.
         scene.evaluate(90);
-        scene.evaluate(37);
+        scene.evaluate(15);
         check(sameMatrix(first, scene.worldMatrix(11)),
               "a frame's state does not depend on which frame was evaluated before it");
 
         // Frame and PTS agree.
         const Matrix4 byFrame = scene.worldMatrix(11);
-        scene.evaluatePts(37.f / 30.f);
+        scene.evaluatePts(15.f / 30.f);
         check(sameMatrix(byFrame, scene.worldMatrix(11)), "evaluating by PTS matches evaluating by frame");
-        check(scene.lastEvaluatedFrame() == 37, "the scene reports the last evaluated frame");
-        checkNear(scene.lastEvaluatedPts(), 37.f / 30.f, 1e-6f, "the scene reports the last evaluated PTS");
+        check(scene.lastEvaluatedFrame() == 15, "the scene reports the last evaluated frame");
+        checkNear(scene.lastEvaluatedPts(), 15.f / 30.f, 1e-6f, "the scene reports the last evaluated PTS");
 
         check(MotionTime::atFrame(48, 24.f).frame == 48, "a frame time keeps its frame");
         checkNear(MotionTime::atFrame(48, 24.f).pts(), 2.f, 1e-6f, "a frame time derives its PTS");
@@ -351,6 +429,8 @@ namespace {
 int main() {
 
     layerSamplesStaticAndAnimatedPose();
+    timeRemapIsDeterministic();
+    constraintsAndDriversAreDeterministic();
     frameRangeLifetime();
     hierarchyComposesWorldTransforms();
     lifetimeHidesSubtreesAndOpacityMultiplies();

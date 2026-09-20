@@ -60,7 +60,10 @@ namespace chrononmotion::motion {
     struct LayerState {
         Transform local{};
         Matrix4 world{};
+        Matrix4 previousWorld{};
         float worldOpacity{1.f};
+        float previousWorldOpacity{1.f};
+        bool previousVisible{true};
         bool visible{true};
         bool evaluated{false};
     };
