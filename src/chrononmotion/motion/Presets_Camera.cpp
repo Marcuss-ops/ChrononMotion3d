@@ -11,6 +11,7 @@
 #include "chrononmotion/math/MathUtils.hpp"
 
 #include <cmath>
+#include <stdexcept>
 
 namespace chrononmotion::motion::presets {
 
@@ -67,6 +68,21 @@ namespace chrononmotion::motion::presets {
 
     void focusPush(CameraRig& rig, int inFrame, int duration, float distance, float fps) {
         cameraPush(rig, inFrame, duration, distance, fps);
+    }
+
+    void rackFocus(CameraRig& rig, int inFrame, int duration,
+                   float fromDistance, float toDistance, float fps) {
+
+        if (!std::isfinite(fromDistance) || !std::isfinite(toDistance) ||
+            fromDistance < 0.f || toDistance < 0.f) {
+            throw std::invalid_argument("rackFocus: focus distances must be finite and non-negative");
+        }
+
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+
+        rig.focusDistanceTrack().add(t0, fromDistance, Easing::easeInOut());
+        rig.focusDistanceTrack().add(t1, toDistance, Easing::linear());
     }
 
     void cameraShake(CameraRig& rig, int inFrame, int duration, float amplitude, float fps) {

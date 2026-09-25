@@ -70,6 +70,33 @@ namespace chrononmotion::motion {
         return *this;
     }
 
+    CameraRig& CameraRig::setAperture(float millimetres) {
+
+        if (!std::isfinite(millimetres) || millimetres < 0.f) {
+            throw std::invalid_argument("CameraRig::setAperture: aperture must be finite and non-negative");
+        }
+        aperture_ = millimetres;
+        return *this;
+    }
+
+    CameraRig& CameraRig::setFocusDistance(float distance) {
+
+        if (!std::isfinite(distance) || distance < 0.f) {
+            throw std::invalid_argument("CameraRig::setFocusDistance: focus distance must be finite and non-negative");
+        }
+        focusDistance_ = distance;
+        return *this;
+    }
+
+    CameraRig& CameraRig::setFStop(float fStop) {
+
+        if (!std::isfinite(fStop) || fStop < 0.f) {
+            throw std::invalid_argument("CameraRig::setFStop: f-stop must be finite and non-negative");
+        }
+        fStop_ = fStop;
+        return *this;
+    }
+
     CameraRig& CameraRig::setParent(Layer::Id parentId) {
 
         layer_.parentId = parentId;
@@ -88,6 +115,9 @@ namespace chrononmotion::motion {
         end = std::max(end, fovTrack_.endTime());
         end = std::max(end, focalTrack_.endTime());
         end = std::max(end, rollTrack_.endTime());
+        end = std::max(end, apertureTrack_.endTime());
+        end = std::max(end, focusDistanceTrack_.endTime());
+        end = std::max(end, fStopTrack_.endTime());
         return end;
     }
 
@@ -195,6 +225,9 @@ namespace chrononmotion::motion {
         pose.fov = fovTrack_.empty() ? fov_ : fovTrack_.sample(seconds);
         pose.focalLength = focalTrack_.empty() ? focalLength_ : focalTrack_.sample(seconds);
         pose.roll = rollTrack_.empty() ? roll_ : rollTrack_.sample(seconds);
+        pose.aperture = apertureTrack_.empty() ? aperture_ : apertureTrack_.sample(seconds);
+        pose.focusDistance = focusDistanceTrack_.empty() ? focusDistance_ : focusDistanceTrack_.sample(seconds);
+        pose.fStop = fStopTrack_.empty() ? fStop_ : fStopTrack_.sample(seconds);
 
         if (pose.hasTarget) {
             lookAtPose(pose, pose.target);

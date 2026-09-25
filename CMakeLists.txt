@@ -73,6 +73,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/Transform.cpp
         src/chrononmotion/motion/Layer.cpp
         src/chrononmotion/motion/MotionScene.cpp
+        src/chrononmotion/motion/SceneExport.cpp
         src/chrononmotion/motion/MotionPath.cpp
         src/chrononmotion/motion/MotionPlane.cpp
         src/chrononmotion/motion/CameraRig.cpp
@@ -148,6 +149,19 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_foundation tests/motion_foundation.cpp)
     target_link_libraries(chrononmotion_foundation PRIVATE chrononmotion)
     add_test(NAME chrononmotion_foundation COMMAND chrononmotion_foundation)
+
+    # Motion kinematics: sub-frame time, easing derivative, per-channel velocity
+    # and the scene-level motion API.
+    add_executable(chrononmotion_kinematics tests/motion_kinematics.cpp)
+    target_link_libraries(chrononmotion_kinematics PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_kinematics COMMAND chrononmotion_kinematics)
+
+    # The motion-authoring gaps that were open against After Effects: the track
+    # modifier chain (loop/posterize/delay/link), the keyframed time remap, lens
+    # data on the camera rig, mesh layers and the scene JSON export.
+    add_executable(chrononmotion_authoring tests/motion_authoring.cpp)
+    target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_authoring COMMAND chrononmotion_authoring)
 
     # Architectural guardrail: this tree must not reference content machinery
     # (text shaping, fonts, glyphs, raster, image/video decoding) or acquire a

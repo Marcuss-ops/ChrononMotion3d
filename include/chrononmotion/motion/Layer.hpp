@@ -8,6 +8,9 @@
 #ifndef CHRONONMOTION_MOTION_LAYER_HPP
 #define CHRONONMOTION_MOTION_LAYER_HPP
 
+#include "chrononmotion/core/BufferGeometry.hpp"
+#include "chrononmotion/core/Object3D.hpp"
+#include "chrononmotion/materials/Descriptors.hpp"
 #include "chrononmotion/motion/Content.hpp"
 #include "chrononmotion/motion/Track.hpp"
 #include "chrononmotion/motion/Transform.hpp"
@@ -17,6 +20,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -88,8 +92,26 @@ namespace chrononmotion::motion {
         [[nodiscard]] float endTime() const;
     };
 
+    /// The renderer-facing half of a mesh layer.
+    ///
+    /// Chronon still owns the model's bytes; this side carries only the opaque
+    /// asset identity plus the data-only geometry/material handles a compiler
+    /// may hand to a renderer. Nothing here is decoded, measured or rasterized.
+    struct MeshAttachment {
+        /// Opaque identity of the Chronon-owned model asset.
+        std::string assetId{};
+
+        /// Optional in-tree geometry (a Box/Plane/Sphere builder). Null means the
+        /// asset lives entirely on the content side and is resolved by id.
+        std::shared_ptr<BufferGeometry> geometry{};
+
+        MaterialDescriptor material{MaterialDescriptor::unlit(0)};
+
+        [[nodiscard]] bool empty() const { return assetId.empty() && !geometry; }
+    };
+
     /// A layer: identity, parent, content, lifetime and the animated transform.
-    class Layer {
+    class Layer : public Object3D {
     public:
         using Id = std::uint32_t;
 
@@ -97,12 +119,16 @@ namespace chrononmotion::motion {
         static constexpr Id kRoot = 0;
 
         Id id{kRoot};
-        std::string name{};
         Id parentId{kRoot};
         ContentRef content{};
+        /// Present for a mesh layer: asset identity + renderer-facing handles.
+        MeshAttachment mesh{};
         CompositionRef precomp{};
         FrameRange lifetime{};
         TimeRemap timeRemap{};
+        /// Optional scene-seconds -> local-frame curve; when keyed, it replaces
+        /// the static TimeRemap mapping for this layer.
+        Track<float> timeRemapTrack{};
         /// False for a 2.5D plane layer. See `flat()`.
         bool is3D{true};
         bool castsShadow{false};
@@ -117,10 +143,25 @@ namespace chrononmotion::motion {
         Layer() = default;
         Layer(Id id, std::string name);
 
+        /// Copy the authoring state into a **fresh, detached** node.
+        ///
+        /// `Object3D` identity and graph links belong to the node instance, so a
+        /// copy is a new node carrying the same motion — never a second parent
+        /// link and never a shared matrix. That is what makes `addLayer(layer)`
+        /// on an already-built layer safe.
+        Layer(const Layer& source);
+        Layer(Layer&& source) noexcept = default;
+
+        /// Move the authoring state into *this* node, keeping this node's
+        /// `Object3D` identity and graph position. This is how a scene absorbs a
+        /// newly authored layer without moving graph nodes around.
+        Layer& replaceAuthoring(Layer&& source);
+
         /// A null/controller layer owns no content: it exists to drive the layers
         /// parented under it (rotation rig, scale rig, camera rig).
-        [[nodiscard]] bool isNull() const { return content.empty(); }
-        [[nodiscard]] bool isContent() const { return !content.empty(); }
+        [[nodiscard]] bool isNull() const { return content.empty() && mesh.empty(); }
+        [[nodiscard]] bool isContent() const { return !isNull(); }
+        [[nodiscard]] bool isMesh() const { return !mesh.empty(); }
 
         [[nodiscard]] bool visibleAt(int frame) const { return lifetime.contains(frame); }
         [[nodiscard]] bool animated() const { return !tracks.empty(); }
@@ -130,8 +171,32 @@ namespace chrononmotion::motion {
         void sample(float seconds, Transform& out) const;
         [[nodiscard]] Transform sample(float seconds) const;
 
+        /// Sampling with cross-layer link resolution. A channel carrying a
+        /// `LinkModifier` cannot be sampled without one — that is the whole
+        /// point of the modifier — so the two-argument form above is the
+        /// standalone contract and this is the composed one.
+        void sample(float seconds, Transform& out, const LinkResolver& resolve) const;
+        [[nodiscard]] Transform sample(float seconds, const LinkResolver& resolve) const;
+
+        /// The layer's own keyed motion at `seconds`: the exact derivative of
+        /// this layer's position/rotation/scale/opacity tracks.
+        ///
+        /// Deliberately LOCAL. It does not see drivers, constraints, time remap,
+        /// anchor composition or the parent chain, so for a parented or driven
+        /// layer this is the timeline's contribution only. Use
+        /// `MotionScene::motion()` when the world-space rate of the pixels is what
+        /// is needed. The difference between the two is exactly the amount of
+        /// motion the composition is adding on top of the keys.
+        [[nodiscard]] LayerMotion keyedMotion(float seconds) const;
+
+        /// The same derivative with links resolved. `resolveRates` must return
+        /// the linked channel's **derivative**, exactly as `Track::velocity`.
+        [[nodiscard]] LayerMotion keyedMotion(float seconds, const LinkResolver& resolveRates) const;
+
         /// The latest key represented by this layer, in seconds.
         [[nodiscard]] float endTime() const;
+        [[nodiscard]] float mapFrame(float sceneFrame, float sceneSeconds,
+                                     const LinkResolver& resolve = {}) const;
 
         // --- fluent authoring helpers, each returning *this
         Layer& named(std::string value);
@@ -146,11 +211,14 @@ namespace chrononmotion::motion {
         Layer& alive(FrameRange range);
         Layer& alive(int inFrame, int outFrame);
         Layer& contentOf(ContentRef value);
+        Layer& withMesh(MeshAttachment value);
 
         /// Mark the layer as a 2.5D plane rather than a fully 3D object. A
         /// `MotionPlane` does this when it is applied: the layer is positioned in
         /// 3D, but the thing it draws is a flat quad facing the camera.
         Layer& flat();
+
+        ~Layer() override = default;
     };
 
 }// namespace chrononmotion::motion

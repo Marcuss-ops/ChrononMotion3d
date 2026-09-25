@@ -43,6 +43,11 @@ namespace chrononmotion::motion {
         std::string name{};
         std::shared_ptr<BufferGeometry> geometry{};
         MaterialDescriptor material{MaterialDescriptor::unlit(0)};
+
+        /// Opaque identity of the model asset when the geometry itself lives on
+        /// the content side. Either this or `geometry` must be present; the
+        /// descriptor is the whole of what crosses the boundary.
+        std::string assetId{};
     };
 
     /// Immutable-by-convention data plane handed to a future renderer. The
@@ -64,7 +69,9 @@ namespace chrononmotion::motion {
         }
 
         void addMesh(MeshDescriptor mesh) {
-            if (!mesh.geometry) throw std::invalid_argument("CompiledScene::addMesh: geometry is required");
+            if (!mesh.geometry && mesh.assetId.empty()) {
+                throw std::invalid_argument("CompiledScene::addMesh: a geometry or an asset id is required");
+            }
             mesh.material.validate();
             meshes.push_back(std::move(mesh));
         }

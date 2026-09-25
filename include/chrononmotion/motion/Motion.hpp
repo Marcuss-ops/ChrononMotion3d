@@ -5,6 +5,8 @@
 //   Easing        linear / ease in-out / custom cubic Bézier / overshoot / bounce
 //   Layer         identity, parent, content, in/out lifetime, animated transform
 //   MotionScene   hierarchy (Parent, Null) + deterministic frame/PTS evaluation
+//   SceneExport   deterministic JSON export of space and time, never content
+//   Track         + modifiers: loop / posterize / delay / cross-layer link
 //   MotionPath    line / cubic Bézier / Catmull-Rom + orient-to-path
 //   MotionPlane   2.5D text and image planes, Z depth, perspective + parallax
 //   CameraRig     perspective, look-at, dolly/pan/tilt/orbit/roll, FOV/focal
@@ -22,6 +24,7 @@
 #include "chrononmotion/motion/Track.hpp"
 #include "chrononmotion/motion/Layer.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
+#include "chrononmotion/motion/SceneExport.hpp"
 #include "chrononmotion/motion/MotionPath.hpp"
 #include "chrononmotion/motion/MotionPlane.hpp"
 #include "chrononmotion/motion/CameraRig.hpp"

@@ -38,6 +38,13 @@ namespace chrononmotion::motion {
         /// Focal length in millimetres. 0 means "not authored": `fov` wins.
         float focalLength{0.f};
 
+        /// Lens data for depth of field. Each 0 means "not authored": the motion
+        /// side carries the numbers and never interprets them, so a renderer
+        /// applies what is present and leaves the rest to its own optics.
+        float aperture{0.f};      ///< Entrance pupil diameter, in millimetres.
+        float focusDistance{0.f}; ///< Distance to the focal plane, in world units.
+        float fStop{0.f};         ///< Aperture as f/N.
+
         /// Roll about the view axis, after the aim is solved.
         float roll{0.f};
     };
@@ -65,6 +72,9 @@ namespace chrononmotion::motion {
         CameraRig& setFov(float degrees);
         CameraRig& setFocalLength(float millimetres);
         CameraRig& setRoll(float radians);
+        CameraRig& setAperture(float millimetres);
+        CameraRig& setFocusDistance(float distance);
+        CameraRig& setFStop(float fStop);
         CameraRig& setParent(Layer::Id parentId);
 
         [[nodiscard]] Vector3 position() const { return layer_.transform.position; }
@@ -73,6 +83,9 @@ namespace chrononmotion::motion {
         [[nodiscard]] Vector3 target() const { return target_; }
         [[nodiscard]] float fov() const { return fov_; }
         [[nodiscard]] float roll() const { return roll_; }
+        [[nodiscard]] float aperture() const { return aperture_; }
+        [[nodiscard]] float focusDistance() const { return focusDistance_; }
+        [[nodiscard]] float fStop() const { return fStop_; }
         [[nodiscard]] float aspect() const { return aspect_; }
         [[nodiscard]] float nearPlane() const { return nearPlane_; }
         [[nodiscard]] float farPlane() const { return farPlane_; }
@@ -88,6 +101,9 @@ namespace chrononmotion::motion {
         [[nodiscard]] Track<float>& fovTrack() { return fovTrack_; }
         [[nodiscard]] Track<float>& focalLengthTrack() { return focalTrack_; }
         [[nodiscard]] Track<float>& rollTrack() { return rollTrack_; }
+        [[nodiscard]] Track<float>& apertureTrack() { return apertureTrack_; }
+        [[nodiscard]] Track<float>& focusDistanceTrack() { return focusDistanceTrack_; }
+        [[nodiscard]] Track<float>& fStopTrack() { return fStopTrack_; }
 
         /// Sample the local pose at `seconds`.
         [[nodiscard]] CameraPose sample(float seconds) const;
@@ -133,6 +149,12 @@ namespace chrononmotion::motion {
         Track<float> fovTrack_;
         Track<float> focalTrack_;
         Track<float> rollTrack_;
+        float aperture_{0.f};
+        float focusDistance_{0.f};
+        float fStop_{0.f};
+        Track<float> apertureTrack_;
+        Track<float> focusDistanceTrack_;
+        Track<float> fStopTrack_;
         float aspect_{16.f / 9.f};
         float nearPlane_{0.1f};
         float farPlane_{2000.f};

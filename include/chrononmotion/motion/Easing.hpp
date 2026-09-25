@@ -24,7 +24,10 @@ namespace chrononmotion::motion {
             Linear,
             CubicBezier,
             BounceOut,
-            ElasticOut
+            ElasticOut,
+            ExpoOut,
+            CircOut,
+            Steps
         };
 
         Easing() = default;
@@ -41,8 +44,31 @@ namespace chrononmotion::motion {
         [[nodiscard]] static Easing bounceOut();
         [[nodiscard]] static Easing elasticOut();
 
+        /// Exponential ease-out: fast launch, long tail. The CSS `ease-out` shape,
+        /// for a value that should feel instant and then settle without a bounce.
+        [[nodiscard]] static Easing expoOut();
+
+        /// Circular ease-out: a gentler tail than expoOut.
+        [[nodiscard]] static Easing circOut();
+
+        /// Stepped hold with `steps` discrete levels. The progress is the index of
+        /// the level containing t, so the value holds flat between levels and jumps
+        /// at the boundaries. `steps == 1` is a single jump at the end.
+        [[nodiscard]] static Easing steps(int count);
+
         [[nodiscard]] float operator()(float t) const;
         [[nodiscard]] float ease(float t) const { return (*this)(t); }
+
+        /// d/dt of the eased progress, per unit of the *input* t.
+        ///
+        /// This is the normalized derivative: it does NOT include the stretch of
+        /// the segment, so a track segment must scale it by 1/segmentSeconds to get
+        /// real units per second. `Track::velocity` does that. Endpoints of the
+        /// piecewise curves are reported as the interior one-sided slope, except
+        /// where a jump exists (Steps), which is reported as a finite slope between
+        /// levels, not an infinite impulse — a delta has no single-point derivative
+        /// and a NaN here would poison every consumer.
+        [[nodiscard]] float derivative(float t) const;
 
         [[nodiscard]] Kind kind() const { return kind_; }
         [[nodiscard]] bool isLinear() const { return kind_ == Kind::Linear; }
@@ -50,18 +76,21 @@ namespace chrononmotion::motion {
         [[nodiscard]] float y1() const { return y1_; }
         [[nodiscard]] float x2() const { return x2_; }
         [[nodiscard]] float y2() const { return y2_; }
+        /// Number of levels for `Steps`; 0 for every other kind.
+        [[nodiscard]] int stepCount() const { return stepCount_; }
 
         bool operator==(const Easing& other) const;
         bool operator!=(const Easing& other) const { return !(*this == other); }
 
     private:
-        Easing(Kind kind, float x1, float y1, float x2, float y2);
+        Easing(Kind kind, float x1, float y1, float x2, float y2, int stepCount = 0);
 
         Kind kind_{Kind::Linear};
         float x1_{0.f};
         float y1_{0.f};
         float x2_{1.f};
         float y2_{1.f};
+        int stepCount_{0};
     };
 
 }// namespace chrononmotion::motion

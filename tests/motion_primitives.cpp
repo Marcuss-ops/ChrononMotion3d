@@ -6,6 +6,7 @@
 // only composition of these, so a regression here must fail here.
 
 #include "chrononmotion/chrononmotion.hpp"
+#include "chrononmotion/motion/TrackedMotion.hpp"
 
 #include "motion_check.hpp"
 
@@ -315,6 +316,38 @@ namespace {
               "while the original still knows nothing");
     }
 
+    // -------------------------------------------------------- tracked ingest
+
+    void trackedKeyframeIngest() {
+
+        section("tracked keyframe ingest");
+
+        const std::vector<TrackedPoint> points{
+            {0.f, 10.f, 20.f, 1.f},
+            {1.f, 12.f, 22.f, 0.9f},
+            {2.f, 999.f, 999.f, 0.1f}, // lost sample
+            {3.f, 16.f, 26.f, 0.8f},
+        };
+        const Track<Vector3> track = trackFromPoints(points, 0.25f);
+        check(!track.empty(), "reliable samples become keys");
+        checkNear(track.startTime(), 0.f, 1e-6f, "track starts at the first reliable sample");
+        checkNear(track.endTime(), 3.f, 1e-6f, "track ends at the last reliable sample");
+        Vector3 mid;
+        track.sample(1.5f, mid);
+        // t=1.5 sits a quarter of the way along the 1s..3s key segment:
+        // 12 + 0.25 * (16 - 12) = 13.
+        checkNear(mid.x, 13.f, 1e-4f, "the lost sample is interpolated over, not injected");
+        checkNear(mid.y, 23.f, 1e-4f, "on both axes");
+        checkNear(mid.z, 0.f, 1e-6f, "tracked points stay planar (z = 0)");
+        Vector3 exact;
+        track.sample(3.f, exact);
+        checkNear(exact.x, 16.f, 1e-4f, "the last reliable sample lands exactly");
+
+        const std::vector<TrackedPoint> allLost{{0.f, 5.f, 5.f, 0.f}, {1.f, 6.f, 6.f, 0.2f}};
+        check(trackFromPoints(allLost, 0.25f).empty(),
+              "a track with no reliable sample stays empty");
+    }
+
 }// namespace
 
 int main() {
@@ -324,6 +357,7 @@ int main() {
     transformBlending();
     trackSampling();
     contentMeasurementFingerprint();
+    trackedKeyframeIngest();
 
     return chrononmotion_test::report();
 }

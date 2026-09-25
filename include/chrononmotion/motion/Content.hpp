@@ -24,7 +24,8 @@ namespace chrononmotion::motion {
         None,
         Text,
         Image,
-        Video
+        Video,
+        Mesh
     };
 
     /// The neutral, content-free measurements the motion side needs to anchor a
@@ -102,6 +103,15 @@ namespace chrononmotion::motion {
             return ContentRef{std::move(id), ContentKind::Video, ContentMetrics{std::string{}, naturalSize, anchor}};
         }
 
+        /// A 3D model asset. Still only an opaque identity plus a neutral
+        /// rectangle — a mesh layer transforms a model, it never reads one.
+        [[nodiscard]] static ContentRef mesh(std::string id,
+                                            Vector2 naturalSize = Vector2(0.f, 0.f),
+                                            Vector2 anchor = Vector2(0.5f, 0.5f)) {
+
+            return ContentRef{std::move(id), ContentKind::Mesh, ContentMetrics{std::string{}, naturalSize, anchor}};
+        }
+
         /// A handle whose rectangle was measured from content with this digest.
         /// This is the form a Chronon-produced ref takes; the un-fingerprinted
         /// factories above stay for hand-authored geometry and for the tests.
@@ -134,6 +144,7 @@ namespace chrononmotion::motion {
         [[nodiscard]] bool isText() const { return kind == ContentKind::Text; }
         [[nodiscard]] bool isImage() const { return kind == ContentKind::Image; }
         [[nodiscard]] bool isVideo() const { return kind == ContentKind::Video; }
+        [[nodiscard]] bool isMesh() const { return kind == ContentKind::Mesh; }
 
         /// Identity only: `metrics` is a cached measurement of the same asset, not
         /// part of what makes it the same asset — and neither is its fingerprint,

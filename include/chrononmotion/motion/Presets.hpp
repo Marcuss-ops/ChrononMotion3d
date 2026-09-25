@@ -203,6 +203,12 @@ namespace chrononmotion::motion {
         void shakeMild(CameraRig& rig, int inFrame, int duration, float amplitude, float fps);
         void focusPush(CameraRig& rig, int inFrame, int duration, float distance, float fps);
 
+        /// Rack focus: move the focal plane from one distance to another while
+        /// the camera itself stays put. Keys only the focus-distance channel, so
+        /// it composes with any move that is also on the rig.
+        void rackFocus(CameraRig& rig, int inFrame, int duration,
+                       float fromDistance, float toDistance, float fps);
+
         /// A light, deterministic shake (no RNG: the same frames always shake the same way).
         void cameraShake(CameraRig& rig, int inFrame, int duration, float amplitude, float fps);
 
