@@ -15,8 +15,10 @@
 #include <chronon3d/render_plan/render_plan.hpp>
 
 #include <optional>
+#include <span>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace chrononmotion::motion {
 
@@ -27,7 +29,10 @@ namespace chrononmotion::motion {
         std::string outputPath{"output.png"};
         std::string schema{chronon3d::render_plan::kRenderPlanSchemaV2};
         // Content owners provide concrete renderer-facing plans by opaque
-        // ContentRef id. Motion never invents assets, text bytes, or styling.
+        // ContentRef id. For Mesh layers, Layer::mesh.geometry is explicitly
+        // lowered to an inline static-triangle payload; an assetId without
+        // geometry is not consumable by this RenderPlan contract. Motion never
+        // invents assets, text bytes, or styling.
         // Caller-supplied content/shape/style identity, keyed by layer id.
         std::unordered_map<std::string, chronon3d::render_plan::LayerPlan> contentLayers{};
         std::optional<chronon3d::render_plan::CameraPlan> camera{};
@@ -43,7 +48,10 @@ namespace chrononmotion::motion {
         MotionScene& scene, const RenderPlanLoweringOptions& options = {});
 
 
-    /// Lower a fully sampled camera pose to Chronon3D's camera contract.
+    /// Lower a sampled camera pose to Chronon3D's camera contract. The pose's
+    /// orientation must already include target aiming and roll (as CameraRig::sample
+    /// provides); target/roll metadata is not a separate RenderPlan channel.
+    /// Chronon3D has no focal-length/DoF fields, so authored lens values fail closed.
     [[nodiscard]] chronon3d::render_plan::CameraPlan lowerCameraPose(
         const CameraPose& pose, float nearPlane = 1.f, float farPlane = 10000.f);
 
@@ -52,12 +60,18 @@ namespace chrononmotion::motion {
     [[nodiscard]] std::vector<chronon3d::render_plan::ShapePathCommandPlan>
     lowerBakedPath(const BakedPath& path);
 
-    /// Attach already-baked geometry as static V3 shape-plan path operators.
-    /// Animation remains represented by explicit typed morph tracks supplied by
-    /// the caller, keeping the adapter free from per-frame shape solving.
+    /// Attach baked static geometry to a V3 path shape plan. `repeaterCopies`
+    /// is the complete output of expandPathRepeater(), including its identity
+    /// first copy; that copy is already the layer path and is not merged twice.
     void applyBakedPathGeometry(chronon3d::render_plan::LayerPlan& layer,
                                 const BakedPath& path,
                                 std::span<const BakedPath> repeaterCopies = {});
+
+    /// Attach a baked, topology-compatible morph sequence as a native V3 Morph
+    /// operator with deterministic scalar progress keys at `firstFrame + i`.
+    void applyBakedPathMorph(chronon3d::render_plan::LayerPlan& layer,
+                             std::span<const BakedPath> morphFrames,
+                             int firstFrame = 0);
 
 } // namespace chrononmotion::motion
 

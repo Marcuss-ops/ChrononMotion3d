@@ -6,7 +6,9 @@ ChrononMotion keeps the half of threepp that a deterministic motion/transform
 compiler needs — the scene graph, the transform and quaternion/curve maths, the
 cameras, the keyframe tracks — and drops the half that exists to put pixels on a
 screen or to drive a game and a simulation. No renderer, no window, no physics,
-no sensors, no loaders, no python, no material zoo.
+no sensors, no runtime media decoders, no python, no material zoo. A deliberately
+small, dependency-free static glTF 2.0/GLB 2.0 reader now imports triangle
+geometry as `BufferGeometry` + `Mesh`; see [the reader contract](docs/GLTF_READER.md).
 
 ```text
 threepp (upstream)                     ChrononMotion
@@ -16,7 +18,7 @@ extras/curves                          kept
 objects/{Group,Mesh}, scenes/Scene     kept, narrowed
 materials/ (40 materials + mixins)     one abstract Material base
 renderers/ loaders/ material zoo        deleted
-geometries/                              Box, Plane and Sphere only
+geometries/                              Box, Plane, Sphere + imported BufferGeometry
 lights/ helpers/ utils/ textures/      renderer/runtime parts deleted; data-only lights and spatial math kept
 canvas/ controls/ input/ audio/        deleted
 postprocessing/ splats/ extras/        deleted
@@ -42,7 +44,10 @@ sampling authority has to be Chronon's, not a second mixer's.
 
 **[CHRONONMOTION.md](CHRONONMOTION.md) is the ledger**: what was kept and why,
 what was deleted, every behaviour change against upstream, and what is
-deliberately not done yet. Read it before changing anything here.
+deliberately not done yet. Read it before changing anything here. Offline baker
+contracts are in [OfflineBaking.hpp](include/chrononmotion/motion/OfflineBaking.hpp),
+and the optional typed adapter contract is in
+[RenderPlanLowering.hpp](include/chrononmotion/motion/RenderPlanLowering.hpp).
 
 ## Minimum + 1 foundation
 
@@ -59,12 +64,15 @@ are ChrononMotion-owned; the upstream threepp renderer, shadow system and
 
 ## Status
 
-The motion model is landed on top of the fork. The three.js half still provides
-the maths, the curves, the cameras and the keyframe vocabulary;
-`chrononmotion/motion/` is the layer/transform/timeline/camera model a
-deterministic compiler samples from. The public headers and C++ namespace use
-`chrononmotion`; Box, Plane and Sphere geometry primitives are included. glTF
-import remains deferred — see [CHRONONMOTION.md](CHRONONMOTION.md).
+The motion model, deterministic offline bakers, and static geometry reader are
+available. Verlet/rigid-body, IK, PCM audio feature/driver, flow layout, SVG
+morph/repeater, and RenderPlan lowering execute at authoring time only. The
+optional Chronon3d adapter is built only when `CHRONON3D_INCLUDE_DIR` is supplied;
+it lowers representable poses into typed V2/V3 plans and is never a renderer
+runtime dependency. Static glTF 2.0/GLB 2.0 import is geometry-only and fail-closed;
+see [GLTF_READER.md](docs/GLTF_READER.md). The public headers and C++ namespace
+use `chrononmotion`; Box, Plane, Sphere, and imported BufferGeometry primitives
+are available.
 
 ## The motion model
 
@@ -79,7 +87,9 @@ MotionPath         line / cubic Bézier / Catmull-Rom + orient-to-path
 MotionPlane        2.5D text and image planes, Z depth, perspective + parallax
 CameraRig          perspective, look-at, dolly/pan/tilt/orbit/roll, FOV/focal
 Presets            the YouTube presets, built on the primitives above
-```The presets cover the list a text/image promo actually needs: slide in/out on all four sides, push/pull on Z, scale pop and overshoot, fade + slide, fade + scale, flip X/Y, card turn, 3D tilt, spin Z, spin XYZ, parallax entrance, camera push/pull/pan/orbit/shake, floating hover, drift, arc and path motion, staggered entrance and parent-group reveal — plus an animated pivot (`anchorTo`) and an entrance/exit keyed from the layer's own lifetime (`lifetimeSlide`).
+```
+
+The presets cover the list a text/image promo actually needs: slide in/out on all four sides, push/pull on Z, scale pop and overshoot, fade + slide, fade + scale, flip X/Y, card turn, 3D tilt, spin Z, spin XYZ, parallax entrance, camera push/pull/pan/orbit/shake, floating hover, drift, arc and path motion, staggered entrance and parent-group reveal — plus an animated pivot (`anchorTo`) and an entrance/exit keyed from the layer's own lifetime (`lifetimeSlide`).
 
 The composition rules, in one place:
 
@@ -151,6 +161,14 @@ cmake --build --preset release
 ctest --preset release
 ```
 
+To build the optional Chronon3d RenderPlan adapter and its authoring tests, use
+an adjacent Chronon3d checkout and configure with the Chronon3d include root,
+for example `cmake --preset release -DCHRONON3D_INCLUDE_DIR=../Chronon3d/include`
+(and provide any consumer dependency include root via
+`CHRONON3D_DEPENDENCY_INCLUDE_DIR`). Chronon3d's opt-in adapter lane builds the
+adapter plus `chronon3d_motion_plan_adapter_tests`, which sends V2/V3 plans
+through the canonical schema validator and typed decoder.
+
 `dev-fast` and `release-fast` are the same two builds with ccache, mold and
 Ninja, at 16 parallel jobs (they need ccache and mold on `PATH`, and about 16 GB
 of RAM). They are the same gate, just seconds faster on a warm cache. Measured on
@@ -189,7 +207,16 @@ The result is one static library, `chrononmotion` (alias
 | `chrononmotion_presets` | every preset in the list, by its defining property (including the animated pivot and the lifetime-driven entrance/exit) |
 | `chrononmotion_canary` | the whole primitive set on one timeline (see below), plus the annotated-pivot/lifetime composition |
 | `chrononmotion_foundation` | Ray/Frustum, data-only lights, materials and CompiledScene |
-| `chrononmotion_boundary` | the architectural guardrail |
+| `chrononmotion_kinematics` | sub-frame evaluation and motion channel derivatives |
+| `chrononmotion_authoring` | authoring bakers and the optional RenderPlan adapter |
+| `chrononmotion_offline_golden` | fixed-value and repeated-run offline-baking checks |
+| `chrononmotion_boundary` | the architectural guardrail (CTest script, not a test executable) |
+| `chrononmotion_gltf` | static glTF/GLB geometry import and fail-closed validation |
+| `chrononmotion_upstream_regressions` | adapted retained threepp math/core/animation regression assertions |
+
+Upstream threepp test provenance and compatibility are tracked in
+[THREEPP_TEST_COMPATIBILITY.md](docs/THREEPP_TEST_COMPATIBILITY.md); the file
+separates retained API assertions from renderer-only and removed AnimationMixer tests.
 
 Consumers include `chrononmotion/chrononmotion.hpp` or the individual headers, e.g.
 

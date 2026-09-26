@@ -1,0 +1,46 @@
+{
+  "contract_version": 1,
+  "type_enum_value": "mesh",
+  "inline_mesh": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["vertices", "indices"],
+    "properties": {
+      "vertices": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 250000,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["position"],
+          "properties": {
+            "position": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number", "minimum": -1000000, "maximum": 1000000 } },
+            "normal": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number", "minimum": -1, "maximum": 1 } },
+            "uv": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number", "minimum": -1000000, "maximum": 1000000 } }
+          }
+        }
+      },
+      "indices": { "type": "array", "minItems": 3, "maxItems": 750000, "items": { "type": "integer", "minimum": 0, "maximum": 249999 } }
+    }
+  },
+  "mesh_layer_contract": {
+    "type_required": ["inline_mesh"],
+    "forbidden_fields": ["asset", "source"],
+    "inline_mesh_requires_type": "mesh",
+    "minimum_vertices": 3,
+    "maximum_vertices": 250000,
+    "minimum_indices": 3,
+    "maximum_indices": 750000,
+    "triangle_index_count_multiple": 3,
+    "max_aggregate_payload_bytes": 67108864,
+    "payload_vertex_bytes": 32,
+    "payload_index_bytes": 4,
+    "position_component_abs_max": 1000000,
+    "normal_component_abs_max": 1,
+    "uv_component_abs_max": 1000000,
+    "primitive": "static indexed or expanded TRIANGLES",
+    "coordinates": "mesh-local right-handed XYZ; UV VEC2; optional float normals VEC3",
+    "material": "one caller-authored flat layer color; no textures, groups, skinning, morph targets, or material graph"
+  }
+}

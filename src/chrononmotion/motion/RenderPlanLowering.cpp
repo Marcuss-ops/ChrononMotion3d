@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -171,10 +172,21 @@ RenderPlan lowerSamplesToRenderPlan(
         if (found == layerIndexById.end() || metadata[found->second].isNull())
             throw std::invalid_argument("lowerToRenderPlan: content mapping names no content layer '" + id + "'");
         const Layer& layer = metadata[found->second];
-        if (supplied.type != LayerType::Image && supplied.type != LayerType::Video &&
-            supplied.type != LayerType::Text && supplied.type != LayerType::Shape &&
-            supplied.type != LayerType::Particles && supplied.type != LayerType::Light)
+        const bool mesh_layer = !layer.mesh.empty() || layer.content.isMesh();
+        if (mesh_layer && (layer.content.isImage() || layer.content.isVideo() || layer.content.isText()))
+            throw std::invalid_argument("lowerToRenderPlan: mesh attachment and non-mesh ContentRef cannot share one RenderPlan layer");
+        if (!mesh_layer && layer.content.isMesh())
+            throw std::invalid_argument("lowerToRenderPlan: mesh ContentRef requires an explicit MeshAttachment with geometry");
+        if (mesh_layer && !layer.mesh.geometry)
+            throw std::invalid_argument("lowerToRenderPlan: mesh geometry must be explicitly available inline; an opaque asset id alone cannot be rendered");
+        if (mesh_layer) {
+            if (supplied.type != LayerType::Mesh)
+                throw std::invalid_argument("lowerToRenderPlan: mesh layers require a Mesh RenderPlan layer");
+        } else if (supplied.type != LayerType::Image && supplied.type != LayerType::Video &&
+                   supplied.type != LayerType::Text && supplied.type != LayerType::Shape &&
+                   supplied.type != LayerType::Particles && supplied.type != LayerType::Light) {
             throw std::invalid_argument("lowerToRenderPlan: unsupported content-layer type for motion content");
+        }
         if (!layer.content.id.empty() && supplied.type == LayerType::Shape &&
             layer.content.kind != ContentKind::Image)
             throw std::invalid_argument("lowerToRenderPlan: shape content requires an explicitly supplied Shape LayerPlan");
@@ -230,13 +242,69 @@ RenderPlan lowerSamplesToRenderPlan(
                 throw std::invalid_argument("lowerToRenderPlan: supplied layer type does not match text content");
             if (layer.content.isImage() && output.type != LayerType::Image && output.type != LayerType::Shape)
                 throw std::invalid_argument("lowerToRenderPlan: supplied layer type does not match image content");
-            if (layer.content.isMesh() && output.type != LayerType::Image && output.type != LayerType::Shape)
-                throw std::invalid_argument("lowerToRenderPlan: mesh content requires an image or explicit shape plan");
-            if (!layer.mesh.empty() || layer.content.isMesh()) {
-                const std::string assetId = layer.mesh.assetId.empty() ? layer.content.id : layer.mesh.assetId;
-                if (assetId.empty())
-                    throw std::invalid_argument("lowerToRenderPlan: mesh layer has no opaque asset id");
-                output.asset = assetId;
+            if (layer.content.isMesh() && output.type != LayerType::Mesh)
+                throw std::invalid_argument("lowerToRenderPlan: supplied layer type does not match mesh content");
+            if (layer.mesh.empty() && layer.content.isMesh())
+                throw std::invalid_argument("lowerToRenderPlan: mesh ContentRef requires an explicit MeshAttachment with geometry");
+        if (!layer.mesh.empty() || layer.content.isMesh()) {
+            if (output.type != LayerType::Mesh)
+                    throw std::invalid_argument("lowerToRenderPlan: mesh attachment must map to a mesh plan");
+                if (!layer.mesh.geometry)
+                    throw std::invalid_argument("lowerToRenderPlan: mesh geometry is not available for inline lowering");
+                const auto& geometry = *layer.mesh.geometry;
+                const auto* positions = geometry.getAttribute<float>("position");
+                if (!positions || positions->itemSize() != 3 || positions->normalized() || positions->count() < 3 ||
+                    static_cast<std::size_t>(positions->count()) > chronon3d::render_plan::kInlineMeshMaxVertices)
+                    throw std::invalid_argument("lowerToRenderPlan: inline mesh requires a bounded unnormalized float VEC3 position attribute");
+                const auto* normals = geometry.getAttribute<float>("normal");
+                const auto* uvs = geometry.getAttribute<float>("uv");
+                if (normals && (normals->itemSize() != 3 || normals->normalized() || normals->count() != positions->count()))
+                    throw std::invalid_argument("lowerToRenderPlan: inline mesh normal attribute must be unnormalized float VEC3 matching position count");
+                if (uvs && (uvs->itemSize() != 2 || uvs->normalized() || uvs->count() != positions->count()))
+                    throw std::invalid_argument("lowerToRenderPlan: inline mesh uv attribute must be unnormalized float VEC2 matching position count");
+                chronon3d::render_plan::InlineMeshPlan inline_mesh;
+                inline_mesh.vertices.reserve(static_cast<std::size_t>(positions->count()));
+                for (int vertex_index = 0; vertex_index < positions->count(); ++vertex_index) {
+                    chronon3d::render_plan::InlineMeshVertex vertex;
+                    const std::size_t index = static_cast<std::size_t>(vertex_index);
+                    vertex.position = {positions->getX(index), positions->getY(index), positions->getZ(index)};
+                    if (normals)
+                        vertex.normal = {normals->getX(index), normals->getY(index), normals->getZ(index)};
+                    if (uvs)
+                        vertex.uv = {uvs->getX(index), uvs->getY(index)};
+                    for (const float component : vertex.position)
+                        if (!std::isfinite(component) || std::abs(component) > 1'000'000.0f)
+                            throw std::invalid_argument("lowerToRenderPlan: inline mesh position component is outside the finite contract range");
+                    for (const float component : vertex.normal)
+                        if (!std::isfinite(component) || std::abs(component) > 1.0f)
+                            throw std::invalid_argument("lowerToRenderPlan: inline mesh normal component is outside the finite contract range");
+                    for (const float component : vertex.uv)
+                        if (!std::isfinite(component) || std::abs(component) > 1'000'000.0f)
+                            throw std::invalid_argument("lowerToRenderPlan: inline mesh UV component is outside the finite contract range");
+                    inline_mesh.vertices.push_back(vertex);
+                }
+                if (geometry.hasIndex()) {
+                    const auto* indices = geometry.getIndex();
+                    if (!indices || indices->count() < 3 ||
+                        static_cast<std::size_t>(indices->count()) > chronon3d::render_plan::kInlineMeshMaxIndices ||
+                        indices->count() % 3 != 0)
+                        throw std::invalid_argument("lowerToRenderPlan: inline mesh indices must be bounded indexed triangles");
+                    inline_mesh.indices.reserve(static_cast<std::size_t>(indices->count()));
+                    for (int index = 0; index < indices->count(); ++index)
+                        inline_mesh.indices.push_back(indices->getX(static_cast<std::size_t>(index)));
+                } else {
+                    if (positions->count() % 3 != 0 ||
+                        static_cast<std::size_t>(positions->count()) > chronon3d::render_plan::kInlineMeshMaxIndices)
+                        throw std::invalid_argument("lowerToRenderPlan: non-indexed inline mesh vertex count must form bounded triangles");
+                    inline_mesh.indices.reserve(static_cast<std::size_t>(positions->count()));
+                    for (int index = 0; index < positions->count(); ++index)
+                        inline_mesh.indices.push_back(static_cast<std::uint32_t>(index));
+                }
+                for (const auto index : inline_mesh.indices)
+                    if (index >= inline_mesh.vertices.size())
+                        throw std::invalid_argument("lowerToRenderPlan: inline mesh index exceeds its position vertex count");
+                output.inline_mesh = std::move(inline_mesh);
+                output.asset.clear();
             } else {
                 if (layer.content.id.empty())
                     throw std::invalid_argument("lowerToRenderPlan: content layer has no id");
@@ -290,7 +358,13 @@ RenderPlan lowerSamplesToRenderPlan(
         output.rotation = {math::radToDeg(first.rotation.x), math::radToDeg(first.rotation.y),
                            math::radToDeg(first.rotation.z)};
         output.rotation_dimensions = 3;
-        output.enable_3d = std::abs(first.rotation.x) > 1e-5f || std::abs(first.rotation.y) > 1e-5f ||
+        // RenderPlan's canonical decoder treats an explicit 3D vector as an
+        // opt-in to camera-backed projection, even when its Z/tilt components
+        // are zero. The lowerer always emits three-component TRS vectors, so
+        // mark those layers explicitly rather than producing undecodable plans.
+        output.enable_3d = output.position_dimensions >= 3 || output.scale_dimensions >= 3 ||
+                           output.rotation_dimensions >= 3 ||
+                           std::abs(first.rotation.x) > 1e-5f || std::abs(first.rotation.y) > 1e-5f ||
                            std::abs(first.position.z) > 1e-5f;
         for (const auto& pose : poses)
             output.enable_3d = output.enable_3d || std::abs(pose.rotation.x) > 1e-5f ||
@@ -349,7 +423,27 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     const auto problems = scene.validate();
     if (!problems.empty())
         throw std::invalid_argument("lowerToRenderPlan: scene validation failed: " + problems.front());
-    const int lastFrame = std::max(0, scene.contentEndFrame());
+    if (options.cameraRig && options.cameraRig->layer().parentId != Layer::kRoot)
+        throw std::invalid_argument("lowerToRenderPlan: parented CameraRig layers must be resolved to world space before lowering");
+    int lastFrame = std::max(0, scene.contentEndFrame());
+    if (options.cameraRig) {
+        const float cameraEndTime = options.cameraRig->endTime();
+        if (!std::isfinite(cameraEndTime) || cameraEndTime < 0.f)
+            throw std::invalid_argument("lowerToRenderPlan: camera rig has an invalid animation end time");
+        const double cameraFrame = static_cast<double>(cameraEndTime) * scene.fps();
+        if (!std::isfinite(cameraFrame) || cameraFrame >= 1'000'000.)
+            throw std::invalid_argument("lowerToRenderPlan: camera rig animation exceeds the offline frame budget");
+        // Track times are float seconds (e.g. 2.f / 30.f); multiplication can
+        // land a few ulps above the authored integer frame. Snap only values
+        // within float-time precision, otherwise include the partially covered
+        // output frame by rounding upward.
+        const double nearestFrame = std::round(cameraFrame);
+        const double frameTolerance = 4.0 * std::numeric_limits<float>::epsilon() *
+                                      std::max(1.0, std::abs(cameraFrame));
+        const double cameraLastFrame = std::abs(cameraFrame - nearestFrame) <= frameTolerance
+            ? nearestFrame : std::ceil(cameraFrame);
+        lastFrame = std::max(lastFrame, static_cast<int>(cameraLastFrame));
+    }
     if (lastFrame >= 1'000'000)
         throw std::invalid_argument("lowerToRenderPlan: dense bake exceeds the offline sample budget");
     const std::size_t frameCount = static_cast<std::size_t>(lastFrame) + 1;
@@ -401,9 +495,15 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     }
     RenderPlanLoweringOptions resolvedOptions = options;
     if (options.cameraRig) {
-        const float nearPlane = options.camera ? options.camera->near : 0.1f;
-        const float farPlane = options.camera ? options.camera->far : 2000.f;
-        const CameraPose firstPose = options.cameraRig->sample(0.f);
+        if (options.camera && options.camera->type != "perspective")
+            throw std::invalid_argument("lowerToRenderPlan: CameraRig only lowers to a perspective RenderPlan camera");
+        const float nearPlane = options.camera ? options.camera->near : options.cameraRig->nearPlane();
+        const float farPlane = options.camera ? options.camera->far : options.cameraRig->farPlane();
+        CameraPose firstPose = options.cameraRig->sample(0.f);
+        // CameraRig::sample has already resolved these authoring channels into
+        // orientation; clear only the redundant metadata before projection.
+        firstPose.hasTarget = false;
+        firstPose.roll = 0.f;
         resolvedOptions.camera = lowerCameraPose(firstPose, nearPlane, farPlane);
     } else if (!options.camera) {
         for (const auto& layer : metadata) {
@@ -415,14 +515,16 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     if (options.cameraRig) {
         const std::size_t last = plan.canvas.duration.integral() > 0
             ? static_cast<std::size_t>(plan.canvas.duration.integral() - 1) : 0;
-        if (last > 65536)
+        if (last >= 65536)
             throw std::invalid_argument("lowerToRenderPlan: camera track exceeds the 65536 keyframe contract");
         std::vector<chronon3d::render_plan::AnimationKeyframePlan> positionX, positionY, positionZ;
         std::vector<chronon3d::render_plan::AnimationKeyframePlan> rotationX, rotationY, rotationZ;
         positionX.reserve(last + 1); positionY.reserve(last + 1); positionZ.reserve(last + 1);
         rotationX.reserve(last + 1); rotationY.reserve(last + 1); rotationZ.reserve(last + 1);
         for (std::size_t frame = 0; frame <= last; ++frame) {
-            const CameraPose pose = options.cameraRig->sample(static_cast<float>(frame) / scene.fps());
+            CameraPose pose = options.cameraRig->sample(static_cast<float>(frame) / scene.fps());
+            pose.hasTarget = false;
+            pose.roll = 0.f;
             const auto camera = lowerCameraPose(pose, resolvedOptions.camera->near, resolvedOptions.camera->far);
             const chronon3d::Frame keyFrame{static_cast<std::int64_t>(frame)};
             positionX.push_back({keyFrame, {camera.position[0]}});
@@ -462,6 +564,29 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     if (pose.fov < 10.f || pose.fov > 120.f || nearPlane <= 0.f || farPlane <= nearPlane ||
         !std::isfinite(orientationLengthSq) || orientationLengthSq <= 1e-12f)
         throw std::invalid_argument("lowerCameraPose: FOV, clipping planes, and orientation must be valid");
+    ensureFinite(pose.target.x, "camera target");
+    ensureFinite(pose.target.y, "camera target");
+    ensureFinite(pose.target.z, "camera target");
+    ensureFinite(pose.focalLength, "camera focal length");
+    ensureFinite(pose.aperture, "camera aperture");
+    ensureFinite(pose.focusDistance, "camera focus distance");
+    ensureFinite(pose.fStop, "camera f-stop");
+    ensureFinite(pose.roll, "camera roll");
+    if (pose.hasTarget || pose.roll != 0.f)
+        throw std::invalid_argument(
+            "lowerCameraPose: resolve look-at and roll into orientation before lowering; RenderPlan has no target/roll metadata channels");
+    if (pose.focalLength != 0.f || pose.aperture != 0.f ||
+        pose.focusDistance != 0.f || pose.fStop != 0.f)
+        throw std::invalid_argument(
+            "lowerCameraPose: Chronon3D RenderPlan does not represent authored focal length or depth-of-field lens values");
+    // CameraRig sampling resolves look-at and roll into orientation. The public
+    // pose helper rejects unresolved authoring metadata so direct calls cannot
+    // silently drop those fields.
+    if (std::abs(orientationLengthSq - 1.f) > 1e-3f)
+        throw std::invalid_argument("lowerCameraPose: orientation must be finite and normalized");
+    if (!std::isfinite(orientation.x) || !std::isfinite(orientation.y) ||
+        !std::isfinite(orientation.z) || !std::isfinite(orientation.w))
+        throw std::invalid_argument("lowerCameraPose: orientation must be finite and normalized");
     orientation.normalize();
     Matrix4 rotation;
     rotation.makeRotationFromQuaternion(orientation);
@@ -519,22 +644,112 @@ std::vector<ShapePathCommandPlan> lowerBakedPath(const BakedPath& path) {
 void applyBakedPathGeometry(chronon3d::render_plan::LayerPlan& layer,
                             const BakedPath& path,
                             std::span<const BakedPath> repeaterCopies) {
-    if (layer.type != chronon3d::render_plan::LayerType::Shape || !layer.shape ||
-        layer.shape->type != chronon3d::render_plan::ShapeContentTypePlan::Path)
+    using namespace chronon3d::render_plan;
+    if (layer.type != LayerType::Shape || !layer.shape ||
+        layer.shape->type != ShapeContentTypePlan::Path)
         throw std::invalid_argument("applyBakedPathGeometry: target layer must own a V3 path shape plan");
-    if (layer.shape->operators.size() >= 16)
-        throw std::invalid_argument("applyBakedPathGeometry: V3 path operator limit exceeded");
+    const auto source = lowerBakedPath(path);
     if (repeaterCopies.empty()) {
-        layer.shape->path = lowerBakedPath(path);
+        layer.shape->path = source;
         return;
     }
-    chronon3d::render_plan::PathOperatorPlan merge;
-    merge.kind = chronon3d::render_plan::PathOperatorKindPlan::Merge;
-    merge.paths.reserve(repeaterCopies.size());
-    for (const auto& copy : repeaterCopies)
-        merge.paths.push_back(lowerBakedPath(copy));
-    layer.shape->operators.push_back(std::move(merge));
-    layer.shape->path = lowerBakedPath(path);
+    if (repeaterCopies.size() > 1025)
+        throw std::invalid_argument("applyBakedPathGeometry: V3 Merge accepts at most 1024 additional paths");
+
+    // expandPathRepeater returns copy 0 as the unmodified source path. Merge
+    // appends paths to the source, so store only the additional copies.
+    const auto sameCommand = [](const BakedPathCommand& a, const BakedPathCommand& b) {
+        if (a.type != b.type) return false;
+        if (a.type == BakedPathCommandType::Close) return true;
+        if (a.point != b.point) return false;
+        return a.type != BakedPathCommandType::CubicTo ||
+               (a.control1 == b.control1 && a.control2 == b.control2);
+    };
+    const auto& firstCopy = repeaterCopies.front();
+    const bool firstIsSource = firstCopy.size() == path.size() &&
+        std::equal(firstCopy.begin(), firstCopy.end(), path.begin(), sameCommand);
+    if (!firstIsSource)
+        throw std::invalid_argument(
+            "applyBakedPathGeometry: repeater copies must start with the exact source path");
+
+    PathOperatorPlan merge;
+    merge.kind = PathOperatorKindPlan::Merge;
+    merge.paths.reserve(repeaterCopies.size() - 1);
+    std::size_t totalCommands = 0;
+    for (std::size_t index = 1; index < repeaterCopies.size(); ++index) {
+        auto lowered = lowerBakedPath(repeaterCopies[index]);
+        if (lowered.size() > 1'000'000 - totalCommands)
+            throw std::invalid_argument("applyBakedPathGeometry: V3 Merge command budget exceeded");
+        totalCommands += lowered.size();
+        merge.paths.push_back(std::move(lowered));
+    }
+    if (!merge.paths.empty() && layer.shape->operators.size() >= 16)
+        throw std::invalid_argument("applyBakedPathGeometry: V3 path operator limit exceeded");
+
+    layer.shape->path = source;
+    if (!merge.paths.empty()) layer.shape->operators.push_back(std::move(merge));
+}
+
+void applyBakedPathMorph(chronon3d::render_plan::LayerPlan& layer,
+                         std::span<const BakedPath> morphFrames,
+                         int firstFrame) {
+    using namespace chronon3d::render_plan;
+    if (layer.type != LayerType::Shape || !layer.shape ||
+        layer.shape->type != ShapeContentTypePlan::Path)
+        throw std::invalid_argument("applyBakedPathMorph: target layer must own a V3 path shape plan");
+    if (!layer.shape->operators.empty())
+        throw std::invalid_argument("applyBakedPathMorph: target path must not already contain operators");
+    if (morphFrames.size() < 2 || morphFrames.size() > 65536 || firstFrame < 0 ||
+        static_cast<std::int64_t>(firstFrame) + static_cast<std::int64_t>(morphFrames.size()) - 1 > 1'000'000)
+        throw std::invalid_argument("applyBakedPathMorph: frame range must contain 2..65536 samples within V3 limits");
+    const auto source = lowerBakedPath(morphFrames.front());
+    const auto target = lowerBakedPath(morphFrames.back());
+    if (source.size() != target.size())
+        throw std::invalid_argument("applyBakedPathMorph: morph endpoints must have identical topology");
+    for (std::size_t index = 0; index < source.size(); ++index)
+        if (source[index].type != target[index].type)
+            throw std::invalid_argument("applyBakedPathMorph: morph endpoints must have identical topology");
+    for (std::size_t frame = 0; frame < morphFrames.size(); ++frame) {
+        const auto commands = lowerBakedPath(morphFrames[frame]);
+        if (commands.size() != source.size())
+            throw std::invalid_argument("applyBakedPathMorph: every baked frame must preserve path topology");
+        const float amount = static_cast<float>(frame) / static_cast<float>(morphFrames.size() - 1);
+        const auto closePoint = [](const auto& a, const auto& b) {
+            return std::abs(a[0] - b[0]) <= 1e-4f * std::max({1.f, std::abs(a[0]), std::abs(b[0])}) &&
+                   std::abs(a[1] - b[1]) <= 1e-4f * std::max({1.f, std::abs(a[1]), std::abs(b[1])});
+        };
+        for (std::size_t index = 0; index < commands.size(); ++index) {
+            if (commands[index].type != source[index].type)
+                throw std::invalid_argument("applyBakedPathMorph: every baked frame must preserve path topology");
+            const auto lerpPoint = [&](const auto& from, const auto& to) {
+                return std::array<float, 2>{from[0] + (to[0] - from[0]) * amount,
+                                            from[1] + (to[1] - from[1]) * amount};
+            };
+            if (commands[index].type == ShapePathCommandTypePlan::Close) continue;
+            if (!closePoint(commands[index].point, lerpPoint(source[index].point, target[index].point)) ||
+                (commands[index].type == ShapePathCommandTypePlan::CubicTo &&
+                 (!closePoint(commands[index].control1, lerpPoint(source[index].control1, target[index].control1)) ||
+                  !closePoint(commands[index].control2, lerpPoint(source[index].control2, target[index].control2)))))
+                throw std::invalid_argument(
+                    "applyBakedPathMorph: Chronon3D Morph can represent only linear interpolation between the endpoint paths");
+        }
+    }
+
+    PathOperatorPlan morph;
+    morph.kind = PathOperatorKindPlan::Morph;
+    morph.morph_target = target;
+    AnimationTrackPlan progress;
+    progress.property = "morph_progress";
+    progress.easing = "linear";
+    progress.keyframes.reserve(morphFrames.size());
+    for (std::size_t frame = 0; frame < morphFrames.size(); ++frame) {
+        const float amount = static_cast<float>(frame) / static_cast<float>(morphFrames.size() - 1);
+        progress.keyframes.push_back({chronon3d::Frame{static_cast<std::int64_t>(firstFrame) +
+                                                       static_cast<std::int64_t>(frame)}, {amount}});
+    }
+    morph.morph_animation = std::move(progress);
+    layer.shape->path = source;
+    layer.shape->operators.push_back(std::move(morph));
 }
 
 } // namespace chrononmotion::motion

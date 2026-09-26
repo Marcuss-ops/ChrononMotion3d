@@ -364,6 +364,39 @@ void testVectorPathBaking() {
 }
 
 #if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)
+bool sameLoweredPlan(const chronon3d::render_plan::RenderPlan& left,
+                     const chronon3d::render_plan::RenderPlan& right) {
+    using namespace chronon3d::render_plan;
+    if (left.schema != right.schema || left.job_id != right.job_id ||
+        left.canvas.width != right.canvas.width || left.canvas.height != right.canvas.height ||
+        left.canvas.fps != right.canvas.fps || left.canvas.duration != right.canvas.duration ||
+        left.output.path != right.output.path || left.layers.size() != right.layers.size())
+        return false;
+    for (std::size_t layerIndex = 0; layerIndex < left.layers.size(); ++layerIndex) {
+        const auto& a = left.layers[layerIndex];
+        const auto& b = right.layers[layerIndex];
+        if (a.id != b.id || a.type != b.type || a.asset != b.asset || a.source != b.source ||
+            a.position != b.position || a.scale != b.scale || a.rotation != b.rotation ||
+            a.enable_3d != b.enable_3d || a.opacity != b.opacity ||
+            a.animation.has_value() != b.animation.has_value())
+            return false;
+        if (!a.animation) continue;
+        if (a.animation->tracks.size() != b.animation->tracks.size()) return false;
+        for (std::size_t trackIndex = 0; trackIndex < a.animation->tracks.size(); ++trackIndex) {
+            const auto& trackA = a.animation->tracks[trackIndex];
+            const auto& trackB = b.animation->tracks[trackIndex];
+            if (trackA.property != trackB.property || trackA.easing != trackB.easing ||
+                trackA.keyframes.size() != trackB.keyframes.size())
+                return false;
+            for (std::size_t keyIndex = 0; keyIndex < trackA.keyframes.size(); ++keyIndex)
+                if (trackA.keyframes[keyIndex].frame != trackB.keyframes[keyIndex].frame ||
+                    trackA.keyframes[keyIndex].value != trackB.keyframes[keyIndex].value)
+                    return false;
+        }
+    }
+    return true;
+}
+
 void testTypedChronon3dLowering() {
     section("typed Chronon3D v2/v3 RenderPlan lowering");
     MotionScene scene("plan", 30.f);
@@ -402,10 +435,29 @@ void testTypedChronon3dLowering() {
           "dense lowering emits a frame-resolved key for every frame");
     checkNear(plan.layers[1].position[0], 10.f, 1e-5f,
               "image plan position preserves authored world coordinates");
+    check(plan.layers[1].enable_3d,
+          "lowering explicitly opts three-component transform vectors into 3D projection");
+    checkNear(plan.layers[1].position[0], 10.f, 1e-6f,
+              "fixed lowering golden: initial world X position");
+    checkNear(plan.layers[1].position[1], 20.f, 1e-6f,
+              "fixed lowering golden: initial world Y position");
+    check(plan.layers[1].animation->tracks[0].keyframes.front().value ==
+              std::vector<float>{10.f, 20.f, 0.f},
+          "fixed lowering golden: first baked position key");
+    check(plan.layers[1].animation->tracks[0].keyframes.back().value ==
+              std::vector<float>{40.f, 50.f, 0.f},
+          "fixed lowering golden: final baked position key");
+    const auto repeatedV2 = lowerToRenderPlan(scene, options);
+    check(sameLoweredPlan(plan, repeatedV2),
+          "typed V2 lowering repeats every emitted transform and keyframe bit-exactly");
+
     options.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
     auto v3 = lowerToRenderPlan(scene, options);
     check(v3.schema == chronon3d::render_plan::kRenderPlanSchemaV3,
           "typed lowering supports Chronon3D V3");
+    const auto repeatedV3 = lowerToRenderPlan(scene, options);
+    check(sameLoweredPlan(v3, repeatedV3),
+          "typed V3 lowering repeats every emitted transform and keyframe bit-exactly");
     const auto shapePath = lowerBakedPath(parseSvgPath("M0 0 C1 0 2 1 3 1 Z"));
     check(shapePath.size() == 3 && shapePath[1].type == chronon3d::render_plan::ShapePathCommandTypePlan::CubicTo,
           "baked paths map to Chronon3D's native shape path command type");
@@ -416,7 +468,7 @@ void testTypedChronon3dLowering() {
     CameraRig animatedRig(23, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     animatedRig.setPosition({1.f, 2.f, -8.f});
     animatedRig.positionTrack().add(0.f, Vector3(1.f, 2.f, -8.f));
-    animatedRig.positionTrack().add(2.f / 30.f, Vector3(3.f, 2.f, -8.f));
+    animatedRig.positionTrack().add(3.f / 30.f, Vector3(3.f, 2.f, -8.f));
     RenderPlanLoweringOptions cameraOptions;
     cameraOptions.width = 640;
     cameraOptions.height = 360;
@@ -430,6 +482,8 @@ void testTypedChronon3dLowering() {
           "camera rig lowers to a typed base projection and dense camera tracks");
     check(cameraPlan.camera_animation->front().keyframes.back().value.front() == 3.f,
           "camera position animation samples the final authored rig pose");
+    check(cameraPlan.canvas.duration.integral() == 4,
+          "camera animation extends the composition duration when its keys outlive scene content");
 
     chronon3d::render_plan::LayerPlan bakedShape;
     bakedShape.type = chronon3d::render_plan::LayerType::Shape;
@@ -440,8 +494,22 @@ void testTypedChronon3dLowering() {
     applyBakedPathGeometry(bakedShape, parseSvgPath("M0 0 L5 0"), copies);
     check(bakedShape.shape->operators.size() == 1 &&
           bakedShape.shape->operators.front().kind == chronon3d::render_plan::PathOperatorKindPlan::Merge &&
-          bakedShape.shape->operators.front().paths.size() == 2,
-          "baked repeater copies lower as a static V3 compound-path operator");
+          bakedShape.shape->operators.front().paths.size() == 1,
+          "baked repeater identity copy remains the source path and additional copies lower as a V3 Merge operator");
+    const auto morphFrames = bakeSvgPathMorph("M0 0 L10 0 Z", "M0 0 L20 0 Z", 4, 6);
+    chronon3d::render_plan::LayerPlan morphShape = bakedShape;
+    morphShape.shape->operators.clear();
+    applyBakedPathMorph(morphShape, morphFrames, 4);
+    check(morphShape.shape->operators.size() == 1 &&
+          morphShape.shape->operators.front().kind == chronon3d::render_plan::PathOperatorKindPlan::Morph &&
+          morphShape.shape->operators.front().morph_target.size() == 3 &&
+          morphShape.shape->operators.front().morph_animation &&
+          morphShape.shape->operators.front().morph_animation->keyframes.size() == 3,
+          "baked compatible SVG frames lower to native endpoint Morph geometry and deterministic progress keys");
+    auto unsupportedMorph = morphFrames;
+    unsupportedMorph[1][1].point.x += 0.5f;
+    check(throwsInvalid([&] { applyBakedPathMorph(morphShape, unsupportedMorph, 4); }),
+          "morph adapter rejects baked intermediate samples not representable by linear endpoint morphing");
     bool missingContentRejected = false;
     try { RenderPlanLoweringOptions empty; (void)lowerToRenderPlan(scene, empty); }
     catch (const std::invalid_argument&) { missingContentRejected = true; }
@@ -460,8 +528,23 @@ void testTypedChronon3dLowering() {
     checkNear(camera.fov_deg, 50.f, 1e-6f, "camera pose lowering maps typed projection parameters");
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 2.f, 1.f); }),
           "camera lowering rejects an invalid clipping interval");
-    const CameraRig* cameraRig = nullptr;
-    (void)cameraRig;
+    cameraPose.aperture = 2.8f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "camera lowering rejects unsupported authored depth-of-field lens data");
+    check(throwsInvalid([&] {
+        const std::array<BakedPath, 2> missingIdentity{
+            parseSvgPath("M8 0 L13 0"), parseSvgPath("M16 0 L21 0")};
+        applyBakedPathGeometry(bakedShape, parseSvgPath("M0 0 L5 0"), missingIdentity);
+    }), "repeater adapter rejects copies without the unmodified source at index zero");
+    check(throwsInvalid([&] {
+        MotionScene emptyScene("camera only", 30.f);
+        CameraRig tooMany(41);
+        tooMany.positionTrack().add(0.f, Vector3{});
+        tooMany.positionTrack().add(65536.f / 30.f, Vector3{});
+        RenderPlanLoweringOptions tooManyOptions;
+        tooManyOptions.cameraRig = &tooMany;
+        (void)lowerToRenderPlan(emptyScene, tooManyOptions);
+    }), "camera-only output obeys the RenderPlan camera keyframe budget");
 }
 #endif
 

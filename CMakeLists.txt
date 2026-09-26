@@ -51,6 +51,8 @@ add_library(chrononmotion STATIC
         src/chrononmotion/core/BufferGeometry.cpp
         src/chrononmotion/core/EventDispatcher.cpp
         src/chrononmotion/core/Object3D.cpp
+        # assets — dependency-free, explicit-buffer glTF input
+        src/chrononmotion/assets/GltfReader.cpp
         # geometries — the primitives a Mesh can carry
         src/chrononmotion/geometries/BoxGeometry.cpp
         src/chrononmotion/geometries/PlaneGeometry.cpp
@@ -192,6 +194,20 @@ if(CHRONONMOTION_BUILD_TESTS)
         target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion_chronon3d_adapter)
     endif()
     add_test(NAME chrononmotion_authoring COMMAND chrononmotion_authoring)
+
+    add_executable(chrononmotion_offline_golden tests/motion_offline_golden.cpp)
+    target_link_libraries(chrononmotion_offline_golden PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_offline_golden COMMAND chrononmotion_offline_golden)
+
+    add_executable(chrononmotion_gltf tests/motion_gltf.cpp)
+    target_link_libraries(chrononmotion_gltf PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_gltf COMMAND chrononmotion_gltf)
+
+    # Retained upstream threepp math/core/animation assertions, adapted to the
+    # local no-dependency harness and pinned provenance in docs.
+    add_executable(chrononmotion_upstream_regressions tests/motion_upstream_regressions.cpp)
+    target_link_libraries(chrononmotion_upstream_regressions PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_upstream_regressions COMMAND chrononmotion_upstream_regressions)
 
     # Architectural guardrail: this tree must not reference content machinery
     # (text shaping, fonts, glyphs, raster, image/video decoding) or acquire a

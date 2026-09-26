@@ -19,7 +19,7 @@ Measured against the checkout this fork starts from (library sources only:
 | files | ~2.160 | 125 |
 | lines | ~259.300 | ~17.700 (6.8%) |
 | third-party deps at configure time | vcpkg features, FetchContent (GLFW, glslang, V-HACD, PhysX, pybind11, …) | none |
-| build products | shared/static lib, editor, player, Python module, examples, tests | one static library + seven test binaries + boundary gate |
+| build products | shared/static lib, editor, player, Python module, examples, tests | one static library + twelve test executables + separately registered boundary gate |
 
 The deletions are **committed**, so this file is the ledger for them rather than
 a pending diff. Every removed file is still reachable from the history, and any
@@ -311,7 +311,7 @@ with `include/` as its only include path and no dependency to fetch. Consumers
 link it and include `chrononmotion/chrononmotion.hpp` (the umbrella was trimmed to the
 keep-set and then extended with `motion/Motion.hpp`) or the individual headers.
 
-The compile-time contract is split across seven test binaries plus the boundary gate:
+The compile-time contract is split across twelve test executables plus the separately registered boundary gate:
 
 * `chrononmotion_smoke` pins the fork itself — hierarchy and world transforms,
   `localToWorld`/`worldToLocal`, the camera vs node `lookAt` conventions, the
@@ -350,6 +350,16 @@ The compile-time contract is split across seven test binaries plus the boundary 
   layer's declared lifetime.
 * `chrononmotion_foundation` pins Ray/Frustum, data-only lights, material
   descriptors and the `CompiledScene` boundary.
+* `chrononmotion_kinematics` pins sub-frame evaluation and motion channel
+  derivative contracts.
+* `chrononmotion_authoring` pins offline baker contracts and optional typed
+  RenderPlan lowering, including deterministic camera/path adaptation.
+* `chrononmotion_offline_golden` pins fixed expected samples and repeated-run
+  stability for authoring-time solvers, PCM analysis/drivers, flow, and SVG paths.
+* `chrononmotion_gltf` pins the static in-memory glTF/GLB geometry-only reader.
+* `chrononmotion_upstream_regressions` adapts the retained threepp math/core/
+  animation assertions at the pinned revision listed in the compatibility
+  inventory.
 
 `ChrononTemplate` is maintained as a separate sibling module. It consumes this
 core's `MotionScene`, `Layer`, `ContentRef` and preset APIs, and is intentionally
@@ -441,12 +451,14 @@ an opaque fingerprint, not a font.
    writes its sampled pose into a `PerspectiveCamera` node. Each is the single
    authority for its own role today, but unifying them is a real design decision,
    not a rename, and it is deliberately not taken here.
-3. **glTF.** Deferred on purpose. `GLTFLoader` is the single most expensive item
-   on the keep-list: it pulls the material zoo, textures, geometries and
-   `MaterialVariants` back in. The cheap version of the same capability — a small
-   glTF/GLB reader that produces `BufferGeometry` + `Mesh` with no material
-   system — is the better next step, and `Mesh`/`BufferGeometry` are already the
-   containers it would fill.
+3. **Broad glTF is deferred; static geometry import is implemented.**
+   `chrononmotion/assets/GltfReader.hpp` reads static glTF 2.0 JSON or GLB 2.0
+   in memory and produces `BufferGeometry` + `Mesh` nodes with an explicit
+   caller-supplied resolver for external buffers. It accepts triangle lists and
+   a narrow POSITION/NORMAL/TEXCOORD_0 + index contract; it imports no materials
+   and rejects animation, skinning, morph targets, extensions, sparse accessors,
+   compression, and other primitive modes. See `docs/GLTF_READER.md`. The full
+   upstream `GLTFLoader` remains intentionally absent.
 4. **More geometry primitives.** Box, Plane and Sphere are re-imported as small,
    renderer-free `BufferGeometry` builders. The rest of upstream's geometry
    system (shape/extrusion and specialized primitives) remains deferred.
@@ -454,11 +466,45 @@ an opaque fingerprint, not a font.
    and `Layers`-style filtering have no consumer yet. Any per-layer attachment
    the engine needs later should be a typed field, not a return of the
    `userData` bag.
-6. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`. The
-   fork's own behaviour is covered by one smoke binary, five motion binaries
-   and the boundary guardrail; re-importing the upstream tests for
-   `math/`, `core/` and `animation/` would still give the fork real regression
-   depth.
+6. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`.
+   The pinned inventory and compatibility classification are in
+   `docs/THREEPP_TEST_COMPATIBILITY.md` at threepp revision
+   `e2b165ece3904012d97a08029e0bd6cd5252892a`. Representative retained math,
+   core, and animation assertions are now adapted into
+   `tests/motion_upstream_regressions.cpp`; the inventory records source files,
+   covered areas, and adaptations. This is a scoped regression port, not a
+   mechanical import of every Catch2 case. AnimationMixer, Layers, Raycaster,
+   Uniform, renderer-only cases, and removed math APIs remain intentionally
+   excluded.
+
+### Offline baking and RenderPlan boundary
+
+The concrete static geometry import scope and its buffer, accessor, hierarchy,
+size, and fail-closed rules are maintained in `docs/GLTF_READER.md`. The reader
+accepts in-memory JSON/GLB and only invokes a caller resolver for external buffer
+bytes; it never resolves paths or performs implicit file/network I/O.
+
+`motion/OfflineBaking.hpp` exposes deterministic authoring-time Verlet chain and
+2D rigid-body baking, analytic 2D two-segment IK, normalized interleaved-PCM
+feature analysis and frame-sampled audio drivers, measured row/column flow
+layout, and SVG path parsing/morph/repeater baking. Solvers return ordinary
+samples/tracks/paths; they are not called during rendering and the PCM API never
+decodes files or performs implicit I/O. Work, geometry and sample budgets are
+validated, and `tests/motion_offline_golden.cpp` pins fixed outputs plus repeat
+stability.
+
+`motion/RenderPlanLowering.hpp` is an opt-in adapter built only when a consumer
+provides Chronon3d headers. It evaluates Motion at integer output frames and
+lowers representable world transforms to typed RenderPlan v2/v3 data, explicitly
+opting emitted three-component transforms into the plan's 3D projection contract.
+Content, shape styling and opaque assets remain caller-supplied. Unsupported
+anchors, shear, reflections, singular transforms, camera lens/DoF data not
+represented by the plan, and unsupported scene content fail closed. Camera rig
+poses and V3 static Merge/Morph path operators have dedicated adapter coverage;
+the sibling adapter tests send projected JSON through both canonical schema
+validation and typed decoding, including semantic Morph topology rejection.
+Chronon3d consumes RenderPlan data; it does not run Motion solvers or analyze PCM
+in its frame path.
 
 ### Closed since the fork
 

@@ -101,8 +101,9 @@ namespace chrononmotion::motion {
         /// Opaque identity of the Chronon-owned model asset.
         std::string assetId{};
 
-        /// Optional in-tree geometry (a Box/Plane/Sphere builder). Null means the
-        /// asset lives entirely on the content side and is resolved by id.
+        /// Optional in-tree geometry (a Box/Plane/Sphere builder) or explicitly
+        /// attached glTF primitive. Inline RenderPlan lowering requires geometry;
+        /// assetId-only attachments are intentionally not rendered by that adapter.
         std::shared_ptr<BufferGeometry> geometry{};
 
         MaterialDescriptor material{MaterialDescriptor::unlit(0)};

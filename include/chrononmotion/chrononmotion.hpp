@@ -17,6 +17,7 @@
 #include "chrononmotion/core/BufferAttribute.hpp"
 #include "chrononmotion/core/BufferGeometry.hpp"
 #include "chrononmotion/core/Object3D.hpp"
+#include "chrononmotion/assets/GltfReader.hpp"
 
 #include "chrononmotion/animation/AnimationClip.hpp"
 #include "chrononmotion/animation/AnimationUtils.hpp"
