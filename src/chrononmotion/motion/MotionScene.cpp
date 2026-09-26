@@ -532,6 +532,8 @@ namespace chrononmotion::motion {
 
         lastFrame_ = time.frame;
         lastPts_ = seconds;
+        lastTime_ = time;
+        hasEvaluated_ = true;
     }
 
     void MotionScene::evaluate(int frame) {

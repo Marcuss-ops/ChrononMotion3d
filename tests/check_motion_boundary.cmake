@@ -61,6 +61,7 @@ file(GLOB_RECURSE _sources
         "${SOURCE_DIR}/tests/*.cpp"
         "${SOURCE_DIR}/tests/*.cmake"
         "${SOURCE_DIR}/*.txt")
+list(FILTER _sources EXCLUDE REGEX "${SOURCE_DIR}/build/.*")
 
 # This script names every forbidden token it looks for, so it would trivially
 # fail on itself.

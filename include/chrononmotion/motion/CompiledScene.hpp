@@ -62,6 +62,9 @@ namespace chrononmotion::motion {
         std::vector<MeshDescriptor> meshes{};
         std::vector<MaterialDescriptor> materials{};
         std::shared_ptr<CameraPose> camera{};
+        /// Opaque renderer-facing camera output supplied by an authoring camera rig.
+        float cameraNearPlane{0.1f};
+        float cameraFarPlane{2000.f};
 
         void addMaterial(MaterialDescriptor material) {
             material.validate();

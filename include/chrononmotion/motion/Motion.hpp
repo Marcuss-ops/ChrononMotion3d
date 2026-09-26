@@ -34,5 +34,9 @@
 #include "chrononmotion/motion/Procedural.hpp"
 #include "chrononmotion/motion/Constraints.hpp"
 #include "chrononmotion/motion/Precomp.hpp"
+#include "chrononmotion/motion/OfflineBaking.hpp"
+#if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)
+#include "chrononmotion/motion/RenderPlanLowering.hpp"
+#endif
 
 #endif//CHRONONMOTION_MOTION_HPP

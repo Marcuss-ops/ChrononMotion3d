@@ -165,6 +165,8 @@ namespace chrononmotion::motion {
 
         [[nodiscard]] int lastEvaluatedFrame() const { return lastFrame_; }
         [[nodiscard]] float lastEvaluatedPts() const { return lastPts_; }
+        [[nodiscard]] const MotionTime& lastEvaluatedTime() const { return lastTime_; }
+        [[nodiscard]] bool hasEvaluated() const { return hasEvaluated_; }
 
         [[nodiscard]] const LayerState& state(Layer::Id id) const;
         [[nodiscard]] bool visible(Layer::Id id) const { return state(id).visible; }
@@ -251,6 +253,8 @@ namespace chrononmotion::motion {
         std::deque<LightState> lightStates_{};
         int lastFrame_{0};
         float lastPts_{0.f};
+        MotionTime lastTime_{0, 24.f, 0.f};
+        bool hasEvaluated_{false};
 
         // The evaluation order, cached across frames: the hierarchy only changes
         // at authoring time, never while frames are being sampled. The third

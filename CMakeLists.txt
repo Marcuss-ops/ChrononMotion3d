@@ -19,6 +19,8 @@ endif()
 option(CHRONONMOTION_BUILD_TESTS "Build the ChrononMotion smoke tests" ${PROJECT_IS_TOP_LEVEL})
 option(CHRONONMOTION_BUILD_BENCHMARKS "Build the standalone evaluation benchmark" OFF)
 option(CHRONONMOTION_WERROR "Turn compiler warnings into errors" OFF)
+set(CHRONON3D_INCLUDE_DIR "" CACHE PATH "Optional sibling Chronon3D include root for building the offline RenderPlan adapter")
+set(CHRONON3D_DEPENDENCY_INCLUDE_DIR "" CACHE PATH "Optional Chronon3D dependency include root")
 
 if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -80,6 +82,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/Lighting.cpp
         src/chrononmotion/motion/Procedural.cpp
         src/chrononmotion/motion/Constraints.cpp
+        src/chrononmotion/motion/OfflineBaking.cpp
         # presets — one translation unit per family, plus the shared vocabulary
         src/chrononmotion/motion/Presets_Common.cpp
         src/chrononmotion/motion/Presets_Place.cpp
@@ -100,6 +103,30 @@ add_library(chrononmotion STATIC
         src/chrononmotion/extras/curves/SplineCurve.cpp)
 
 add_library(ChrononMotion::chrononmotion ALIAS chrononmotion)
+# ChrononMotion's retained threepp sources use translation-unit-local scratch
+# names and must not be merged by a parent project's global unity setting.
+set_target_properties(chrononmotion PROPERTIES UNITY_BUILD OFF)
+
+# The opt-in adapter is an offline authoring executable boundary, never a
+# dependency of the lean ChrononMotion library or Chronon3D render path.
+if(CHRONON3D_INCLUDE_DIR)
+    if(NOT EXISTS "${CHRONON3D_INCLUDE_DIR}/chronon3d/render_plan/render_plan.hpp")
+        message(FATAL_ERROR "CHRONON3D_INCLUDE_DIR must name Chronon3D's include root")
+    endif()
+    add_library(chrononmotion_chronon3d_adapter STATIC
+        src/chrononmotion/motion/RenderPlanLowering.cpp)
+    target_link_libraries(chrononmotion_chronon3d_adapter PUBLIC chrononmotion)
+    target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_INCLUDE_DIR}")
+    if(DEFINED CHRONON3D_DEPENDENCY_INCLUDE_DIR)
+        target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_DEPENDENCY_INCLUDE_DIR}")
+    endif()
+    target_compile_features(chrononmotion_chronon3d_adapter PUBLIC cxx_std_20)
+    target_compile_options(chrononmotion_chronon3d_adapter PRIVATE -Wall -Wextra)
+    target_compile_definitions(chrononmotion_chronon3d_adapter PUBLIC CHRONONMOTION_HAS_CHRONON3D_ADAPTER=1)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_chronon3d_adapter PRIVATE -Werror)
+    endif()
+endif()
 
 if(CHRONONMOTION_BUILD_BENCHMARKS)
     add_executable(chrononmotion_eval_bench bench/eval_bench.cpp)
@@ -161,6 +188,9 @@ if(CHRONONMOTION_BUILD_TESTS)
     # data on the camera rig, mesh layers and the scene JSON export.
     add_executable(chrononmotion_authoring tests/motion_authoring.cpp)
     target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion)
+    if(CHRONON3D_INCLUDE_DIR)
+        target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion_chronon3d_adapter)
+    endif()
     add_test(NAME chrononmotion_authoring COMMAND chrononmotion_authoring)
 
     # Architectural guardrail: this tree must not reference content machinery
