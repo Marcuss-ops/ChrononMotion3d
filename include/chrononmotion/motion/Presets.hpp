@@ -17,6 +17,7 @@
 #include "chrononmotion/math/Vector2.hpp"
 #include "chrononmotion/math/Vector3.hpp"
 
+#include <cstdint>
 #include <vector>
 
 namespace chrononmotion::motion {
@@ -162,6 +163,18 @@ namespace chrononmotion::motion {
         /// Sine hover around the resting Y.
         void floatHover(Layer& layer, int inFrame, int duration, float amplitude, float fps);
 
+        /// Four-second breathing cycle, scaling around the layer's resting size.
+        void breathe(Layer& layer, int inFrame, int duration, float fps, float amplitude = 0.015f);
+
+        /// 2.5-second vertical bob around the resting position.
+        void bob(Layer& layer, int inFrame, int duration, float fps, float amplitude = 0.025f);
+
+        /// One out-sine pulse from 1x to 1.03x and back over the duration.
+        void pulse(Layer& layer, int inFrame, int duration, float fps);
+
+        /// Slow six-second XY drift with a subtle ±0.5° Z rotation.
+        void floatDrift(Layer& layer, int inFrame, int duration, float fps);
+
         /// Straight, constant-speed drift by an offset.
         void drift(Layer& layer, int inFrame, int duration, const Vector3& offset, float fps);
 
@@ -211,6 +224,10 @@ namespace chrononmotion::motion {
 
         /// A light, deterministic shake (no RNG: the same frames always shake the same way).
         void cameraShake(CameraRig& rig, int inFrame, int duration, float amplitude, float fps);
+
+        /// Deterministic handheld X/Y shake and micro-roll, baked at fixed time steps.
+        void handheldShake(CameraRig& rig, float intensity_units, float frequency_hz,
+                           std::uint32_t seed, float start_s, float end_s);
 
         /// Animated field of view.
         void cameraFov(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps);

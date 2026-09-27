@@ -9,12 +9,129 @@
 
 #include "Presets_detail.hpp"
 
+#include "chrononmotion/math/MathUtils.hpp"
+
 #include <algorithm>
+#include <cmath>
+#include <stdexcept>
+#include <string>
 
 namespace chrononmotion::motion::presets {
 
+    namespace {
+
+        template<class Sample>
+        void sampleAtFixedStep(float t0, float t1, float step, Sample&& sample) {
+
+            if (!std::isfinite(t0) || !std::isfinite(t1) || !std::isfinite(step) ||
+                !(t1 > t0) || !(step > 0.f)) {
+                throw std::invalid_argument("motion preset: expected a finite positive time window and step");
+            }
+
+            const double intervalsExact = std::ceil(static_cast<double>(t1 - t0) / step);
+            if (!std::isfinite(intervalsExact) || intervalsExact > 65535.0) {
+                throw std::invalid_argument("motion preset: generated track exceeds the 65536 key limit");
+            }
+
+            const int intervals = static_cast<int>(intervalsExact);
+            float previousTime = t0;
+            for (int i = 0; i <= intervals; ++i) {
+                const float time = i == intervals ? t1 : t0 + static_cast<float>(i) * step;
+                if (i > 0 && !(time > previousTime)) {
+                    throw std::invalid_argument("motion preset: fixed step is below float time precision");
+                }
+                const float elapsed = time - t0;
+                sample(time, elapsed);
+                previousTime = time;
+            }
+        }
+
+        void requireFiniteAmplitude(float amplitude, const char* preset) {
+            if (!std::isfinite(amplitude) || amplitude < 0.f) {
+                throw std::invalid_argument(std::string(preset) + ": amplitude must be finite and non-negative");
+            }
+        }
+
+    }// namespace
+
     using detail::keyVector3;
     using detail::restOf;
+
+    void breathe(Layer& layer, int inFrame, int duration, float fps, float amplitude) {
+
+        requireFiniteAmplitude(amplitude, "breathe");
+        if (amplitude >= 1.f) throw std::invalid_argument("breathe: amplitude must be less than one");
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+        constexpr float period = 4.f;
+        const float quarterPeriod = period / 4.f;
+
+        sampleAtFixedStep(t0, t1, quarterPeriod, [&](float time, float elapsed) {
+            const float scale = 1.f + amplitude * std::sin(math::TWO_PI * elapsed / period);
+            Vector3 value = rest.scale;
+            value.multiplyScalar(scale);
+            layer.tracks.scale.add(time, value, Easing::linear());
+        });
+    }
+
+    void bob(Layer& layer, int inFrame, int duration, float fps, float amplitude) {
+
+        requireFiniteAmplitude(amplitude, "bob");
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+        constexpr float period = 2.5f;
+        const float quarterPeriod = period / 4.f;
+
+        sampleAtFixedStep(t0, t1, quarterPeriod, [&](float time, float elapsed) {
+            const float offset = amplitude * std::sin(math::TWO_PI * elapsed / period);
+            layer.tracks.position.add(time,
+                Vector3(rest.position.x, rest.position.y + offset, rest.position.z), Easing::linear());
+        });
+    }
+
+    void pulse(Layer& layer, int inFrame, int duration, float fps) {
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+        const float period = t1 - t0;
+        const float quarterPeriod = period / 4.f;
+
+        sampleAtFixedStep(t0, t1, quarterPeriod, [&](float time, float elapsed) {
+            const float progress = elapsed / period;
+            const float halfCycle = progress <= 0.5f ? progress * 2.f : (1.f - progress) * 2.f;
+            const float outSine = std::sin(halfCycle * math::PI * 0.5f);
+            Vector3 value = rest.scale;
+            value.multiplyScalar(1.f + 0.03f * outSine);
+            layer.tracks.scale.add(time, value, Easing::linear());
+        });
+    }
+
+    void floatDrift(Layer& layer, int inFrame, int duration, float fps) {
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+        constexpr float period = 6.f;
+        constexpr float driftX = 0.03f;
+        constexpr float driftY = 0.02f;
+        constexpr float rollAmplitude = math::PI / 360.f; // 0.5 degrees.
+        const float quarterPeriod = period / 4.f;
+
+        sampleAtFixedStep(t0, t1, quarterPeriod, [&](float time, float elapsed) {
+            const float phase = math::TWO_PI * elapsed / period;
+            layer.tracks.position.add(time,
+                Vector3(rest.position.x + driftX * std::sin(phase),
+                        rest.position.y + driftY * std::cos(phase), rest.position.z), Easing::linear());
+            layer.tracks.rotation.add(time,
+                Vector3(rest.rotation.x, rest.rotation.y,
+                        rest.rotation.z + rollAmplitude * std::sin(phase)), Easing::linear());
+        });
+    }
 
     void arcMotion(Layer& layer, const Vector3& to, const Vector3& apex, int inFrame, int duration, float fps) {
 

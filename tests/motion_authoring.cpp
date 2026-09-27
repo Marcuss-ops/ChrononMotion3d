@@ -227,6 +227,87 @@ void testPcmAudioAnalysis() {
         "audio opacity rejects non-finite additive output");
 }
 
+void testPresetTrackGolden() {
+    section("deterministic motion preset track goldens");
+
+    Layer breathing(50, "breathing");
+    breathing.transform.scale.set(2.f, 3.f, 4.f);
+    presets::breathe(breathing, 0, 240, 30.f);
+    check(breathing.tracks.scale.size() == 9,
+          "four-second breathing cycle bakes quarter-period scale keys over two cycles");
+    checkNear(breathing.tracks.scale.keys()[1].time, 1.f, 1e-6f,
+              "breathing quarter-period key lands at one second");
+    checkNear(breathing.tracks.scale.keys()[1].value, Vector3(2.03f, 3.045f, 4.06f), 1e-5f,
+              "breathing scale key golden preserves the authored proportions");
+    checkNear(breathing.tracks.scale.keys()[2].value, Vector3(2.f, 3.f, 4.f), 1e-5f,
+              "breathing returns to its resting scale at the half-period key");
+
+    Layer bobbing(51, "bobbing");
+    bobbing.transform.position.set(2.f, 5.f, -1.f);
+    presets::bob(bobbing, 0, 150, 30.f);
+    check(bobbing.tracks.position.size() == 9,
+          "2.5-second bob bakes quarter-period position keys for two periods");
+    checkNear(bobbing.tracks.position.sample(0.625f), Vector3(2.f, 5.025f, -1.f), 1e-5f,
+              "bob quarter-period position golden");
+    checkNear(bobbing.tracks.position.sample(1.25f), Vector3(2.f, 5.f, -1.f), 1e-5f,
+              "bob returns to rest at the half-period key");
+
+    Layer pulsing(52, "pulsing");
+    pulsing.transform.scale.set(2.f, 1.f, 0.5f);
+    presets::pulse(pulsing, 0, 120, 30.f);
+    check(pulsing.tracks.scale.size() == 5,
+          "pulse bakes four fixed quarter-window intervals");
+    checkNear(pulsing.tracks.scale.keys()[2].value, Vector3(2.06f, 1.03f, 0.515f), 1e-5f,
+              "pulse reaches the 1.03x scale golden at its midpoint");
+    checkNear(pulsing.tracks.scale.keys().back().value, Vector3(2.f, 1.f, 0.5f), 1e-6f,
+              "pulse settles exactly to its authored scale");
+
+    Layer drifting(53, "drifting");
+    drifting.transform.position.set(1.f, 2.f, 3.f);
+    drifting.transform.rotation.set(0.f, 0.f, 0.1f);
+    presets::floatDrift(drifting, 0, 180, 30.f);
+    check(drifting.tracks.position.size() == 5 && drifting.tracks.rotation.size() == 5,
+          "float drift bakes synchronized position and roll keys at fixed quarter periods");
+    checkNear(drifting.tracks.position.keys()[1].value, Vector3(1.03f, 2.f, 3.f), 1e-5f,
+              "float drift quarter-period XY position golden");
+    checkNear(drifting.tracks.rotation.keys()[1].value.z, 0.1f + math::PI / 360.f, 1e-6f,
+              "float drift quarter-period roll golden is half a degree");
+    checkNear(drifting.tracks.position.keys().back().value, Vector3(1.f, 2.02f, 3.f), 1e-5f,
+              "float drift returns to its initial XY phase after six seconds");
+
+    CameraRig handheld(54);
+    handheld.setPosition(Vector3(1.f, 2.f, 12.f));
+    presets::handheldShake(handheld, 0.4f, 3.f, 123u, 2.f, 2.1f);
+    check(handheld.positionTrack().size() == 7 && handheld.rollTrack().size() == 7,
+          "handheld shake bakes deterministic fixed-step position and roll tracks");
+    checkNear(handheld.positionTrack().keys().front().time, 2.f, 1e-6f,
+              "handheld shake keys the requested start time");
+    checkNear(handheld.positionTrack().keys().back().time, 2.1f, 1e-6f,
+              "handheld shake includes the requested end time");
+    checkNear(handheld.positionTrack().keys().front().value, Vector3(1.f, 2.f, 12.f), 1e-6f,
+              "handheld shake starts at its base pose");
+    checkNear(handheld.positionTrack().keys().back().value, Vector3(1.f, 2.f, 12.f), 1e-6f,
+              "handheld shake resolves to its base pose");
+    check(handheld.positionTrack().keys()[3].value != Vector3(1.f, 2.f, 12.f) &&
+          handheld.rollTrack().keys()[3].value != 0.f,
+          "handheld shake golden includes seeded translation and micro-roll");
+    CameraRig handheldTwin(56);
+    handheldTwin.setPosition(Vector3(1.f, 2.f, 12.f));
+    presets::handheldShake(handheldTwin, 0.4f, 3.f, 123u, 2.f, 2.1f);
+    bool shakeKeysMatch = handheld.positionTrack().size() == handheldTwin.positionTrack().size() &&
+                          handheld.rollTrack().size() == handheldTwin.rollTrack().size();
+    for (std::size_t i = 0; shakeKeysMatch && i < handheld.positionTrack().size(); ++i) {
+        shakeKeysMatch = handheld.positionTrack().keys()[i].time == handheldTwin.positionTrack().keys()[i].time &&
+                         handheld.positionTrack().keys()[i].value == handheldTwin.positionTrack().keys()[i].value &&
+                         handheld.rollTrack().keys()[i].value == handheldTwin.rollTrack().keys()[i].value;
+    }
+    check(shakeKeysMatch, "handheld shake repeats each seeded track key exactly");
+    check(throwsInvalid([&] { presets::handheldShake(handheld, 1.f, 0.f, 1u, 0.f, 1.f); }),
+          "handheld shake rejects zero frequency");
+    check(throwsInvalid([&] { Layer invalid(55, "invalid"); presets::bob(invalid, 0, 0, 30.f); }),
+          "idle presets reject empty duration windows");
+}
+
 void testDynamicFlowLayout() {
     section("row and column flow layout with measured content");
     std::array<FlowItem, 3> row{
@@ -554,6 +635,7 @@ int main() {
     testVerletAndRigidBodyBaking();
     testTwoSegmentIk();
     testPcmAudioAnalysis();
+    testPresetTrackGolden();
     testDynamicFlowLayout();
     testVectorPathBaking();
 #if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)

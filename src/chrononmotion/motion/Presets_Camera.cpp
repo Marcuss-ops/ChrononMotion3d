@@ -9,9 +9,12 @@
 #include "Presets_detail.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
+#include "chrononmotion/motion/Procedural.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <stdexcept>
+#include <vector>
 
 namespace chrononmotion::motion::presets {
 
@@ -111,6 +114,82 @@ namespace chrononmotion::motion::presets {
                               base.position.y - amplitude * 0.6f * shakeY,
                               base.position.z),
                       Easing::linear());
+        }
+    }
+
+    void handheldShake(CameraRig& rig, float intensity_units, float frequency_hz,
+                       std::uint32_t seed, float start_s, float end_s) {
+
+        if (!std::isfinite(intensity_units) || intensity_units < 0.f ||
+            !std::isfinite(frequency_hz) || frequency_hz <= 0.f ||
+            !std::isfinite(start_s) || !std::isfinite(end_s) || !(end_s > start_s)) {
+            throw std::invalid_argument("handheldShake: expected finite non-negative intensity, positive frequency, and start < end");
+        }
+
+        constexpr float step = 1.f / 60.f;
+        constexpr std::size_t maxKeys = 65536;
+        const double intervalCount = std::ceil(static_cast<double>(end_s - start_s) / step);
+        if (!std::isfinite(intervalCount) || intervalCount > static_cast<double>(maxKeys - 1)) {
+            throw std::invalid_argument("handheldShake: generated tracks exceed the 65536 key limit");
+        }
+
+        DriverSpec xDriver;
+        xDriver.kind = DriverKind::Wiggle;
+        xDriver.property = DriverProperty::Position;
+        xDriver.seed = seed;
+        xDriver.axis.set(1.f, 0.f, 0.f);
+        xDriver.amplitude = intensity_units;
+        xDriver.frequency = frequency_hz;
+        xDriver.startTime = start_s;
+        xDriver.endTime = end_s;
+
+        DriverSpec yDriver = xDriver;
+        yDriver.seed = seed + 1u;
+        yDriver.axis.set(0.f, 1.f, 0.f);
+        yDriver.amplitude = intensity_units * 0.7f;
+        yDriver.frequency = frequency_hz * 1.17f;
+
+        DriverSpec rollDriver = xDriver;
+        rollDriver.property = DriverProperty::Rotation;
+        rollDriver.seed = seed + 2u;
+        rollDriver.axis.set(0.f, 0.f, 1.f);
+        rollDriver.amplitude = intensity_units * 0.01f;
+        rollDriver.frequency = frequency_hz * 0.73f;
+
+        if (!std::isfinite(yDriver.amplitude) || !std::isfinite(rollDriver.amplitude) ||
+            !std::isfinite(yDriver.frequency) || !std::isfinite(rollDriver.frequency)) {
+            throw std::invalid_argument("handheldShake: intensity or frequency overflows a driver channel");
+        }
+
+        const int intervals = static_cast<int>(intervalCount);
+        std::vector<float> times;
+        std::vector<CameraPose> basePoses;
+        times.reserve(static_cast<std::size_t>(intervals) + 1);
+        basePoses.reserve(static_cast<std::size_t>(intervals) + 1);
+        for (int i = 0; i <= intervals; ++i) {
+            const float time = i == intervals ? end_s : start_s + static_cast<float>(i) * step;
+            if (i > 0 && !(time > times.back())) {
+                throw std::invalid_argument("handheldShake: fixed step is below float time precision");
+            }
+            times.push_back(time);
+            basePoses.push_back(rig.sample(time));
+        }
+
+        auto& position = rig.positionTrack();
+        auto& roll = rig.rollTrack();
+        for (int i = 0; i <= intervals; ++i) {
+            const float time = times[static_cast<std::size_t>(i)];
+            const float progress = (time - start_s) / (end_s - start_s);
+            const float window = (i == 0 || i == intervals) ? 0.f : std::sin(math::PI * progress);
+            Vector3 offset = evaluateDriverOffset(xDriver, time, Vector3{});
+            offset.add(evaluateDriverOffset(yDriver, time, Vector3{}));
+            offset.multiplyScalar(window);
+            Vector3 posePosition = basePoses[static_cast<std::size_t>(i)].position;
+            posePosition.add(offset);
+            position.add(time, posePosition, Easing::linear());
+
+            const Vector3 rollOffset = evaluateDriverOffset(rollDriver, time, Vector3{});
+            roll.add(time, basePoses[static_cast<std::size_t>(i)].roll + rollOffset.z * window, Easing::linear());
         }
     }
 
