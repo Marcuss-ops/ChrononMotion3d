@@ -2,6 +2,11 @@
 
 #include "chrononmotion/motion/MotionScene.hpp"
 
+// The one deterministic JSON writer this tree emits through. Shared on purpose
+// with the offline RenderPlan emitter: a second writer is how one document's
+// number formatting would drift from the other's.
+#include "JsonWriter.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -15,126 +20,7 @@
 namespace chrononmotion::motion {
     namespace {
 
-        /// Shortest decimal that reads back as the same float. Deterministic,
-        /// locale-independent and readable — an export is for humans and for a
-        /// corpus, so "0.85" is the right answer and "0.850000024" is not.
-        [[nodiscard]] std::string formatFloat(float value) {
-
-            if (!std::isfinite(value)) return "null";
-            if (value == 0.f) value = 0.f;// normalize -0 to 0
-
-            char buffer[64];
-            for (int precision = 1; precision <= 9; ++precision) {
-                std::snprintf(buffer, sizeof(buffer), "%.*g", precision, static_cast<double>(value));
-                if (static_cast<float>(std::strtod(buffer, nullptr)) == value) break;
-            }
-            return buffer;
-        }
-
-        [[nodiscard]] std::string escapeJson(const std::string& value) {
-
-            std::string out;
-            out.reserve(value.size());
-            for (const unsigned char c : value) {
-                switch (c) {
-                    case '"': out += "\\\""; break;
-                    case '\\': out += "\\\\"; break;
-                    case '\b': out += "\\b"; break;
-                    case '\f': out += "\\f"; break;
-                    case '\n': out += "\\n"; break;
-                    case '\r': out += "\\r"; break;
-                    case '\t': out += "\\t"; break;
-                    default:
-                        if (c < 0x20) {
-                            char buffer[8];
-                            std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned int>(c));
-                            out += buffer;
-                        } else {
-                            out += static_cast<char>(c);
-                        }
-                }
-            }
-            return out;
-        }
-
-        /// Emits JSON with fixed key order and fixed separators, so the same
-        /// scene always produces the same bytes.
-        class Writer {
-        public:
-            explicit Writer(int indentSpaces) : indent_(indentSpaces < 0 ? 0 : indentSpaces) {}
-
-            void beginObject() {
-                out_ += '{';
-                open_.push_back(true);
-            }
-
-            void endObject() {
-                const bool wasEmpty = open_.back();
-                open_.pop_back();
-                if (!wasEmpty) newline();
-                out_ += '}';
-            }
-
-            void beginArray() {
-                out_ += '[';
-                open_.push_back(true);
-            }
-
-            void endArray() {
-                const bool wasEmpty = open_.back();
-                open_.pop_back();
-                if (!wasEmpty) newline();
-                out_ += ']';
-            }
-
-            /// Separate one object member. The value follows immediately.
-            void key(const char* name) {
-                separator();
-                out_ += '"';
-                out_ += name;
-                out_ += indent_ > 0 ? "\": " : "\":";
-            }
-
-            /// Separate one array element. The value follows immediately.
-            void item() { separator(); }
-
-            void raw(const char* text) { out_ += text; }
-            void boolean(bool value) { out_ += value ? "true" : "false"; }
-            void number(float value) { out_ += formatFloat(value); }
-
-            void integer(long long value) {
-                char buffer[32];
-                std::snprintf(buffer, sizeof(buffer), "%lld", value);
-                out_ += buffer;
-            }
-
-            void text(const std::string& value) {
-                out_ += '"';
-                out_ += escapeJson(value);
-                out_ += '"';
-            }
-
-            void null() { out_ += "null"; }
-
-            [[nodiscard]] std::string take() { return std::move(out_); }
-
-        private:
-            void separator() {
-                if (!open_.back()) out_ += ',';
-                open_.back() = false;
-                newline();
-            }
-
-            void newline() {
-                if (indent_ == 0) return;
-                out_ += '\n';
-                out_.append(open_.size() * static_cast<std::size_t>(indent_), ' ');
-            }
-
-            std::string out_{};
-            int indent_{2};
-            std::vector<bool> open_{};
-        };
+        using detail::Writer;
 
         void writeVector3(Writer& writer, const Vector3& value) {
             writer.beginArray();
@@ -275,6 +161,27 @@ namespace chrononmotion::motion {
                             writer.raw(channelName(value.channel));
                             writer.key("originTime");
                             writer.number(value.originTime);
+                        } else if constexpr (std::is_same_v<M, WindowModifier>) {
+                            writer.key("kind");
+                            writer.raw("\"window\"");
+                            writer.key("start");
+                            writer.number(value.start);
+                            writer.key("end");
+                            writer.number(value.end);
+                        } else if constexpr (std::is_same_v<M, InfluenceModifier>) {
+                            writer.key("kind");
+                            writer.raw("\"influence\"");
+                            writer.key("amount");
+                            writer.number(value.amount);
+                            writer.key("originTime");
+                            writer.number(value.originTime);
+                        } else if constexpr (std::is_same_v<M, SmoothModifier>) {
+                            writer.key("kind");
+                            writer.raw("\"smooth\"");
+                            writer.key("radius");
+                            writer.number(value.radius);
+                            writer.key("samples");
+                            writer.integer(static_cast<long long>(value.samples));
                         }
                         writer.endObject();
                     },

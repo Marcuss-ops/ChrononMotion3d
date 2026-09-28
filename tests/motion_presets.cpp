@@ -10,6 +10,7 @@
 
 #include "motion_check.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -627,6 +628,134 @@ namespace {
         }
     }
 
+    // --------------------------------------------- settles, waves, secondary
+
+    void settleAndWavePresets() {
+
+        section("settle, wave and secondary-motion presets");
+
+        // spinIn: a half turn about Y lands exactly on the resting orientation.
+        {
+            Layer spinner(1, "Spinner");
+            spinner.transform.orientation = aboutY(30.f);
+
+            presets::spinIn(spinner, presets::Axis::Y, 0, 30, 0.5f, kFps);
+
+            checkNear(spinner.sample(at(0)).orientation.angleTo(aboutY(30.f)), math::PI, 1e-2f,
+                      "spinIn starts a half turn away from the resting orientation");
+            checkNear(spinner.sample(at(30)).orientation.angleTo(aboutY(30.f)), 0.f, 1e-3f,
+                      "spinIn lands exactly on the resting orientation");
+        }
+
+        // bounceIn: an offset entrance whose rebounds are the segment's easing.
+        {
+            Layer bouncer(2, "Bouncer");
+            bouncer.transform.position.set(0.f, 5.f, 0.f);
+
+            presets::bounceIn(bouncer, presets::Axis::Y, 0, 30, 2.f, kFps);
+
+            checkNear(bouncer.sample(at(0)).position, Vector3(0.f, 7.f, 0.f), 1e-4f,
+                      "bounceIn starts the offset away along the axis");
+            checkNear(bouncer.sample(at(30)).position, Vector3(0.f, 5.f, 0.f), 1e-5f,
+                      "bounceIn lands on the resting position");
+            check(bouncer.sample(at(15)).position.y < 6.f,
+                  "bounceIn is ahead of a linear move at the midpoint");
+        }
+
+        // springSettle: the same entrance, arriving with one soft overshoot.
+        {
+            Layer springy(3, "Springy");
+            springy.transform.position.set(0.f, 0.f, 0.f);
+
+            presets::springSettle(springy, presets::Axis::Y, 0, 30, 3.f, kFps);
+
+            checkNear(springy.sample(at(0)).position, Vector3(0.f, 3.f, 0.f), 1e-4f,
+                      "springSettle starts the amplitude away along the axis");
+            checkNear(springy.sample(at(30)).position, Vector3(0.f, 0.f, 0.f), 1e-5f,
+                      "springSettle lands on the resting position");
+
+            float lowest = springy.sample(at(0)).position.y;
+            for (int frame = 0; frame <= 30; ++frame) {
+                lowest = std::min(lowest, springy.sample(at(frame)).position.y);
+            }
+            check(lowest < 0.f, "springSettle overshoots past the resting position before settling");
+        }
+
+        // pulseOpacity: the resting opacity is the top of every cycle.
+        {
+            Layer pumper(4, "Pumper");
+            pumper.transform.opacity = 0.8f;
+
+            presets::pulseOpacity(pumper, 0, 60, 3, kFps, 0.1f);
+
+            checkNear(pumper.sample(at(0)).opacity, 0.8f, 1e-5f,
+                      "pulseOpacity starts at the resting opacity");
+            checkNear(pumper.sample(at(60)).opacity, 0.8f, 1e-5f,
+                      "pulseOpacity ends at the resting opacity");
+
+            bool dipsEveryCycle = true;
+            for (int cycle = 0; cycle < 3; ++cycle) {
+                const float mid = at(60) * ((static_cast<float>(cycle) + 0.5f) / 3.f);
+                if (std::fabs(pumper.sample(mid).opacity - 0.1f) > 1e-4f) dipsEveryCycle = false;
+            }
+            check(dipsEveryCycle, "pulseOpacity dips to the floor once per cycle");
+            check(pumper.sample(at(15)).opacity < 0.8f,
+                  "pulseOpacity is below the top between cycles");
+        }
+
+        // rippleWave: one wave sampled across the group, so opposite lanes move in
+        // opposite directions at the same instant.
+        {
+            Layer first(10, "First");
+            Layer middle(11, "Middle");
+            Layer third(12, "Third");
+            Layer last(13, "Last");
+            const std::vector<Layer*> group{&first, &middle, &third, &last};
+
+            presets::rippleWave(group, presets::Direction::Up, 0, 30, 1.f, 2.f, kFps);
+
+            // A quarter of the way into the wave: lanes 0 and 0.5 are out of phase.
+            constexpr float sampleTime = 0.125f;
+            const float lead = 2.f * std::sin(math::TWO_PI * sampleTime);
+            checkNear(first.sample(sampleTime).position.y, lead, 1e-4f,
+                      "rippleWave leads the first lane with the wave's own phase");
+            checkNear(third.sample(sampleTime).position.y, -lead, 1e-4f,
+                      "rippleWave is half a cycle behind at the middle lane");
+            check(std::fabs(last.sample(sampleTime).position.y) <= 2.0001f,
+                  "rippleWave keeps every lane within the travel distance");
+            check(first.sample(sampleTime).position.x == 0.f,
+                  "rippleWave travels only along the requested direction");
+        }
+
+        // followThrough: the follower is where the source was one lag earlier.
+        {
+            MotionScene scene("follow", kFps);
+
+            Layer& source = scene.addNull(20, "Source");
+            source.transform.position.set(0.f, 0.f, 0.f);
+            source.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f), Easing::linear());
+            source.tracks.position.add(1.f, Vector3(10.f, 0.f, 0.f), Easing::linear());
+
+            Layer& follower = scene.addNull(21, "Follower");
+            follower.transform.position.set(100.f, 0.f, 0.f);
+
+            presets::followThrough(follower, source, 0.5f);
+
+            scene.evaluate(15);
+            checkNear(scene.state(21).local.position.x, 100.f, 1e-3f,
+                      "the follower has not moved while the source is inside its lag");
+
+            scene.evaluate(30);
+            checkNear(scene.state(21).local.position.x, 105.f, 1e-3f,
+                      "the follower is where the source was one lag earlier");
+
+            const float once = scene.state(21).local.position.x;
+            scene.evaluate(30);
+            checkNear(scene.state(21).local.position.x, once, 0.f,
+                      "followThrough is a pure function of the frame");
+        }
+    }
+
 }// namespace
 
 int main() {
@@ -635,6 +764,7 @@ int main() {
     scalePresets();
     rotationPresets();
     motionPresets();
+    settleAndWavePresets();
     groupPresets();
     pivotAndLifetimePresets();
     cameraPresets();

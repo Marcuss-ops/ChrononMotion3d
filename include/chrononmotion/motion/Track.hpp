@@ -139,7 +139,54 @@ namespace chrononmotion::motion {
         float originTime{0.f};
     };
 
-    using TrackModifier = std::variant<LoopModifier, PosterizeModifier, DelayModifier, LinkModifier>;
+    /// Limit the channel to a time window.
+    ///
+    /// Inside `[start, end]` the sample time passes through untouched, outside it
+    /// is clamped to the nearer end, so the channel *holds* its edge value instead
+    /// of extrapolating. It is the channel-level work area: it limits when a move
+    /// happens without editing a single key, and it is the complement of
+    /// `LoopModifier` (which repeats a window instead of holding outside it).
+    ///
+    /// A `start == end` window is a single instant: the channel holds the value it
+    /// has there, everywhere.
+    struct WindowModifier {
+        float start{0.f};
+        float end{0.f};
+    };
+
+    /// Attenuate a channel against its own value at `originTime`.
+    ///
+    /// `amount == 1` is the untouched channel, `amount == 0` freezes it at the
+    /// value it had at `originTime`, and in between is the blend of the two. It is
+    /// how a move is dialled down (or cross-faded in) without touching its keys.
+    ///
+    /// Unlike the time-warp modifiers this is a *value* filter, so it scales the
+    /// channel's rate by the same `amount`: a channel faded out to zero influence
+    /// reports zero velocity rather than the velocity it no longer has.
+    struct InfluenceModifier {
+        float amount{1.f};
+        float originTime{0.f};
+    };
+
+    /// Temporal smoothing: average the channel over `[t - radius, t + radius]`.
+    ///
+    /// `samples` evenly spaced instants across that window are averaged in
+    /// insertion order (a box kernel, so the smoothing lags nothing), and the
+    /// window is symmetric so a symmetric move stays symmetric. This is how a
+    /// jittery or over-keyed channel is softened to a readable move without
+    /// deleting keys.
+    ///
+    /// The mean of a sum is the sum of the means, so the smoothed channel's
+    /// derivative is the mean of the raw channel's derivative — which is exactly
+    /// what `velocity()` reports. `samples == 1` (or `radius <= 0`) is the raw
+    /// sample at `t`.
+    struct SmoothModifier {
+        float radius{0.f};
+        int samples{3};
+    };
+
+    using TrackModifier = std::variant<LoopModifier, PosterizeModifier, DelayModifier, LinkModifier,
+                                      WindowModifier, InfluenceModifier, SmoothModifier>;
 
     /// What a link resolves to: the linked channel's value, or its derivative.
     /// The alternative carried is the channel's own type — a Vector3 channel
@@ -274,6 +321,37 @@ namespace chrononmotion::motion {
             return addModifier(LinkModifier{layerId, channel, originTime});
         }
 
+        Track& addModifier(WindowModifier modifier) {
+            modifiers_.emplace_back(modifier);
+            return *this;
+        }
+
+        Track& addModifier(InfluenceModifier modifier) {
+            modifiers_.emplace_back(modifier);
+            return *this;
+        }
+
+        Track& addModifier(SmoothModifier modifier) {
+            modifiers_.emplace_back(modifier);
+            return *this;
+        }
+
+        /// Hold the channel outside `[start, end]` (see `WindowModifier`).
+        Track& window(float start, float end) {
+            return addModifier(WindowModifier{start, end});
+        }
+
+        /// Attenuate the channel against its own value at `originTime` (see
+        /// `InfluenceModifier`).
+        Track& influence(float amount, float originTime = 0.f) {
+            return addModifier(InfluenceModifier{amount, originTime});
+        }
+
+        /// Average the channel over a `radius`-second window (see `SmoothModifier`).
+        Track& smooth(float radius, int samples = 3) {
+            return addModifier(SmoothModifier{radius, samples});
+        }
+
         /// Empty when every modifier is well-formed, otherwise the first problem
         /// found. Sampling throws the same condition; this lets authoring report
         /// it before a frame is ever evaluated.
@@ -292,6 +370,24 @@ namespace chrononmotion::motion {
                     if (!std::isfinite(delay->seconds)) return "DelayModifier requires finite seconds";
                 } else if (const auto* link = std::get_if<LinkModifier>(&modifier)) {
                     if (!std::isfinite(link->originTime)) return "LinkModifier requires a finite originTime";
+                } else if (const auto* window = std::get_if<WindowModifier>(&modifier)) {
+                    if (!std::isfinite(window->start) || !std::isfinite(window->end) ||
+                        window->end < window->start) {
+                        return "WindowModifier requires finite start <= end";
+                    }
+                } else if (const auto* influence = std::get_if<InfluenceModifier>(&modifier)) {
+                    if (!std::isfinite(influence->amount) || influence->amount < 0.f ||
+                        influence->amount > 1.f) {
+                        return "InfluenceModifier requires an amount in [0, 1]";
+                    }
+                    if (!std::isfinite(influence->originTime)) {
+                        return "InfluenceModifier requires a finite originTime";
+                    }
+                } else if (const auto* smooth = std::get_if<SmoothModifier>(&modifier)) {
+                    if (!std::isfinite(smooth->radius) || smooth->radius < 0.f) {
+                        return "SmoothModifier requires a finite non-negative radius";
+                    }
+                    if (smooth->samples < 1) return "SmoothModifier requires at least one sample";
                 }
             }
             return {};
@@ -309,7 +405,111 @@ namespace chrononmotion::motion {
 
         /// Sample with a resolver for cross-layer links. A standalone track with
         /// no LinkModifier does not need a resolver.
+        ///
+        /// The modifiers are applied in two stages, and the stage a modifier
+        /// belongs to is what it does, not when it was added:
+        ///
+        /// - **time warps** (`Loop`, `Posterize`, `Delay`, `Window`) move the
+        ///   instant the channel is read at;
+        /// - **value filters** (`Smooth`, `Influence`) shape the value that comes
+        ///   back. `Smooth` runs innermost (it averages the raw channel) and
+        ///   `Influence` outermost, in the order they were added.
+        ///
+        /// `Link` sits with the keys rather than with either stage: the linked
+        /// channel's delta is part of what "this channel's value" means, so a
+        /// smoothing pass averages the borrowed motion together with the owned one.
+        ///
+        /// The value the caller passes in is the channel's **seed** — the layer's
+        /// static pose, which a key replaces and a link composes onto. Every buffer
+        /// the filters sample into starts from that same seed, so a frozen
+        /// reference is always a pose this channel could actually have produced.
         void sample(float time, T& out, const LinkResolver& resolve) const {
+
+            // A channel with no keys and no link has nothing to say: leave the
+            // caller's value alone so a layer's static pose still survives.
+            if (keys_.empty() && !hasLinkModifier()) return;
+
+            const T seed = out;
+            sampleSmoothed(0, time, seed, out, resolve);
+            applyValueModifiers(seed, out, resolve);
+        }
+
+        [[nodiscard]] T sample(float time) const {
+
+            T out{};
+            sample(time, out);
+            return out;
+        }
+
+        [[nodiscard]] T sample(float time, const LinkResolver& resolve) const {
+            T out{};
+            sample(time, out, resolve);
+            return out;
+        }
+
+        /// d(value)/dt at `time`, in units per second.
+        ///
+        /// The chain rule for one keyed segment:
+        ///
+        ///     dV/dt = easing'(u) * (V1 - V0) / span
+        ///
+        /// where u is the normalized position inside the segment and span is its
+        /// duration in seconds. Dividing by the span is what makes the same keys
+        /// report the same physical speed however far apart the keys are.
+        ///
+        /// Defined for every `T` `blendValue` accepts. A held (discrete) segment
+        /// has no continuous path, so it reports zero; use `MotionScene::motion()`
+        /// when a finite difference across the jump is wanted instead.
+        ///
+        /// Outside the keyed range the value is held and so is its derivative: the
+        /// track does not extrapolate, and neither does this.
+        [[nodiscard]] T velocity(float time) const {
+            return velocity(time, {});
+        }
+
+        /// The analytic derivative, with cross-layer links.
+        ///
+        /// `resolveRates` must return the linked channel's **derivative** at the
+        /// requested time (not its value): the relative link contributes exactly
+        /// the source's rate, scaled by the chain's own time derivative.
+        ///
+        /// `SmoothModifier` averages this derivative across the same window it
+        /// averages the value over — exact rather than approximate, because a mean
+        /// is linear and so commutes with differentiation — and `InfluenceModifier`
+        /// scales the result by its amount, because a channel dialled down to zero
+        /// influence is not moving whatever its keys say.
+        [[nodiscard]] T velocity(float time, const LinkResolver& resolveRates) const {
+
+            T out = velocitySmoothed(0, time, resolveRates);
+            // A channel dialled down by an influence is not moving the way its keys
+            // say, so its rate is dialled down by the same factor.
+            const float scale = influenceScale();
+            if (scale != 1.f) out = scaleRate(out, scale);
+            return out;
+        }
+
+    private:
+        /// True when this channel carries a cross-layer link, so an empty key list
+        /// is not the same thing as "nothing to say".
+        [[nodiscard]] bool hasLinkModifier() const {
+            for (const auto& modifier : modifiers_) {
+                if (std::holds_alternative<LinkModifier>(modifier)) return true;
+            }
+            return false;
+        }
+
+        [[nodiscard]] static float smoothingOffset(int sample, int samples) {
+
+            // `samples == 1` is the raw instant; otherwise the offsets walk the
+            // closed window from -radius to +radius inclusive.
+            if (samples <= 1) return 0.f;
+            return 2.f * (static_cast<float>(sample) / static_cast<float>(samples - 1)) - 1.f;
+        }
+
+        /// The raw channel value at `time`: time warps applied, keys interpolated,
+        /// links added, and *no* value filter. `SmoothModifier` averages this over a
+        /// window, so it has to be reachable without re-entering the filters.
+        void sampleCore(float time, T& out, const LinkResolver& resolve) const {
 
             const float mappedTime = mapTime(time);
             if (keys_.empty()) {
@@ -354,45 +554,63 @@ namespace chrononmotion::motion {
             applyLinks(mappedTime, out, resolve);
         }
 
-        [[nodiscard]] T sample(float time) const {
+        /// `sampleCore` with every `SmoothModifier` from `index` on applied, the
+        /// first one innermost. The mean is accumulated incrementally through
+        /// `blendValue`, which is the arithmetic mean for the scalar/vector types
+        /// and the incremental shortest-arc mean for a quaternion — the only way to
+        /// average orientations that does not go through a matrix.
+        void sampleSmoothed(std::size_t index, float time, const T& seed, T& out,
+                           const LinkResolver& resolve) const {
 
-            T out{};
-            sample(time, out);
-            return out;
+            for (std::size_t i = index; i < modifiers_.size(); ++i) {
+                const auto* smooth = std::get_if<SmoothModifier>(&modifiers_[i]);
+                if (!smooth || smooth->samples <= 1 || !(smooth->radius > 0.f)) continue;
+
+                T mean{};
+                for (int s = 0; s < smooth->samples; ++s) {
+                    // Seeded, not default-built: a linked channel adds to the pose it
+                    // was handed, so an unseeded buffer would average the borrowed
+                    // delta around a pose the channel never had.
+                    T value = seed;
+                    sampleSmoothed(i + 1, time + smoothingOffset(s, smooth->samples) * smooth->radius,
+                                   seed, value, resolve);
+                    mean = s == 0 ? value
+                                  : blendValue(mean, value, 1.f / static_cast<float>(s + 1));
+                }
+                out = mean;
+                return;
+            }
+
+            out = seed;
+            sampleCore(time, out, resolve);
         }
 
-        [[nodiscard]] T sample(float time, const LinkResolver& resolve) const {
-            T out{};
-            sample(time, out, resolve);
-            return out;
+        /// The derivative of `sampleCore` with the same smoothing passes, so the
+        /// smoothed channel and its reported rate can never disagree. Averaging is
+        /// linear, so the mean of the derivatives *is* the derivative of the mean.
+        [[nodiscard]] T velocitySmoothed(std::size_t index, float time,
+                                         const LinkResolver& resolveRates) const {
+
+            for (std::size_t i = index; i < modifiers_.size(); ++i) {
+                const auto* smooth = std::get_if<SmoothModifier>(&modifiers_[i]);
+                if (!smooth || smooth->samples <= 1 || !(smooth->radius > 0.f)) continue;
+
+                T mean{};
+                for (int s = 0; s < smooth->samples; ++s) {
+                    const T value = velocitySmoothed(
+                            i + 1, time + smoothingOffset(s, smooth->samples) * smooth->radius,
+                            resolveRates);
+                    mean = s == 0 ? value
+                                  : blendValue(mean, value, 1.f / static_cast<float>(s + 1));
+                }
+                return mean;
+            }
+
+            return velocityCore(time, resolveRates);
         }
 
-        /// d(value)/dt at `time`, in units per second.
-        ///
-        /// The chain rule for one keyed segment:
-        ///
-        ///     dV/dt = easing'(u) * (V1 - V0) / span
-        ///
-        /// where u is the normalized position inside the segment and span is its
-        /// duration in seconds. Dividing by the span is what makes the same keys
-        /// report the same physical speed however far apart the keys are.
-        ///
-        /// Defined for every `T` `blendValue` accepts. A held (discrete) segment
-        /// has no continuous path, so it reports zero; use `MotionScene::motion()`
-        /// when a finite difference across the jump is wanted instead.
-        ///
-        /// Outside the keyed range the value is held and so is its derivative: the
-        /// track does not extrapolate, and neither does this.
-        [[nodiscard]] T velocity(float time) const {
-            return velocity(time, {});
-        }
-
-        /// The analytic derivative, with cross-layer links.
-        ///
-        /// `resolveRates` must return the linked channel's **derivative** at the
-        /// requested time (not its value): the relative link contributes exactly
-        /// the source's rate, scaled by the chain's own time derivative.
-        [[nodiscard]] T velocity(float time, const LinkResolver& resolveRates) const {
+        /// The channel's own analytic rate, before the value filters.
+        [[nodiscard]] T velocityCore(float time, const LinkResolver& resolveRates) const {
 
             float rate = 1.f;
             time = mapTime(time, &rate);
@@ -433,7 +651,37 @@ namespace chrononmotion::motion {
             return out;
         }
 
-    private:
+        /// Every `InfluenceModifier` composed, in the order they were added.
+        ///
+        /// The frozen reference is sampled through the same path and from the same
+        /// `seed` as the live value, so "the pose this channel had at originTime"
+        /// means the same thing in both places for a keyed channel and for one that
+        /// only borrows another layer's motion.
+        void applyValueModifiers(const T& seed, T& out, const LinkResolver& resolve) const {
+
+            for (const auto& modifier : modifiers_) {
+                const auto* influence = std::get_if<InfluenceModifier>(&modifier);
+                if (!influence) continue;
+
+                T frozen = seed;
+                sampleSmoothed(0, influence->originTime, seed, frozen, resolve);
+                out = blendValue(frozen, out, influence->amount);
+            }
+        }
+
+        /// The product of every influence amount: how much of the keyed motion is
+        /// still reaching the output.
+        [[nodiscard]] float influenceScale() const {
+
+            float scale = 1.f;
+            for (const auto& modifier : modifiers_) {
+                if (const auto* influence = std::get_if<InfluenceModifier>(&modifier)) {
+                    scale *= influence->amount;
+                }
+            }
+            return scale;
+        }
+
         [[nodiscard]] float mapTime(float time, float* derivative = nullptr) const {
             float rate = 1.f;
             for (const auto& modifier : modifiers_) {
@@ -466,6 +714,43 @@ namespace chrononmotion::motion {
                 } else if (const auto* delay = std::get_if<DelayModifier>(&modifier)) {
                     if (!std::isfinite(delay->seconds)) throw std::invalid_argument("Track: DelayModifier requires finite seconds");
                     time -= delay->seconds;
+                } else if (const auto* window = std::get_if<WindowModifier>(&modifier)) {
+                    if (!std::isfinite(window->start) || !std::isfinite(window->end) ||
+                        window->end < window->start) {
+                        throw std::invalid_argument("Track: WindowModifier requires finite start <= end");
+                    }
+                    // Inside the window the time passes through unchanged; outside it
+                    // snaps to the nearer edge so the channel holds its edge value
+                    // instead of extrapolating. Exactly on an edge the two one-sided
+                    // slopes disagree and there is no single derivative, so the
+                    // finite 0 is reported — the same cusp convention LoopModifier
+                    // uses at a ping-pong turnaround.
+                    if (time <= window->start) {
+                        time = window->start;
+                        rate = 0.f;
+                    } else if (time >= window->end) {
+                        time = window->end;
+                        rate = 0.f;
+                    }
+                } else if (const auto* influence = std::get_if<InfluenceModifier>(&modifier)) {
+                    // A value filter, not a time warp. It is validated here because
+                    // every sample and every rate goes through this loop, so the
+                    // condition `modifierProblem()` reports at authoring time is the
+                    // same one sampling throws — not a second definition of it.
+                    if (!std::isfinite(influence->amount) || influence->amount < 0.f ||
+                        influence->amount > 1.f) {
+                        throw std::invalid_argument("Track: InfluenceModifier requires an amount in [0, 1]");
+                    }
+                    if (!std::isfinite(influence->originTime)) {
+                        throw std::invalid_argument("Track: InfluenceModifier requires a finite originTime");
+                    }
+                } else if (const auto* smooth = std::get_if<SmoothModifier>(&modifier)) {
+                    if (!std::isfinite(smooth->radius) || smooth->radius < 0.f) {
+                        throw std::invalid_argument("Track: SmoothModifier requires a finite non-negative radius");
+                    }
+                    if (smooth->samples < 1) {
+                        throw std::invalid_argument("Track: SmoothModifier requires at least one sample");
+                    }
                 }
             }
             if (derivative) *derivative = rate;

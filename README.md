@@ -79,6 +79,7 @@ are available.
 ```text
 Transform          Position/Anchor/Scale XYZ, Rotation X/Y/Z, Orientation, Opacity
 Track              keyframes, per-segment easing, deterministic sampling
+Track modifiers    loop / posterize / delay / link / window / influence / smooth
 Easing             linear / ease in-out / custom cubic Bézier / overshoot / bounce
 Layer              identity, parent, content, in/out lifetime, animated transform
 Lifetime           inFrame/outFrame; the entrance and exit are keyed from it
@@ -89,7 +90,9 @@ CameraRig          perspective, look-at, dolly/pan/tilt/orbit/roll, FOV/focal
 Presets            the YouTube presets, built on the primitives above
 ```
 
-The presets cover the list a text/image promo actually needs: slide in/out on all four sides, push/pull on Z, scale pop and overshoot, fade + slide, fade + scale, flip X/Y, card turn, 3D tilt, spin Z, spin XYZ, parallax entrance, camera push/pull/pan/orbit/shake, floating hover, drift, arc and path motion, staggered entrance and parent-group reveal — plus an animated pivot (`anchorTo`) and an entrance/exit keyed from the layer's own lifetime (`lifetimeSlide`).
+The presets cover the list a text/image promo actually needs: slide in/out on all four sides, push/pull on Z, scale pop and overshoot, fade + slide, fade + scale, flip X/Y, card turn, 3D tilt, spin Z, spin XYZ and a spin that unwinds *into* place (`spinIn`), bounce and spring settles (`bounceIn`, `springSettle`), an opacity pulse train (`pulseOpacity`), parallax entrance, camera push/pull/pan/orbit/shake, floating hover, drift, arc and path motion, staggered entrance, parent-group reveal and a travelling group wave (`rippleWave`) — plus an animated pivot (`anchorTo`), secondary motion with lag (`followThrough`) and an entrance/exit keyed from the layer's own lifetime (`lifetimeSlide`).
+
+The channel modifiers are the other half of the vocabulary: `Loop` repeats a window, `Window` holds outside one, `Posterize` holds on a grid, `Delay` shifts the read instant, `Link` borrows another layer's change, `Influence` dials a channel down against its own origin value, and `Smooth` averages a channel over a symmetric window. They are the reference-free half of After Effects' channel toolbox, and they are *authoring-time data*: each one is exported, never baked into a key list.
 
 The composition rules, in one place:
 
@@ -201,11 +204,11 @@ The result is one static library, `chrononmotion` (alias
 | binary | what it pins |
 |---|---|
 | `chrononmotion_smoke` | hierarchy/transform/curve/keyframe behaviour of the fork itself |
-| `chrononmotion_primitives` | `Easing`, `Transform`, `Track` |
+| `chrononmotion_primitives` | `Easing`, `Transform`, `Track`, and every channel modifier (window/influence/smooth semantics, rate, validation and export) |
 | `chrononmotion_timeline` | `Layer`, `MotionScene`, lifetimes, determinism, validation |
 | `chrononmotion_view` | `MotionPath`, `MotionPlane`/`PerspectiveView`, `CameraRig` |
-| `chrononmotion_presets` | every preset in the list, by its defining property (including the animated pivot and the lifetime-driven entrance/exit) |
-| `chrononmotion_canary` | the whole primitive set on one timeline (see below), plus the annotated-pivot/lifetime composition |
+| `chrononmotion_presets` | every preset in the list, by its defining property (the animated pivot, the lifetime-driven entrance/exit, the settles, the wave and secondary motion) |
+| `chrononmotion_canary` | the whole primitive set on one timeline (see below), plus the annotated-pivot/lifetime composition and the channel-modifier/recipe composition |
 | `chrononmotion_foundation` | Ray/Frustum, data-only lights, materials and CompiledScene |
 | `chrononmotion_kinematics` | sub-frame evaluation and motion channel derivatives |
 | `chrononmotion_authoring` | authoring bakers and the optional RenderPlan adapter |

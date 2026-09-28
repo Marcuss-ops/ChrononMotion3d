@@ -10,6 +10,8 @@
 
 #include "motion_check.hpp"
 
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 using namespace chrononmotion;
@@ -281,6 +283,175 @@ namespace {
         checkNear(forward, again, 0.f, "sampling has no hidden state: the same time is the same value");
     }
 
+    // --------------------------------------------------- channel modifiers
+
+    template<class F>
+    bool throwsInvalidArgument(F&& fn) {
+
+        try {
+            fn();
+        } catch (const std::invalid_argument&) {
+            return true;
+        } catch (...) {
+            return false;
+        }
+        return false;
+    }
+
+    void channelModifiers() {
+
+        section("channel modifiers");
+
+        // ---- Window: the time passes through inside and holds outside.
+        Track<float> windowed;
+        windowed.add(0.f, 0.f);
+        windowed.add(4.f, 8.f);
+        windowed.window(1.f, 2.f);
+
+        checkNear(windowed.sample(0.f), 2.f, 1e-5f,
+                  "a window holds the value at its start before it opens");
+        checkNear(windowed.sample(1.5f), 3.f, 1e-5f,
+                  "a window passes the sample time through inside itself");
+        checkNear(windowed.sample(3.f), 4.f, 1e-5f,
+                  "a window holds the value at its end after it closes");
+        checkNear(windowed.sample(9.f), 4.f, 1e-5f, "a window still holds far past its end");
+        checkNear(windowed.velocity(0.f), 0.f, 1e-6f, "a window reports no rate before it opens");
+        checkNear(windowed.velocity(1.5f), 2.f, 1e-5f, "a window passes the rate through inside itself");
+        checkNear(windowed.velocity(3.f), 0.f, 1e-6f, "a window reports no rate past its end");
+
+        // An instant-wide window holds one value everywhere.
+        Track<float> frozen;
+        frozen.add(0.f, 0.f);
+        frozen.add(4.f, 8.f);
+        frozen.window(2.f, 2.f);
+        checkNear(frozen.sample(0.f), 4.f, 1e-5f, "an instant-wide window holds the value at that instant");
+        checkNear(frozen.sample(4.f), 4.f, 1e-5f, "an instant-wide window holds it after the instant too");
+
+        // ---- Influence: the channel is dialled down against its own origin value.
+        Track<float> influenced;
+        influenced.add(0.f, 0.f);
+        influenced.add(1.f, 10.f);
+        influenced.influence(0.25f, 0.f);
+
+        checkNear(influenced.sample(0.5f), 1.25f, 1e-5f,
+                  "influence blends the live value against the frozen origin value");
+        checkNear(influenced.sample(1.f), 2.5f, 1e-5f,
+                  "influence reaches the whole channel, not just the first segment");
+        checkNear(influenced.sample(0.f), 0.f, 1e-5f, "influence is a fixed point at its own origin");
+        checkNear(influenced.velocity(0.5f), 2.5f, 1e-5f,
+                  "influence scales the reported rate by the same amount");
+
+        Track<float> frozenAtOrigin;
+        frozenAtOrigin.add(0.f, 3.f);
+        frozenAtOrigin.add(1.f, 10.f);
+        frozenAtOrigin.influence(0.f, 0.f);
+        checkNear(frozenAtOrigin.sample(0.9f), 3.f, 1e-5f,
+                  "zero influence freezes the channel at its origin value");
+        checkNear(frozenAtOrigin.velocity(0.9f), 0.f, 1e-6f, "zero influence reports no rate");
+
+        Track<float> fullInfluence;
+        fullInfluence.add(0.f, 0.f);
+        fullInfluence.add(1.f, 10.f);
+        fullInfluence.influence(1.f, 0.f);
+        checkNear(fullInfluence.sample(0.5f), 5.f, 1e-5f, "full influence leaves the channel alone");
+
+        // ---- Smooth: a symmetric mean over the window.
+        Track<float> ramp;
+        ramp.add(0.f, 0.f);
+        ramp.add(2.f, 10.f);
+        const float plainRamp = ramp.sample(1.f);
+        ramp.smooth(0.25f, 3);
+        checkNear(ramp.sample(1.f), plainRamp, 1e-4f,
+                  "smoothing a linear ramp through a symmetric window leaves it where it was");
+        checkNear(ramp.velocity(1.f), 5.f, 1e-4f, "smoothing a linear ramp leaves its rate alone");
+
+        // A peak is what smoothing is for: averaging across it stops the channel
+        // reaching it.
+        Track<float> peak;
+        peak.add(0.f, 0.f, Easing::linear());
+        peak.add(1.f, 1.f, Easing::linear());
+        peak.add(2.f, 0.f, Easing::linear());
+        checkNear(peak.sample(1.f), 1.f, 1e-6f, "the unsmoothed channel reaches its peak");
+        peak.smooth(0.25f, 3);
+        check(peak.sample(1.f) < 1.f, "smoothing keeps the channel from reaching the peak");
+        checkNear(peak.sample(1.f), 5.f / 6.f, 1e-4f, "smoothing a peak averages its neighbours into it");
+
+        // `samples == 1` and a zero radius are both the raw sample.
+        Track<float> singleSample;
+        singleSample.add(0.f, 0.f, Easing::linear());
+        singleSample.add(1.f, 1.f, Easing::linear());
+        singleSample.add(2.f, 0.f, Easing::linear());
+        singleSample.smooth(0.25f, 1);
+        checkNear(singleSample.sample(1.f), 1.f, 1e-6f, "one smoothing sample is the raw sample");
+
+        Track<float> zeroRadius;
+        zeroRadius.add(0.f, 0.f, Easing::linear());
+        zeroRadius.add(1.f, 1.f, Easing::linear());
+        zeroRadius.add(2.f, 0.f, Easing::linear());
+        zeroRadius.smooth(0.f, 5);
+        checkNear(zeroRadius.sample(1.f), 1.f, 1e-6f, "a zero smoothing radius is the raw sample");
+
+        // ---- A link is part of the channel, so smoothing averages it too.
+        Track<Vector3> borrowed;
+        borrowed.add(0.f, Vector3(0.f, 0.f, 0.f));
+        borrowed.link(7, TrackChannel::Position, 0.f);
+
+        const LinkResolver source = [](std::uint32_t, TrackChannel, float time) -> LinkValue {
+            return Vector3(time, 0.f, 0.f);
+        };
+
+        checkNear(borrowed.sample(2.f, source), Vector3(2.f, 0.f, 0.f), 1e-5f,
+                  "a link adds the source's change since originTime");
+
+        borrowed.smooth(0.5f, 3);
+        checkNear(borrowed.sample(2.f, source), Vector3(2.f, 0.f, 0.f), 1e-5f,
+                  "smoothing averages the borrowed motion with the channel's own");
+
+        // ---- Validation: authoring and sampling report the same condition.
+        Track<float> reversed;
+        reversed.add(0.f, 0.f);
+        reversed.window(4.f, 2.f);
+        check(!reversed.modifierProblem().empty(), "a reversed window is reported at authoring time");
+        check(throwsInvalidArgument([&] { (void) reversed.sample(1.f); }),
+              "a reversed window also throws when sampled");
+
+        Track<float> badInfluence;
+        badInfluence.add(0.f, 0.f);
+        badInfluence.influence(1.5f);
+        check(!badInfluence.modifierProblem().empty(), "an out-of-range influence is reported");
+        check(throwsInvalidArgument([&] { (void) badInfluence.sample(1.f); }),
+              "an out-of-range influence also throws when sampled");
+
+        Track<float> badSmooth;
+        badSmooth.add(0.f, 0.f);
+        badSmooth.smooth(-1.f);
+        check(!badSmooth.modifierProblem().empty(), "a negative smoothing radius is reported");
+
+        Track<float> wellFormed;
+        wellFormed.add(0.f, 0.f);
+        wellFormed.window(0.f, 1.f).influence(0.5f).smooth(0.1f, 3);
+        check(wellFormed.modifierProblem().empty(), "well-formed modifiers report nothing");
+
+        // ---- Export: every modifier this build can author is named in the JSON.
+        MotionScene scene("modifiers", 30.f);
+        Layer& carrier = scene.addNull(1, "ModifierCarrier");
+        carrier.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+        carrier.tracks.position.window(0.f, 1.f);
+        carrier.tracks.opacity.influence(0.5f, 0.f);
+        carrier.tracks.scale.smooth(0.05f, 3);
+        carrier.tracks.rotation.delay(0.25f);
+        carrier.tracks.anchor.loop(0.f, 1.f);
+
+        const std::string json = scene.toJson();
+        check(json.find("\"window\"") != std::string::npos, "the export names a WindowModifier");
+        check(json.find("\"influence\"") != std::string::npos, "the export names an InfluenceModifier");
+        check(json.find("\"smooth\"") != std::string::npos, "the export names a SmoothModifier");
+        check(json.find("\"radius\"") != std::string::npos, "the export carries the smoothing radius");
+        check(json.find("\"samples\"") != std::string::npos, "the export carries the smoothing sample count");
+        check(json.find("\"amount\"") != std::string::npos, "the export carries the influence amount");
+        check(json.find("\"loop\"") != std::string::npos, "the export still names the pre-existing modifiers");
+    }
+
     // ------------------------------------------------- content measurement
 
     void contentMeasurementFingerprint() {
@@ -356,6 +527,7 @@ int main() {
     transformComposition();
     transformBlending();
     trackSampling();
+    channelModifiers();
     contentMeasurementFingerprint();
     trackedKeyframeIngest();
 

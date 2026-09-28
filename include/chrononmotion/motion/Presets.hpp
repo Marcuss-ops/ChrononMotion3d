@@ -155,6 +155,31 @@ namespace chrononmotion::motion {
         /// (so the spin has no Euler gimbal or ±180° flip).
         void spinXYZ(Layer& layer, int inFrame, int duration, float turns, float fps);
 
+        /// Spin *into place* about an axis: the layer starts `turns` full rotations
+        /// away and unwinds onto its resting orientation.
+        ///
+        /// Keyed as a quaternion, like `spinXYZ`, so a multi-turn entrance walks
+        /// the short arc segment by segment rather than taking the long way through
+        /// ±180°. The unwind is eased (fast, then settling); the keys are evenly
+        /// spaced in time and the curve is what shapes the rate.
+        void spinIn(Layer& layer, Axis axis, int inFrame, int duration, float turns, float fps);
+
+        // ------------------------------------------------------------- settles
+
+        /// Arrive from an offset along an axis and **bounce** onto the resting pose.
+        ///
+        /// The layer starts `distance` away and rebounds into place. The rebounds
+        /// are the segment's easing, not a physics step, so the entrance is exact on
+        /// every frame and lands *on* the resting pose rather than near it.
+        void bounceIn(Layer& layer, Axis axis, int inFrame, int duration, float distance, float fps);
+
+        /// Arrive from an offset along an axis and **spring** onto the resting pose.
+        ///
+        /// The smooth counterpart of `bounceIn`: one soft overshoot and settle
+        /// instead of discrete rebounds. Both ease onto the layer's own pose, so
+        /// neither can leave the layer off its resting place at the end.
+        void springSettle(Layer& layer, Axis axis, int inFrame, int duration, float amplitude, float fps);
+
         // ------------------------------------------------------------------- 2.5D
 
         /// Enter from depth: the parallax against the background is then automatic.
@@ -171,6 +196,16 @@ namespace chrononmotion::motion {
 
         /// One out-sine pulse from 1x to 1.03x and back over the duration.
         void pulse(Layer& layer, int inFrame, int duration, float fps);
+
+        /// A keyed opacity pulse train: `cycles` dips to `floorOpacity` and back to
+        /// the layer's resting opacity over the duration.
+        ///
+        /// The pulse lives in the keys rather than in an effect parameter, so it
+        /// composes with whatever else is animating the layer; and because the top
+        /// of every cycle is the layer's *own* resting opacity, a pulse never
+        /// changes how opaque the layer settles.
+        void pulseOpacity(Layer& layer, int inFrame, int duration, int cycles, float fps,
+                          float floorOpacity = 0.f);
 
         /// Slow six-second XY drift with a subtle ±0.5° Z rotation.
         void floatDrift(Layer& layer, int inFrame, int duration, float fps);
@@ -195,6 +230,30 @@ namespace chrononmotion::motion {
         /// the children fade in under it.
         void parentGroupReveal(Layer& parent, const std::vector<Layer*>& children,
                                int inFrame, int duration, float fps);
+
+        /// A travelling wave through a group: every layer travels `distance` along
+        /// one direction, each one a further `1/layers` of a cycle out of phase.
+        ///
+        /// This is not `staggeredEntrance` with a different easing. There the same
+        /// move is offset in *time*, so the group reads as a sequence; here one wave
+        /// is sampled across the group, so the layers read as a single ripple passing
+        /// through them. `cycles` is how many full waves cross the group over the
+        /// duration. Layers are keyed at a fixed step, so the wave is a sampled curve
+        /// and is reproducible frame for frame.
+        void rippleWave(const std::vector<Layer*>& layers, Direction direction, int inFrame,
+                        int duration, float cycles, float distance, float fps);
+
+        /// Secondary motion: the follower adds the source's change since the
+        /// composition's start, read `lagSeconds` late, to its own pose.
+        ///
+        /// This is the "with lag" technique — the borrowed motion arrives late, so
+        /// the follower trails what it is attached to instead of being welded to it,
+        /// which is what makes secondary motion read as weight. Nothing is baked: it
+        /// is a channel `Link` plus a `Delay`, so the follower keeps its own keys and
+        /// stays editable. Both layers must be in the same `MotionScene` for the link
+        /// to resolve, and the source must be keyed from its own start for the delta
+        /// to have a reference.
+        void followThrough(Layer& layer, const Layer& source, float lagSeconds);
 
         // ----------------------------------------------------------------- camera
 

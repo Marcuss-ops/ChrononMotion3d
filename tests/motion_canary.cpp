@@ -23,8 +23,10 @@
 
 #include "motion_check.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 using namespace chrononmotion;
 using namespace chrononmotion::motion;
@@ -487,6 +489,90 @@ namespace {
                   "re-evaluating a frame reproduces it exactly");
     }
 
+    // A third composition for the channel modifiers and the recipe presets that
+    // sit on top of them: a work area that limits *when* a channel moves, a value
+    // filter that softens what the keys produced, a follower that borrows another
+    // layer's motion late, and a wave sampled across a group. None of it is a
+    // separate evaluation path — it is the same Layer/Track sampling as above,
+    // with the filter stages in front of it.
+    void theChannelModifiersAndRecipePresetsHoldTogether() {
+
+        section("canary: channel modifiers, settles and secondary motion");
+
+        constexpr Layer::Id kDriven = 1;
+        constexpr Layer::Id kFollower = 2;
+        constexpr Layer::Id kRawSettle = 3;
+        constexpr Layer::Id kSmoothedSettle = 4;
+        constexpr Layer::Id kWaveLead = 5;
+        constexpr Layer::Id kWaveTrail = 6;
+
+        MotionScene scene("modifiers", kFps);
+
+        Layer& driven = scene.addNull(kDriven, "Driven");
+        driven.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f), Easing::linear());
+        driven.tracks.position.add(60.f * kFrameSeconds, Vector3(10.f, 0.f, 0.f), Easing::linear());
+        driven.tracks.position.window(15.f * kFrameSeconds, 45.f * kFrameSeconds);
+
+        Layer& follower = scene.addNull(kFollower, "Follower");
+        follower.transform.position.set(100.f, 0.f, 0.f);
+        follower.tracks.position.influence(0.5f, 0.f);
+        presets::followThrough(follower, driven, 0.5f);
+
+        Layer& rawSettle = scene.addNull(kRawSettle, "SettleRaw");
+        presets::springSettle(rawSettle, presets::Axis::Y, 0, 30, 3.f, kFps);
+
+        Layer& smoothedSettle = scene.addNull(kSmoothedSettle, "SettleSmoothed");
+        presets::springSettle(smoothedSettle, presets::Axis::Y, 0, 30, 3.f, kFps);
+        smoothedSettle.tracks.position.smooth(2.f * kFrameSeconds, 3);
+
+        Layer& waveLead = scene.addNull(kWaveLead, "WaveLead");
+        Layer& waveTrail = scene.addNull(kWaveTrail, "WaveTrail");
+        const std::vector<Layer*> wave{&waveLead, &waveTrail};
+        presets::rippleWave(wave, presets::Direction::Up, 0, 30, 1.f, 2.f, kFps);
+
+        // The work area: the move only happens between frames 15 and 45, and the
+        // channel holds either side of it.
+        scene.evaluate(0);
+        checkNear(scene.state(kDriven).local.position.x, 2.5f, 1e-4f,
+                  "a window holds the channel before it opens");
+        scene.evaluate(30);
+        checkNear(scene.state(kDriven).local.position.x, 5.f, 1e-4f,
+                  "a window passes the channel through inside itself");
+        scene.evaluate(90);
+        checkNear(scene.state(kDriven).local.position.x, 7.5f, 1e-4f,
+                  "a window holds the channel after it closes");
+
+        // Secondary motion: late *and* attenuated, from the same channel.
+        scene.evaluate(15);
+        checkNear(scene.state(kFollower).local.position.x, 100.f, 1e-3f,
+                  "the follower has not moved while the driven layer is inside the lag");
+        scene.evaluate(60);
+        checkNear(scene.state(kFollower).local.position.x, 102.5f, 1e-3f,
+                  "the follower trails by one lag, at half the strength");
+
+        // Smoothing softens a settle's overshoot without deciding where it lands.
+        float rawDip = 0.f;
+        float smoothedDip = 0.f;
+        for (int frame = 0; frame <= 30; ++frame) {
+            scene.evaluate(frame);
+            rawDip = std::min(rawDip, scene.state(kRawSettle).local.position.y);
+            smoothedDip = std::min(smoothedDip, scene.state(kSmoothedSettle).local.position.y);
+        }
+        check(rawDip < 0.f, "the unsmoothed settle overshoots past the resting position");
+        check(smoothedDip > rawDip, "smoothing softens the settle's overshoot");
+
+        // One wave across two lanes: half a cycle apart, so exact opposites.
+        scene.evaluate(4);
+        const float lead = scene.state(kWaveLead).local.position.y;
+        const float trail = scene.state(kWaveTrail).local.position.y;
+        check(lead > 0.f && trail < 0.f, "lanes half a cycle apart move opposite ways at once");
+        checkNear(lead + trail, 0.f, 1e-4f, "lanes half a cycle apart are exact opposites");
+
+        scene.evaluate(4);
+        checkNear(scene.state(kWaveTrail).local.position.y, trail, 0.f,
+                  "the whole composition is a pure function of the frame");
+    }
+
 }// namespace
 
 int main() {
@@ -498,6 +584,7 @@ int main() {
     subtitleTravelsACurvedPath();
     canaryIsDeterministicAndAnchored();
     thePivotTravelsAndTheLifetimeDrivesTheEntrance();
+    theChannelModifiersAndRecipePresetsHoldTogether();
 
     return chrononmotion_test::report();
 }

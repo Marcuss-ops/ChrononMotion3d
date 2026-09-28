@@ -199,7 +199,7 @@ no content machinery:
 | `motion/Content.hpp` | `ContentRef` / `ContentKind` / `ContentMetrics` / `MeasurementState`: the opaque handle to Chronon's content, the neutral rectangle placement needs, and the fingerprint that says which measurement of that content the rectangle came from |
 | `motion/Easing.hpp` | the timing curve — linear, ease in/out/in-out, custom cubic Bézier, overshoot, bounce, elastic |
 | `motion/Transform.hpp` | Position/Anchor/Scale XYZ, Rotation X/Y/Z, Orientation quaternion, Opacity |
-| `motion/Track.hpp` | keyframes with per-segment easing; scalar and vector lerp, quaternion slerp |
+| `motion/Track.hpp` | keyframes with per-segment easing; scalar and vector lerp, quaternion slerp; the channel modifiers (time warps: loop, posterize, delay, window — value filters: link, influence, smooth) |
 | `motion/Layer.hpp` | `FrameRange`, `LayerTracks`, `Layer` — identity, parent, content, lifetime, animated pose |
 | `motion/MotionScene.hpp` | `MotionTime`, `LayerState`, `MotionScene` — hierarchy and deterministic frame/PTS evaluation |
 | `motion/MotionPath.hpp` | line / quadratic and cubic Bézier / Catmull-Rom, arc-length sampling, orient-to-path |
@@ -251,6 +251,20 @@ The public surface is unchanged: `motion/Presets.hpp` is still the whole list.
 * **Orientation is a quaternion, not Euler.** It is slerped, and `slerpQuaternions`
   fixes the antipodal sign, so an orientation track never takes the long way
   through ±180°. `rotation` stays XYZ Euler because that is what an author edits.
+* **Modifiers are a stage, not a flag.** The modifiers on a channel are applied in
+  two stages, and the stage a modifier belongs to is what it *does*, not the order
+  it was added in. **Time warps** (`Loop`, `Posterize`, `Delay`, `Window`) move the
+  instant the channel is read at. **Value filters** (`Smooth`, `Influence`) shape
+  the value that comes back: `Smooth` runs innermost — it averages the raw channel
+  across a symmetric window, so a linear run is left exactly where it was and a
+  peak is pulled down — and `Influence` outermost, blending the result against the
+  channel's own value at an origin instant. `Link` sits with the keys rather than
+  with either stage: the borrowed delta is part of what "this channel's value"
+  means, so a smoothing pass averages the borrowed motion together with the owned
+  one. Rate follows value through both stages, exactly: averaging is linear and so
+  commutes with differentiation (the reported rate is the mean of the rates), and
+  an influence that has dialled a channel to zero reports zero velocity rather than
+  the velocity its keys no longer deliver.
 * **Evaluation.** `MotionScene::evaluate(frame)` samples every layer at
   `frame / fps` and composes world matrices parents-first, so a Null layer's
   motion propagates to everything under it and a hidden Null hides its subtree.
@@ -322,7 +336,8 @@ The compile-time contract is split across twelve test executables plus the separ
   primitives: `PlaneGeometry`/`BoxGeometry`/`SphereGeometry` vertex and index
   counts, the per-face groups, the bounds they produce, the retained construction
   parameters and the unit-length sphere normals.
-* `chrononmotion_primitives` pins `Easing`, `Transform`, `Track` and the content
+* `chrononmotion_primitives` pins `Easing`, `Transform`, `Track`, every channel
+  modifier and the content
   measurement: curve endpoints and the overshoot that must still land on 1, the
   anchor as the fixed point of *both* scale and rotation, `orientation` composing
   on top of `rotation`, shortest-path blending across ±180°, per-segment easing,
@@ -342,12 +357,17 @@ The compile-time contract is split across twelve test executables plus the separ
 * `chrononmotion_presets` pins every preset in the list by its defining property
   — where it starts, where it ends, and what makes it that preset rather than a
   neighbour (an overshoot that actually overshoots, a shake that always resolves
-  where it started, a stagger whose layers are actually offset).
+  where it started, a stagger whose layers are actually offset, a settle that
+  lands *on* the resting pose, a wave whose lanes are actually out of phase, a
+  follower that is where its source was one lag earlier).
 * `chrononmotion_canary` pins the whole primitive set at once, on the canary
   composition described in that file, plus a second composition for the two
   capabilities the first does not exercise on its own — a pivot that travels
   while the layer turns about it, and an entrance and exit keyed from the
-  layer's declared lifetime.
+  layer's declared lifetime — and a third for the modifier stages and the recipe
+  presets that sit on them (a work area that limits when a channel moves, one
+  that softens the overshoot of a settle, a follower that borrows another
+  layer's motion late and at half strength, and a wave sampled across a group).
 * `chrononmotion_foundation` pins Ray/Frustum, data-only lights, material
   descriptors and the `CompiledScene` boundary.
 * `chrononmotion_kinematics` pins sub-frame evaluation and motion channel
@@ -411,6 +431,18 @@ atlas, a text layout engine, an image decoder or a rasterizer — and it must no
 grow a second `TextStyle`, a second definition of "bounds", or a second `Text`
 type. If it needs one of those, the answer is a smaller `ContentRef`, not a copy
 of the content engine.
+
+The same rule runs the other way along the sibling modules. ChrononMotion keeps
+the six curves its own evaluation needs, because it is dependency-free and
+samples every track itself; it does **not** keep a *catalogue* of named curves.
+That catalogue is Chronon3d's — `chronon3d::Easing` with its quad/cubic/expo/
+sine/back/elastic/bounce in/out/in-out set, the `CubicBezier` sampler and the
+RenderPlan `easing` tokens — and the path operators (`Trim`, `WigglePath`,
+`ZigZag`, `Twist`, `Repeater`, `Morph`) are Chronon3d's too. Adding a second
+spelling of any of those here would give the family two authorities for one
+vocabulary, which is the defect this whole boundary exists to prevent. The
+motion half grows the things only it can own: the timeline, the hierarchy, the
+channel stages and the camera.
 
 The measurable form of the rule is the architectural guardrail:
 

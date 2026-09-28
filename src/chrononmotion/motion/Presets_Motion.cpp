@@ -196,4 +196,110 @@ namespace chrononmotion::motion::presets {
         }
     }
 
+    namespace {
+
+        /// The offset a settle entrance starts from: the layer's resting position
+        /// pushed `distance` along `axis`. Rest is read at `inFrame`, so a settle
+        /// starts from wherever the layer actually was and cannot invent a pose.
+        [[nodiscard]] Vector3 settledFrom(const Layer& layer, Axis axis, int inFrame, float distance,
+                                          float fps) {
+
+            Vector3 from = restOf(layer, inFrame, fps).position;
+            Vector3 offset = axisVector(axis);
+            offset.multiplyScalar(distance);
+            from.add(offset);
+            return from;
+        }
+
+    }// namespace
+
+    void bounceIn(Layer& layer, Axis axis, int inFrame, int duration, float distance, float fps) {
+
+        requireFiniteAmplitude(distance, "bounceIn");
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+
+        keyVector3(layer.tracks.position, t0, t1,
+                   settledFrom(layer, axis, inFrame, distance, fps), rest.position,
+                   Easing::bounceOut());
+    }
+
+    void springSettle(Layer& layer, Axis axis, int inFrame, int duration, float amplitude, float fps) {
+
+        requireFiniteAmplitude(amplitude, "springSettle");
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+
+        keyVector3(layer.tracks.position, t0, t1,
+                   settledFrom(layer, axis, inFrame, amplitude, fps), rest.position,
+                   Easing::elasticOut());
+    }
+
+    void rippleWave(const std::vector<Layer*>& layers, Direction direction, int inFrame,
+                    int duration, float cycles, float distance, float fps) {
+
+        if (layers.empty()) return;
+        requireFiniteAmplitude(distance, "rippleWave");
+
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+        const float span = t1 - t0;
+        const float waveTurns = std::max(cycles, 1.f);
+
+        const Vector3 travel = directionOffset(direction);
+        const int count = static_cast<int>(layers.size());
+
+        // Every resting pose is captured before a single key is written, so one
+        // layer's travel can never become another layer's baseline.
+        std::vector<Vector3> rests(static_cast<std::size_t>(count));
+        for (int i = 0; i < count; ++i) {
+            const Layer* layer = layers[static_cast<std::size_t>(i)];
+            rests[static_cast<std::size_t>(i)] =
+                    layer != nullptr ? restOf(*layer, inFrame, fps).position : Vector3{};
+        }
+
+        // Sampled rather than keyed at the extrema: a sine keyed only at its peaks
+        // and zeroes reads as a triangle wave, and riding the curve is the point.
+        constexpr int samplesPerTurn = 8;
+        const int turns = static_cast<int>(std::ceil(waveTurns));
+        const float step = span / static_cast<float>(samplesPerTurn * turns);
+
+        sampleAtFixedStep(t0, t1, step, [&](float time, float elapsed) {
+            const float progress = elapsed / span;
+            for (int i = 0; i < count; ++i) {
+                Layer* layer = layers[static_cast<std::size_t>(i)];
+                if (layer == nullptr) continue;
+
+                const float lane = static_cast<float>(i) / static_cast<float>(count);
+                const float phase = math::TWO_PI * (waveTurns * progress - lane);
+
+                Vector3 value = rests[static_cast<std::size_t>(i)];
+                Vector3 offset = travel;
+                offset.multiplyScalar(std::sin(phase) * distance);
+                value.add(offset);
+
+                layer->tracks.position.add(time, value, Easing::linear());
+            }
+        });
+    }
+
+    void followThrough(Layer& layer, const Layer& source, float lagSeconds) {
+
+        if (!std::isfinite(lagSeconds) || lagSeconds < 0.f) {
+            throw std::invalid_argument("followThrough: lag must be finite and non-negative");
+        }
+
+        // Two channel modifiers and nothing else: `link` contributes the source's
+        // change relative to its pose at the composition's start, and `delay` is what
+        // reads it late. Nothing is baked and no key is copied, so retiming the source
+        // moves the follower with it — and because both are channel modifiers this
+        // stays a relationship rather than an animation.
+        layer.tracks.position.link(source.id, TrackChannel::Position, 0.f);
+        layer.tracks.position.delay(lagSeconds);
+    }
+
 }// namespace chrononmotion::motion::presets

@@ -159,4 +159,58 @@ namespace chrononmotion::motion::presets {
         }
     }
 
+    void spinIn(Layer& layer, Axis axis, int inFrame, int duration, float turns, float fps) {
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+
+        const float total = turns * math::TWO_PI;
+        const int steps = std::max(1, static_cast<int>(std::ceil(std::fabs(total) / (math::PI * 0.9f))));
+        const Easing unwind = Easing::easeOut();
+
+        // The unwinding *rate* is the easing; the key *times* stay evenly spaced, so
+        // the curve is the only thing shaping the motion. Each key is the remaining
+        // offset composed onto the resting orientation (`offset * rest`, i.e. the
+        // rest pose first and then the spin about the world axis), which is why the
+        // last key is the resting pose itself and not merely a pose near it.
+        auto& track = layer.tracks.orientation;
+        for (int i = 0; i <= steps; ++i) {
+            const float progress = static_cast<float>(i) / static_cast<float>(steps);
+            const float remaining = 1.f - unwind(progress);
+
+            Quaternion offset;
+            offset.setFromAxisAngle(axisVector(axis), total * remaining);
+
+            Quaternion key = offset;
+            key.multiply(rest.orientation);
+            track.add(t0 + (t1 - t0) * progress, key, Easing::linear());
+        }
+    }
+
+    void pulseOpacity(Layer& layer, int inFrame, int duration, int cycles, float fps, float floorOpacity) {
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+        const int count = std::max(cycles, 1);
+        const float floorValue = std::clamp(floorOpacity, 0.f, 1.f);
+
+        auto& track = layer.tracks.opacity;
+        track.add(t0, rest.opacity, Easing::easeInOut());
+
+        for (int cycle = 0; cycle < count; ++cycle) {
+            const float down = (static_cast<float>(cycle) + 0.5f) / static_cast<float>(count);
+            track.add(t0 + (t1 - t0) * down, floorValue, Easing::easeInOut());
+
+            // The last cycle lands on `t1` itself rather than on a float accumulation
+            // of the period, so a pulse train ends where the duration says it ends.
+            const int next = cycle + 1;
+            const float up = next == count
+                                     ? t1
+                                     : t0 + (t1 - t0) * (static_cast<float>(next) / static_cast<float>(count));
+            track.add(up, rest.opacity, Easing::linear());
+        }
+    }
+
 }// namespace chrononmotion::motion::presets
