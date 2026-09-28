@@ -5,10 +5,12 @@
 //
 //   1. The geodesy. ECEF/Bowring/ENU and Haversine against known WGS84 values.
 //   2. Web Mercator *against the other implementation of it*. The raster plates
-//      are cropped by `tools/map_cartography.py`, and this side georeferences
-//      them; if the two formulas drift, every marker lands on the wrong pixel
-//      and nothing else in the tree would notice. The expected numbers below are
-//      that Python's output, so this file fails the moment the two disagree.
+//      are cropped by `Chronon3d/tools/cartography/map_cartography.py`, and this
+//      side georeferences them; if the two formulas drift, every marker lands on
+//      the wrong pixel and nothing else in the tree would notice. The expected
+//      numbers below are that tool's output, so this file fails the moment the
+//      two disagree — and its `--self-test` asserts the same numbers back, so a
+//      drift is caught on whichever side it is introduced.
 //   3. The authoring bridge. A map point becomes a layer position by exactly one
 //      conversion, and the plan that comes out of the lowering must place a
 //      marker on the canvas pixel its geography maps to.
@@ -121,10 +123,10 @@ namespace {
     void testWebMercator() {
 
         std::cout << "\n=== web mercator (locked against map_cartography.py) ===\n";
-        // These are the exact values `tools/map_cartography.py`
-        // `latlon_to_mercator_px` returns for the same inputs. They are the
-        // contract between the side that crops the raster and the side that
-        // georeferences it.
+        // These are the exact values `Chronon3d/tools/cartography/
+        // map_cartography.py` `latlon_to_mercator_px` returns for the same
+        // inputs. They are the contract between the side that crops the raster
+        // and the side that georeferences it.
         const struct { double lat, lon; int zoom; double x, y; } reference[] = {
             {41.890210, 12.492231, 14, 2242697.0401450666, 1558716.8764844453},
             {29.86, -92.70, 8, 15892.48, 27067.93732941762},

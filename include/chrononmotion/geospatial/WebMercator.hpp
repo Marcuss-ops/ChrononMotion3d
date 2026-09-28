@@ -8,10 +8,12 @@
 // there or the map lies about geography.
 //
 // The math is the slippy-tile convention Chronon's Python cartography already
-// uses (`tools/map_cartography.py`): a global pixel grid of 256 * 2^zoom tiles,
-// +x east, +y south, latitudes clamped to the Mercator limit. Keeping the two
-// implementations on one formula is the whole point — the raster is produced on
-// one side and georeferenced on the other.
+// uses (`Chronon3d/tools/cartography/map_cartography.py`, the content side of
+// this tree): a global pixel grid of 256 * 2^zoom tiles, +x east, +y south,
+// latitudes clamped to the Mercator limit. Keeping the two implementations on
+// one formula is the whole point — the raster is produced on one side and
+// georeferenced on the other, and each side asserts the same reference pixels
+// (`map_cartography.py --self-test` and this tree's motion_geospatial tests).
 
 #ifndef CHRONONMOTION_GEOSPATIAL_WEBMERCATOR_HPP
 #define CHRONONMOTION_GEOSPATIAL_WEBMERCATOR_HPP

@@ -14,10 +14,11 @@
 // the pixel that window puts them on.
 //
 // The window is the truth about a plate. `MapWindow::centeredOn` reproduces the
-// exact crop `tools/map_cartography.py` (`build_georeferenced_basemap`) made from
-// `centerLat`/`centerLon`/`zoom`, which is why a place here is a window plus a
-// basemap and never just a basemap: naming a plate without its window would put
-// every marker on a map that is not there.
+// exact crop Chronon3d/tools/cartography/map_cartography.py
+// (`build_georeferenced_basemap`) made from `centerLat`/`centerLon`/`zoom`,
+// which is why a place here is a window plus a basemap and never just a basemap:
+// naming a plate without its window would put every marker on a map that is not
+// there.
 //
 // Usage: chrononmotion_map_flyover [place] [output.plan.json] [font-asset] [frames]
 //   place           one of the shipped plates (see `places()`); default louisiana
@@ -58,8 +59,8 @@ namespace {
         /// same way every other asset path in this tree is.
         std::string basemap;
         /// Optional DEM-derived relief for *the same window* as `basemap`,
-        /// produced by `tools/map_cartography.py relief` alongside it. Empty
-        /// means the place is drawn without relief.
+        /// produced by `Chronon3d/tools/cartography/map_cartography.py relief`
+        /// alongside it. Empty means the place is drawn without relief.
         std::string relief;
         double centerLat{0.0};
         double centerLon{0.0};
@@ -135,8 +136,9 @@ namespace {
             // A place whose relief is the point of the plate: 2.9 km of
             // elevation across one window, from the Zermatt valley floor to the
             // Matterhorn summit. The basemap and the relief were rendered for
-            // this exact window by tools/map_cartography.py, which is what makes
-            // the ridge lines on the drape sit on the ridge lines in the imagery.
+            // this exact window by Chronon3d/tools/cartography/map_cartography.py,
+            // which is what makes the ridge lines on the drape sit on the ridge
+            // lines in the imagery.
             MapPlace{
                 "alps",
                 "assets/maps/alps_basemap.png",
@@ -233,7 +235,8 @@ int main(int argc, char** argv) {
     if (!fileExists(place->basemap)) {
         std::cerr << "map_flyover: the basemap plate is missing: " << place->basemap
                   << "\n  the plate is Chronon-owned content; render it with"
-                     " tools/map_cartography.py for this window first\n";
+                     " Chronon3d/tools/cartography/"
+                     "map_cartography.py for this window first\n";
         return 1;
     }
 
