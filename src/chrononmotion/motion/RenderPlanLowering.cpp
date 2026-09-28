@@ -41,6 +41,13 @@ Vector3 transformPoint(const Matrix4& matrix, const Vector3& point) {
     return result;
 }
 
+inline chronon3d::render_plan::AnimationKeyframePlan makePlanKeyframe(chronon3d::Frame frame, std::vector<float> value) {
+    chronon3d::render_plan::AnimationKeyframePlan kf;
+    kf.frame = frame;
+    kf.value = std::move(value);
+    return kf;
+}
+
 struct ResolvedPose {
     Vector3 position{};
     Vector3 scale{1.f, 1.f, 1.f};
@@ -386,12 +393,12 @@ RenderPlan lowerSamplesToRenderPlan(
                 const auto& pose = poses[frame];
                 const auto point = planAnimationPosition(pose, output.type, options.width, options.height);
                 const chronon3d::Frame keyFrame{static_cast<std::int64_t>(frame)};
-                positions.push_back({keyFrame, {point[0], point[1], point[2]}});
-                scales.push_back({keyFrame, {pose.scale.x, pose.scale.y, pose.scale.z}});
-                rotations.push_back({keyFrame, {math::radToDeg(pose.rotation.x),
-                                                math::radToDeg(pose.rotation.y),
-                                                math::radToDeg(pose.rotation.z)}});
-                opacities.push_back({keyFrame, {pose.opacity}});
+                positions.push_back(makePlanKeyframe(keyFrame, {point[0], point[1], point[2]}));
+                scales.push_back(makePlanKeyframe(keyFrame, {pose.scale.x, pose.scale.y, pose.scale.z}));
+                rotations.push_back(makePlanKeyframe(keyFrame, {math::radToDeg(pose.rotation.x),
+                                                                math::radToDeg(pose.rotation.y),
+                                                                math::radToDeg(pose.rotation.z)}));
+                opacities.push_back(makePlanKeyframe(keyFrame, {pose.opacity}));
             }
             baked.tracks.push_back(makeVectorTrack("position", std::move(positions)));
             baked.tracks.push_back(makeVectorTrack("scale", std::move(scales)));
@@ -527,12 +534,12 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             pose.roll = 0.f;
             const auto camera = lowerCameraPose(pose, resolvedOptions.camera->near, resolvedOptions.camera->far);
             const chronon3d::Frame keyFrame{static_cast<std::int64_t>(frame)};
-            positionX.push_back({keyFrame, {camera.position[0]}});
-            positionY.push_back({keyFrame, {camera.position[1]}});
-            positionZ.push_back({keyFrame, {camera.position[2]}});
-            rotationX.push_back({keyFrame, {camera.rotation_deg[0]}});
-            rotationY.push_back({keyFrame, {camera.rotation_deg[1]}});
-            rotationZ.push_back({keyFrame, {camera.rotation_deg[2]}});
+            positionX.push_back(makePlanKeyframe(keyFrame, {camera.position[0]}));
+            positionY.push_back(makePlanKeyframe(keyFrame, {camera.position[1]}));
+            positionZ.push_back(makePlanKeyframe(keyFrame, {camera.position[2]}));
+            rotationX.push_back(makePlanKeyframe(keyFrame, {camera.rotation_deg[0]}));
+            rotationY.push_back(makePlanKeyframe(keyFrame, {camera.rotation_deg[1]}));
+            rotationZ.push_back(makePlanKeyframe(keyFrame, {camera.rotation_deg[2]}));
         }
         plan.camera_animation = std::vector<chronon3d::render_plan::CameraTrackPlan>{};
         auto& tracks = *plan.camera_animation;
@@ -545,8 +552,8 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         std::vector<chronon3d::render_plan::AnimationKeyframePlan> fov;
         fov.reserve(last + 1);
         for (std::size_t frame = 0; frame <= last; ++frame)
-            fov.push_back({chronon3d::Frame{static_cast<std::int64_t>(frame)},
-                           {options.cameraRig->sample(static_cast<float>(frame) / scene.fps()).fov}});
+            fov.push_back(makePlanKeyframe(chronon3d::Frame{static_cast<std::int64_t>(frame)},
+                                           {options.cameraRig->sample(static_cast<float>(frame) / scene.fps()).fov}));
         tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::FovDeg, std::move(fov), "linear", std::nullopt});
     }
     return plan;
@@ -744,8 +751,8 @@ void applyBakedPathMorph(chronon3d::render_plan::LayerPlan& layer,
     progress.keyframes.reserve(morphFrames.size());
     for (std::size_t frame = 0; frame < morphFrames.size(); ++frame) {
         const float amount = static_cast<float>(frame) / static_cast<float>(morphFrames.size() - 1);
-        progress.keyframes.push_back({chronon3d::Frame{static_cast<std::int64_t>(firstFrame) +
-                                                       static_cast<std::int64_t>(frame)}, {amount}});
+        progress.keyframes.push_back(makePlanKeyframe(chronon3d::Frame{static_cast<std::int64_t>(firstFrame) +
+                                                                       static_cast<std::int64_t>(frame)}, {amount}));
     }
     morph.morph_animation = std::move(progress);
     layer.shape->path = source;

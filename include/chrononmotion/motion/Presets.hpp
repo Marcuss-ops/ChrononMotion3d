@@ -232,6 +232,43 @@ namespace chrononmotion::motion {
         /// Animated field of view.
         void cameraFov(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps);
 
+        // -------------------------------------------------------- environment & background
+
+        /// Compute the frustum coverage size (width, height) in world units for a plane
+        /// at `distance` from the camera with the specified `fovDegrees` and `aspect` ratio,
+        /// scaled by an optional `overscan` factor.
+        [[nodiscard]] Vector2 frustumCoverage(float fovDegrees, float aspect, float distance, float overscan = 1.25f);
+
+        /// Rig a background layer at depth `depth` behind the subject, scaled to cover
+        /// the camera frustum with an overscan factor so it moves with natural parallax
+        /// without exposing canvas edges.
+        void setupBackgroundPlane(Layer& layer, float depth, float fovDegrees, float aspect, float overscan = 1.25f);
+
+        /// Rig a layer as a 3D ground or horizon floor plane, placing it at elevation `floorY`
+        /// and pitching it about X by `tiltDegrees` so it recedes into the distance.
+        void horizonGrid(Layer& layer, float floorY, float depthZ = 0.f, float tiltDegrees = 80.0f);
+
+        /// Smooth continuous ground travel along the Z axis, animating floor grid translation
+        /// across the specified duration.
+        void groundTravel(Layer& layer, int inFrame, int duration, float distanceZ, float fps,
+                          const Easing& easing = Easing::linear());
+
+        /// Ambient 3D drift field: keys subtle, organic multi-harmonic 3D floating motion on a
+        /// group of particles, bokeh motes, or dust layers. Distributing layers across Z depths
+        /// gives an immediate volumetric depth feeling during camera movement.
+        void ambientDriftField(const std::vector<Layer*>& layers, int inFrame, int duration, float fps,
+                               std::uint32_t seed = 42, float maxRadius = 15.0f, float speed = 1.0f);
+
+        /// Aura blob / gradient anchor travel: keys smooth organic Lissajous travel for background
+        /// glow blobs, light sources, or animated color anchors.
+        void auraBlobMotion(Layer& layer, int inFrame, int duration, const Vector3& center,
+                            const Vector2& radius, float frequency, float fps, std::uint32_t seed = 0);
+
+        /// Auto-focus: continuously tracks the target layer's world position across the duration,
+        /// keying the camera rig's focus distance track so the subject stays sharp while
+        /// the background naturally falls into depth-of-field blur.
+        void autoFocus(CameraRig& rig, const Layer& targetLayer, int inFrame, int duration, float fps);
+
     }// namespace presets
 
 }// namespace chrononmotion::motion

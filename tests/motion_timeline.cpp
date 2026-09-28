@@ -121,6 +121,13 @@ namespace {
         scene.evaluate(15);
         check(sameMatrix(first, scene.worldMatrix(2)), "constraints and drivers are random-access deterministic");
 
+        DriverSpec pulse;
+        pulse.kind = DriverKind::Pulse;
+        pulse.amplitude = 1.f;
+        pulse.frequency = 1.f;
+        const Vector3 pulseOffset = evaluateDriverOffset(pulse, 0.25f, Vector3{});
+        check(pulseOffset.x >= 0.f, "pulse driver produces positive modulation");
+
         Layer* pathLayer = scene.findLayer(2);
         pathLayer->constraints.clear();
         pathLayer->drivers.clear();

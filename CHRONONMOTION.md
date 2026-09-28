@@ -213,7 +213,7 @@ split is by *family* rather than by size: `Presets_Common.cpp` holds the one
 frame→seconds conversion and the direction/axis tables, then one translation unit
 per family — `Presets_Place` (slides, depth, lifetime windows, 2.5D travel),
 `Presets_Transform` (scale, opacity, pivot, orientation), `Presets_Motion` (paths,
-hierarchies) and `Presets_Camera` — over a shared internal `Presets_detail.hpp`.
+hierarchies), `Presets_Camera` and `Presets_Environment` (coverage, horizon floor, ambient drift, aura, autofocus) — over a shared internal `Presets_detail.hpp`.
 The three helpers in that header (`restOf`, `uniform`, `keyVector3`) exist
 precisely because the families must key their curves *identically*; a per-family
 copy is how one of them would quietly grow a different end-of-segment convention.

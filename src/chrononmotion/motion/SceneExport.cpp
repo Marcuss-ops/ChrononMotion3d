@@ -471,6 +471,7 @@ namespace chrononmotion::motion {
                 case DriverKind::Orbit: return "\"orbit\"";
                 case DriverKind::Float: return "\"float\"";
                 case DriverKind::Shake: return "\"shake\"";
+                case DriverKind::Pulse: return "\"pulse\"";
             }
             return "\"wiggle\"";
         }

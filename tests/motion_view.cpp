@@ -326,6 +326,12 @@ namespace {
         checkNear(view.focalPixels(), 540.f, 1e-3f, "the focal length in pixels follows the fov");
         checkNear(view.pixelsPerUnit(10.f), 54.f, 1e-3f, "world units scale with 1/distance");
 
+        const Vector2 coverage = view.frustumCoverageSize(10.f, 1.f);
+        checkNear(coverage.y, 20.f, 1e-3f, "frustum coverage height matches 2 * dist * tan(halfFov)");
+        checkNear(coverage.x, 20.f * (16.f / 9.f), 1e-3f, "frustum coverage width matches height * aspect");
+        const Vector2 coverageOver = view.frustumCoverageSize(10.f, 1.25f);
+        checkNear(coverageOver.y, 25.f, 1e-3f, "overscan scales the coverage box");
+
         MotionPlane plane;
         plane.size.set(2.f, 1.f);
         plane.anchor.set(0.5f, 0.5f);

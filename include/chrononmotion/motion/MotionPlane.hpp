@@ -110,6 +110,12 @@ namespace chrononmotion::motion {
         /// Pixels per world unit for something `distance` in front of the camera.
         [[nodiscard]] float pixelsPerUnit(float distance) const;
 
+        /// World-space dimensions (width, height) of the camera frustum at `distance`
+        /// in front of the camera, scaled by an optional `overscan` factor.
+        /// Essential for sizing background quads and environment planes so they
+        /// completely cover the camera view.
+        [[nodiscard]] Vector2 frustumCoverageSize(float distance, float overscan = 1.0f) const;
+
         /// Project a world point. Returns false when it is at or behind the near
         /// plane; `pixels` is a y-down viewport coordinate.
         bool project(const Vector3& world, Vector2& pixels, Vector3& ndc) const;

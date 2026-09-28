@@ -127,6 +127,19 @@ namespace chrononmotion::motion {
         return distance > 1e-6f ? focalPixels() / distance : 0.f;
     }
 
+    Vector2 PerspectiveView::frustumCoverageSize(float distance, float overscan) const {
+
+        if (distance <= 0.f || overscan <= 0.f) return Vector2(0.f, 0.f);
+
+        const float halfFov = math::degToRad(camera_->getEffectiveFOV()) * 0.5f;
+        const float tangent = std::tan(halfFov);
+        const float h = 2.f * distance * tangent;
+        const float aspect = viewport_.y > 1e-6f ? (viewport_.x / viewport_.y) : camera_->aspect;
+        const float w = h * aspect;
+
+        return Vector2(w * overscan, h * overscan);
+    }
+
     bool PerspectiveView::project(const Vector3& world, Vector2& pixels, Vector3& ndc) const {
 
         Vector3 cameraSpace = world;

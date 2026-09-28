@@ -33,6 +33,12 @@ namespace chrononmotion::motion {
             case DriverKind::Float:
                 out.set(0.f, std::sin(omega * t + spec.phase) * spec.amplitude * envelope, 0.f);
                 return out;
+            case DriverKind::Pulse: {
+                const float pulseVal = (0.5f + 0.5f * std::sin(omega * t + spec.phase)) * spec.amplitude * envelope;
+                out.set(pulseVal, pulseVal, pulseVal);
+                out.multiply(spec.axis);
+                return out;
+            }
             case DriverKind::Orbit:
                 out.set(std::cos(omega * t + spec.phase) * spec.radius,
                         0.f,

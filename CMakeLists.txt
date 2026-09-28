@@ -91,6 +91,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/Presets_Transform.cpp
         src/chrononmotion/motion/Presets_Motion.cpp
         src/chrononmotion/motion/Presets_Camera.cpp
+        src/chrononmotion/motion/Presets_Environment.cpp
         # curves
         src/chrononmotion/extras/core/Curve.cpp
         src/chrononmotion/extras/core/CurvePath.cpp

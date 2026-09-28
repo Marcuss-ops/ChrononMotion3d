@@ -15,7 +15,8 @@ namespace chrononmotion::motion {
         Wiggle,
         Orbit,
         Float,
-        Shake
+        Shake,
+        Pulse
     };
 
     enum class DriverProperty {
