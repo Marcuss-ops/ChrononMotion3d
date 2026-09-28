@@ -335,8 +335,24 @@ RenderPlan lowerSamplesToRenderPlan(
         if (poses.size() != frameCount)
             throw std::invalid_argument("lowerToRenderPlan: inconsistent sample counts across layers");
         const ResolvedPose& first = poses.front();
+        // A flat (2.5D) layer that never leaves the canvas plane keeps the
+        // canonical two-component RenderPlan transform shape. RenderPlan reads
+        // an explicit three-component transform vector as an opt-in to
+        // camera-backed projection (`enable_3d`), and primitives composed on
+        // that projection path use a Y-up axis convention, so they are
+        // mirrored on Y relative to raster layers. Emitting the flat shape for
+        // plane-bound layers keeps authored canvas coordinates (Y down)
+        // identical for text, shapes and images.
+        bool leavesCanvasPlane = false;
+        if (!layer.is3D) {
+            for (const auto& pose : poses)
+                leavesCanvasPlane = leavesCanvasPlane ||
+                    std::abs(pose.position.z) > 1e-5f || std::abs(pose.rotation.x) > 1e-5f ||
+                    std::abs(pose.rotation.y) > 1e-5f || std::abs(pose.rotation.z) > 1e-5f;
+        }
+        const bool flatEmission = !layer.is3D && !leavesCanvasPlane;
         output.position = planPosition(first, output.type, options.width, options.height);
-        output.position_dimensions = 3;
+        output.position_dimensions = flatEmission ? 2 : 3;
         const bool staticPlanWasProvided = options.contentLayers.contains(layerId);
         if (!staticPlanWasProvided &&
             (output.type == LayerType::Text || output.type == LayerType::Shape ||
@@ -361,10 +377,10 @@ RenderPlan lowerSamplesToRenderPlan(
                 output.size_dimensions = 2;
         }
         output.scale = {first.scale.x, first.scale.y, first.scale.z};
-        output.scale_dimensions = 3;
+        output.scale_dimensions = flatEmission ? 2 : 3;
         output.rotation = {math::radToDeg(first.rotation.x), math::radToDeg(first.rotation.y),
                            math::radToDeg(first.rotation.z)};
-        output.rotation_dimensions = 3;
+        output.rotation_dimensions = flatEmission ? 0 : 3;
         // RenderPlan's canonical decoder treats an explicit 3D vector as an
         // opt-in to camera-backed projection, even when its Z/tilt components
         // are zero. The lowerer always emits three-component TRS vectors, so
@@ -393,16 +409,22 @@ RenderPlan lowerSamplesToRenderPlan(
                 const auto& pose = poses[frame];
                 const auto point = planAnimationPosition(pose, output.type, options.width, options.height);
                 const chronon3d::Frame keyFrame{static_cast<std::int64_t>(frame)};
-                positions.push_back(makePlanKeyframe(keyFrame, {point[0], point[1], point[2]}));
-                scales.push_back(makePlanKeyframe(keyFrame, {pose.scale.x, pose.scale.y, pose.scale.z}));
-                rotations.push_back(makePlanKeyframe(keyFrame, {math::radToDeg(pose.rotation.x),
-                                                                math::radToDeg(pose.rotation.y),
-                                                                math::radToDeg(pose.rotation.z)}));
+                positions.push_back(flatEmission
+                    ? makePlanKeyframe(keyFrame, {point[0], point[1]})
+                    : makePlanKeyframe(keyFrame, {point[0], point[1], point[2]}));
+                scales.push_back(flatEmission
+                    ? makePlanKeyframe(keyFrame, {pose.scale.x, pose.scale.y})
+                    : makePlanKeyframe(keyFrame, {pose.scale.x, pose.scale.y, pose.scale.z}));
+                if (!flatEmission)
+                    rotations.push_back(makePlanKeyframe(keyFrame, {math::radToDeg(pose.rotation.x),
+                                                                    math::radToDeg(pose.rotation.y),
+                                                                    math::radToDeg(pose.rotation.z)}));
                 opacities.push_back(makePlanKeyframe(keyFrame, {pose.opacity}));
             }
             baked.tracks.push_back(makeVectorTrack("position", std::move(positions)));
             baked.tracks.push_back(makeVectorTrack("scale", std::move(scales)));
-            baked.tracks.push_back(makeVectorTrack("rotation", std::move(rotations)));
+            if (!flatEmission)
+                baked.tracks.push_back(makeVectorTrack("rotation", std::move(rotations)));
             AnimationTrackPlan opacity;
             opacity.property = "opacity";
             opacity.keyframes = std::move(opacities);
