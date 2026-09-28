@@ -117,7 +117,8 @@ if(CHRONON3D_INCLUDE_DIR)
         message(FATAL_ERROR "CHRONON3D_INCLUDE_DIR must name Chronon3D's include root")
     endif()
     add_library(chrononmotion_chronon3d_adapter STATIC
-        src/chrononmotion/motion/RenderPlanLowering.cpp)
+        src/chrononmotion/motion/RenderPlanLowering.cpp
+        src/chrononmotion/motion/RenderPlanEmission.cpp)
     target_link_libraries(chrononmotion_chronon3d_adapter PUBLIC chrononmotion)
     target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_INCLUDE_DIR}")
     if(DEFINED CHRONON3D_DEPENDENCY_INCLUDE_DIR)
@@ -128,6 +129,27 @@ if(CHRONON3D_INCLUDE_DIR)
     target_compile_definitions(chrononmotion_chronon3d_adapter PUBLIC CHRONONMOTION_HAS_CHRONON3D_ADAPTER=1)
     if(CHRONONMOTION_WERROR)
         target_compile_options(chrononmotion_chronon3d_adapter PRIVATE -Werror)
+    endif()
+
+    # The showreel generator: the one place in this tree that turns a Motion
+    # scene into a renderable `chronon.render-plan.v2` file. A tool, never part
+    # of the library or of Chronon3d's runtime.
+    add_executable(chrononmotion_plan_showreel tools/plan_showreel.cpp)
+    target_link_libraries(chrononmotion_plan_showreel PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
+    target_compile_features(chrononmotion_plan_showreel PRIVATE cxx_std_20)
+    target_compile_options(chrononmotion_plan_showreel PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_plan_showreel PRIVATE -Werror)
+    endif()
+
+    # The map flyover generator: the geospatial counterpart of the showreel, and
+    # the only place a georeferenced Motion scene becomes a renderable plan.
+    add_executable(chrononmotion_map_flyover tools/plan_map_flyover.cpp)
+    target_link_libraries(chrononmotion_map_flyover PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
+    target_compile_features(chrononmotion_map_flyover PRIVATE cxx_std_20)
+    target_compile_options(chrononmotion_map_flyover PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_map_flyover PRIVATE -Werror)
     endif()
 endif()
 
@@ -199,6 +221,13 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_offline_golden tests/motion_offline_golden.cpp)
     target_link_libraries(chrononmotion_offline_golden PRIVATE chrononmotion)
     add_test(NAME chrononmotion_offline_golden COMMAND chrononmotion_offline_golden)
+
+    add_executable(chrononmotion_geospatial tests/motion_geospatial.cpp)
+    target_link_libraries(chrononmotion_geospatial PRIVATE chrononmotion)
+    if(CHRONON3D_INCLUDE_DIR)
+        target_link_libraries(chrononmotion_geospatial PRIVATE chrononmotion_chronon3d_adapter)
+    endif()
+    add_test(NAME chrononmotion_geospatial COMMAND chrononmotion_geospatial)
 
     add_executable(chrononmotion_gltf tests/motion_gltf.cpp)
     target_link_libraries(chrononmotion_gltf PRIVATE chrononmotion)
