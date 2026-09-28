@@ -356,6 +356,13 @@ namespace {
         check(!platelessIds.hasBasemap(), "a plateless spec authors no basemap layer");
         check(platelessIds.markers.empty(), "a routeless spec authors no markers");
         check(platelessIds.count() == 3, "a plateless, routeless spec authors only the pin and the callout");
+
+        // Relief is optional and never invented: no asset, no layer.
+        MapFlyoverSpec bare = romeSpec(kFrameCount, 30.f);
+        bare.reliefAsset.clear();
+        MotionScene bareScene{"no_relief", 30.f};
+        const MapSceneLayers bareIds = MapFlyoverBuilder(bare).buildScene(bareScene);
+        check(bareIds.relief == Layer::kRoot, "a spec without a relief plate authors no drape");
     }
 
 #ifdef CHRONONMOTION_HAS_CHRONON3D_ADAPTER
@@ -367,7 +374,11 @@ namespace {
 
         std::cout << "\n=== plan placement (through the canonical emitter) ===\n";
         constexpr int kFrameCount = 120;
-        const MapFlyoverSpec spec = romeSpec(kFrameCount, 30.f);
+        MapFlyoverSpec spec = romeSpec(kFrameCount, 30.f);
+        // A stand-in relief plate: the real one is derived from a DEM for the
+        // same window as the basemap, which is the whole reason it can be laid
+        // over it without any placement of its own.
+        spec.reliefAsset = "map/terrain-relief";
         const MapFlyoverBuilder builder(spec);
 
         MotionScene scene{"map_plan_test", 30.f};
@@ -392,6 +403,13 @@ namespace {
         basemap.type = chronon3d::render_plan::LayerType::Image;
         basemap.asset = spec.basemapAsset;
         content.emplace(key(ids.basemap), basemap);
+        chronon3d::render_plan::LayerPlan relief;
+        relief.type = chronon3d::render_plan::LayerType::Image;
+        relief.asset = spec.reliefAsset;
+        // A DEM hillshade is a mid-grey luminance plate: soft light turns it
+        // into shading on the plate underneath instead of a grey wash over it.
+        relief.blend_mode = chronon3d::BlendMode::SoftLight;
+        content.emplace(key(ids.relief), relief);
         for (std::size_t i = 0; i < ids.markers.size(); ++i)
             content.emplace(key(ids.markers[i]), text("marker"));
         content.emplace(key(ids.pin), text("pin"));
@@ -443,6 +461,51 @@ namespace {
                       "the raster's plan position recovers its canvas row");
         }
 
+        // The drape is not placed: it inherits the plate's transform channel for
+        // channel, so a ridge can only land where the imagery under it has the
+        // ridge. Anything else would be a second, disagreeing georeference.
+        const auto trackOf = [](const chronon3d::render_plan::LayerPlan& layer,
+                                const std::string& property) -> const chronon3d::render_plan::AnimationTrackPlan* {
+            if (!layer.animation) return nullptr;
+            for (const auto& track : layer.animation->tracks)
+                if (track.property == property) return &track;
+            return nullptr;
+        };
+        const auto sameChannel = [&trackOf](const chronon3d::render_plan::LayerPlan& a,
+                                            const chronon3d::render_plan::LayerPlan& b,
+                                            const std::string& property) {
+            const auto* left = trackOf(a, property);
+            const auto* right = trackOf(b, property);
+            if (left == nullptr || right == nullptr) return false;
+            if (left->keyframes.size() != right->keyframes.size()) return false;
+            for (std::size_t i = 0; i < left->keyframes.size(); ++i)
+                if (left->keyframes[i].frame != right->keyframes[i].frame ||
+                    left->keyframes[i].value != right->keyframes[i].value) return false;
+            return true;
+        };
+        const auto* drape = findPlan(key(ids.relief));
+        check(drape != nullptr, "the relief drape is in the plan");
+        if (drape != nullptr && plate != nullptr) {
+            check(drape->type == chronon3d::render_plan::LayerType::Image,
+                  "the relief drape stays an image");
+            check(drape->asset == spec.reliefAsset, "the drape keeps the relief asset");
+            check(sameChannel(*drape, *plate, "position"),
+                  "the relief rides the plate's exact position channel");
+            check(sameChannel(*drape, *plate, "scale"),
+                  "the relief rides the plate's exact scale channel");
+            check(drape->blend_mode.has_value() &&
+                      *drape->blend_mode == chronon3d::BlendMode::SoftLight,
+                  "the drape keeps its soft-light blend through the lowering");
+            std::size_t plateIndex = plan.layers.size();
+            std::size_t drapeIndex = plan.layers.size();
+            for (std::size_t i = 0; i < plan.layers.size(); ++i) {
+                if (plan.layers[i].id == key(ids.basemap)) plateIndex = i;
+                if (plan.layers[i].id == key(ids.relief)) drapeIndex = i;
+            }
+            check(drapeIndex == plateIndex + 1,
+                  "the drape is composited directly above the plate it was derived from");
+        }
+
         check(motion::renderPlanEmissionProblem(plan).empty(),
               "the map plan is expressible by the canonical writer");
         const std::string json = motion::renderPlanToJson(plan);
@@ -450,6 +513,8 @@ namespace {
               "the plan is written as a v2 document");
         check(json.find("\"position\"") != std::string::npos,
               "the plan carries the baked position tracks");
+        check(json.find("soft_light") != std::string::npos,
+              "the emitted plan names the drape's blend so a render cannot silently ignore it");
     }
 #endif
 

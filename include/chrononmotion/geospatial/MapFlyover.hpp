@@ -79,6 +79,14 @@ namespace chrononmotion::geospatial {
         /// The output canvas the map is placed on.
         Vector2 canvasSize{1920.f, 1080.f};
 
+        /// Optional terrain relief to drape on the basemap: a plate derived from a
+        /// DEM (SRTM / Copernicus) for *the same window* as `basemapAsset`, so it
+        /// lands on the imagery pixel for pixel. It is not scaled, tinted or
+        /// rotated here — a relief plate that disagreed with the window its
+        /// basemap covers would misplace every ridge on the map, so the two are
+        /// produced together by the same content tool and consumed as a pair.
+        std::string reliefAsset{};
+
         /// Optional raster of the route line revealed over the basemap, and the
         /// frame window it reveals across. Without it the route is still legible
         /// as its waypoint markers.
@@ -157,6 +165,7 @@ namespace chrononmotion::geospatial {
     /// assert the scene is the one that was asked for.
     struct MapSceneLayers {
         Layer::Id basemap{Layer::kRoot};
+        Layer::Id relief{Layer::kRoot};
         Layer::Id route_overlay{Layer::kRoot};
         Layer::Id ground_grid{Layer::kRoot};
         Layer::Id pin{Layer::kRoot};
@@ -167,7 +176,7 @@ namespace chrononmotion::geospatial {
         [[nodiscard]] bool hasBasemap() const { return basemap != Layer::kRoot; }
         [[nodiscard]] std::size_t count() const {
             std::size_t total = markers.size();
-            for (const Layer::Id id : {basemap, route_overlay, ground_grid, pin, title, subtitle})
+            for (const Layer::Id id : {basemap, relief, route_overlay, ground_grid, pin, title, subtitle})
                 if (id != Layer::kRoot) ++total;
             return total;
         }
@@ -330,6 +339,10 @@ namespace chrononmotion::geospatial {
                 }
                 return id;
             };
+
+            // The relief drapes the plate it was derived from, so it is the first
+            // thing above the basemap and below every symbol and overlay.
+            ids.relief = addMapRaster(spec_.reliefAsset, "map_terrain_relief");
 
             ids.route_overlay = addMapRaster(spec_.routeOverlayAsset, "map_route_overlay");
 

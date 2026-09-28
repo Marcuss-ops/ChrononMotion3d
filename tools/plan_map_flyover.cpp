@@ -57,6 +57,10 @@ namespace {
         /// Chronon-owned plate. Resolved relative to the working directory, the
         /// same way every other asset path in this tree is.
         std::string basemap;
+        /// Optional DEM-derived relief for *the same window* as `basemap`,
+        /// produced by `tools/map_cartography.py relief` alongside it. Empty
+        /// means the place is drawn without relief.
+        std::string relief;
         double centerLat{0.0};
         double centerLon{0.0};
         int zoom{8};
@@ -75,6 +79,7 @@ namespace {
             MapPlace{
                 "louisiana",
                 "assets/maps/test1_basemap.png",
+                "",
                 29.86, -92.70, 8,
                 GeoCoord{29.9511, -90.0715, 0.0},
                 "NEW ORLEANS",
@@ -90,6 +95,7 @@ namespace {
             MapPlace{
                 "cleveland",
                 "assets/maps/test2_basemap.png",
+                "",
                 41.4925, -81.6660, 14,
                 GeoCoord{41.4993, -81.6944, 0.0},
                 "CLEVELAND",
@@ -103,6 +109,7 @@ namespace {
             MapPlace{
                 "atlanta",
                 "assets/maps/test3_micro_sat.png",
+                "",
                 33.9598, -83.3768, 16,
                 GeoCoord{33.9598, -83.3768, 0.0},
                 "ATHENS, GA",
@@ -114,6 +121,7 @@ namespace {
             MapPlace{
                 "chicago",
                 "assets/maps/test4_basemap.png",
+                "",
                 41.8300, -87.6200, 12,
                 GeoCoord{41.8826, -87.6233, 0.0},
                 "CHICAGO",
@@ -122,6 +130,31 @@ namespace {
                     GeoCoord{41.8781, -87.6298, 0.0}, // The Loop
                     GeoCoord{41.8917, -87.6077, 0.0}, // Navy Pier
                     GeoCoord{41.8826, -87.6233, 0.0}, // Millennium Park
+                },
+            },
+            // A place whose relief is the point of the plate: 2.9 km of
+            // elevation across one window, from the Zermatt valley floor to the
+            // Matterhorn summit. The basemap and the relief were rendered for
+            // this exact window by tools/map_cartography.py, which is what makes
+            // the ridge lines on the drape sit on the ridge lines in the imagery.
+            MapPlace{
+                "alps",
+                "assets/maps/alps_basemap.png",
+                // No drape layer: this plate was rendered shaded (map_cartography
+                // `basemap --relief`), so the terrain is already in its pixels,
+                // with the plate's own contrast intact. `relief` is for a plate
+                // that is left unshaded and draped at render time instead.
+                "",
+                45.9763, 7.6586, 13,
+                GeoCoord{45.9763, 7.6586, 4478.0},
+                "MATTERHORN",
+                "Pennine Alps, Switzerland \u00b7 45.9763\u00b0 N, 7.6586\u00b0 E",
+                {
+                    GeoCoord{45.9360, 7.6300, 2006.0}, // Breuil-Cervinia
+                    GeoCoord{45.9430, 7.7050, 3295.0}, // Theodulpass
+                    GeoCoord{45.9763, 7.6586, 4478.0}, // Matterhorn
+                    GeoCoord{45.9834, 7.7847, 3089.0}, // Gornergrat
+                    GeoCoord{46.0207, 7.7491, 1620.0}, // Zermatt
                 },
             },
         };
@@ -215,6 +248,7 @@ int main(int argc, char** argv) {
         spec.fps = kFps;
         spec.canvasSize = Vector2{static_cast<float>(kWidth), static_cast<float>(kHeight)};
         spec.basemapAsset = place->basemap;
+        spec.reliefAsset = place->relief;
         // The window is the *place's* crop, not the POI's: a plate was rendered
         // around one centre, and declaring any other centre would georeference
         // every marker against a window the pixels never came from. The POI is
@@ -239,6 +273,16 @@ int main(int argc, char** argv) {
 
         if (ids.hasBasemap())
             content.emplace(key(ids.basemap), imagePlan(place->basemap));
+        if (ids.relief != Layer::kRoot) {
+            // Composed with plain alpha on purpose. The relief plate is already a
+            // warm/cool two-sided drape whose tints sit either side of the
+            // plate's mid tone, so it needs no blend mode — and a soft-light
+            // layer currently kills a Vulkan render outright ("DEVICE LOST
+            // REPORT phase=wait_for_pending"), which is the backend this plan is
+            // rendered on. The emitter can write a blend mode if a backend ever
+            // renders one safely.
+            content.emplace(key(ids.relief), imagePlan(place->relief));
+        }
         if (ids.route_overlay != Layer::kRoot)
             content.emplace(key(ids.route_overlay), imagePlan(spec.routeOverlayAsset));
         if (ids.ground_grid != Layer::kRoot)
