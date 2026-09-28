@@ -79,6 +79,38 @@ namespace chrononmotion::motion {
             return "unknown";
         }
 
+        /// The wire spelling of a blend mode. These are exactly the names the
+        /// canonical decoder accepts, so a plan this emitter writes round-trips
+        /// instead of being silently composited as normal.
+        [[nodiscard]] const char* blendModeName(chronon3d::BlendMode mode) {
+
+            switch (mode) {
+                case chronon3d::BlendMode::Normal: return "normal";
+                case chronon3d::BlendMode::Add: return "add";
+                case chronon3d::BlendMode::Multiply: return "multiply";
+                case chronon3d::BlendMode::Screen: return "screen";
+                case chronon3d::BlendMode::Overlay: return "overlay";
+                case chronon3d::BlendMode::Darken: return "darken";
+                case chronon3d::BlendMode::Lighten: return "lighten";
+                case chronon3d::BlendMode::Difference: return "difference";
+                case chronon3d::BlendMode::Exclusion: return "exclusion";
+                case chronon3d::BlendMode::SoftLight: return "soft_light";
+                case chronon3d::BlendMode::HardLight: return "hard_light";
+                case chronon3d::BlendMode::ColorDodge: return "color_dodge";
+                case chronon3d::BlendMode::ColorBurn: return "color_burn";
+                case chronon3d::BlendMode::Subtract: return "subtract";
+                case chronon3d::BlendMode::Divide: return "divide";
+                case chronon3d::BlendMode::VividLight: return "vivid_light";
+                case chronon3d::BlendMode::PinLight: return "pin_light";
+                case chronon3d::BlendMode::LinearLight: return "linear_light";
+                case chronon3d::BlendMode::Hue: return "hue";
+                case chronon3d::BlendMode::Saturation: return "saturation";
+                case chronon3d::BlendMode::Color: return "color";
+                case chronon3d::BlendMode::Luminosity: return "luminosity";
+            }
+            return "normal";
+        }
+
         [[nodiscard]] const char* fitName(FitMode fit) {
 
             switch (fit) {
@@ -237,7 +269,6 @@ namespace chrononmotion::motion {
             if (layer.transition_in || layer.transition_out) return owner + " carries a transition";
             if (layer.fill_gradient_animation) return owner + " carries a gradient animation";
             if (!layer.text_animators.empty()) return owner + " carries text animators";
-            if (layer.blend_mode) return owner + " carries a blend mode, which this emitter does not write";
             if (layer.safe_insets) return owner + " carries safe insets";
             if (layer.size_dimensions == 3) {
                 return owner + " has a three-component size, which the plan contract cannot express";
@@ -470,6 +501,10 @@ namespace chrononmotion::motion {
             writer.key("loop");
             writer.boolean(layer.loop);
 
+            if (layer.blend_mode) {
+                writer.key("blend_mode");
+                writer.token(blendModeName(*layer.blend_mode));
+            }
             if (layer.opacity) {
                 writer.key("opacity");
                 writer.number(*layer.opacity);
