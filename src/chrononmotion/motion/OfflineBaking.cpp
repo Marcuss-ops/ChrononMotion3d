@@ -25,6 +25,60 @@ bool finite(const Vector2& value) {
     return std::isfinite(value.x) && std::isfinite(value.y);
 }
 
+bool finite(const Vector3& value) {
+    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
+}
+
+struct DoubleVector3 {
+    double x;
+    double y;
+    double z;
+};
+
+DoubleVector3 toDouble(const Vector3& value) {
+    return {value.x, value.y, value.z};
+}
+
+DoubleVector3 add(const DoubleVector3& a, const DoubleVector3& b) {
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
+DoubleVector3 subtract(const DoubleVector3& a, const DoubleVector3& b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+DoubleVector3 multiply(const DoubleVector3& value, double scalar) {
+    return {value.x * scalar, value.y * scalar, value.z * scalar};
+}
+
+double dot(const DoubleVector3& a, const DoubleVector3& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+DoubleVector3 cross(const DoubleVector3& a, const DoubleVector3& b) {
+    return {a.y * b.z - a.z * b.y,
+            a.z * b.x - a.x * b.z,
+            a.x * b.y - a.y * b.x};
+}
+
+double length(const DoubleVector3& value) {
+    return std::hypot(std::hypot(value.x, value.y), value.z);
+}
+
+DoubleVector3 normalized(const DoubleVector3& value) {
+    const double magnitude = length(value);
+    return magnitude > 0.0 ? multiply(value, 1.0 / magnitude) : DoubleVector3{0.0, 0.0, 0.0};
+}
+
+Vector3 toFloat(const DoubleVector3& value, const char* function) {
+    const double maximum = std::numeric_limits<float>::max();
+    if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z) ||
+        std::abs(value.x) > maximum || std::abs(value.y) > maximum || std::abs(value.z) > maximum) {
+        throw std::invalid_argument(std::string(function) + ": solved pose exceeds finite float range");
+    }
+    return Vector3(static_cast<float>(value.x), static_cast<float>(value.y), static_cast<float>(value.z));
+}
+
 void validateFrameRange(int firstFrame, int lastFrame) {
     if (firstFrame < 0 || lastFrame < firstFrame ||
         static_cast<std::size_t>(lastFrame - firstFrame) + 1 > kMaximumBakedFrames) {
@@ -678,6 +732,176 @@ IK2Result solveTwoSegmentIK2D(const Vector2& root, const Vector2& target,
     if (!finite(result.elbow) || !finite(result.end) || !std::isfinite(result.shoulderRotation) ||
         !std::isfinite(result.elbowRotation))
         throw std::invalid_argument("solveTwoSegmentIK2D: solved pose exceeds finite float range");
+    return result;
+}
+
+IK3Result solveIKChain3D(std::span<const Vector3> initialJoints,
+                         const Vector3& target, const Vector3& pole,
+                         unsigned iterations, float tolerance) {
+    if (initialJoints.size() < 2 || initialJoints.size() > 65536 ||
+        !finite(target) || !finite(pole) || iterations == 0 || iterations > 256 ||
+        !std::isfinite(tolerance) || tolerance <= 0.f) {
+        throw std::invalid_argument("solveIKChain3D: chain, target, pole and solver settings must be valid");
+    }
+    for (const auto& joint : initialJoints) {
+        if (!finite(joint)) throw std::invalid_argument("solveIKChain3D: initial joints must be finite");
+    }
+
+    std::vector<DoubleVector3> positions;
+    positions.reserve(initialJoints.size());
+    for (const auto& joint : initialJoints) positions.push_back(toDouble(joint));
+    std::vector<double> lengths;
+    lengths.reserve(initialJoints.size() - 1);
+    double totalLength = 0.0;
+    double longestLength = 0.0;
+    std::size_t longestIndex = 0;
+    for (std::size_t index = 1; index < positions.size(); ++index) {
+        const double segmentLength = length(subtract(positions[index], positions[index - 1]));
+        if (!std::isfinite(segmentLength) || segmentLength <= kEpsilon) {
+            throw std::invalid_argument("solveIKChain3D: adjacent joints must have positive finite separation");
+        }
+        lengths.push_back(segmentLength);
+        totalLength += segmentLength;
+        if (segmentLength > longestLength) {
+            longestLength = segmentLength;
+            longestIndex = index - 1;
+        }
+    }
+    if (!std::isfinite(totalLength))
+        throw std::invalid_argument("solveIKChain3D: total chain length is not finite");
+
+    const DoubleVector3 root = positions.front();
+    const DoubleVector3 requestedTarget = toDouble(target);
+    DoubleVector3 rootToTarget = subtract(requestedTarget, root);
+    const double targetDistance = length(rootToTarget);
+    if (!std::isfinite(targetDistance))
+        throw std::invalid_argument("solveIKChain3D: target distance is not finite");
+    const double minimumReach = std::max(0.0, 2.0 * longestLength - totalLength);
+    const double reachTolerance = std::max(static_cast<double>(tolerance),
+            totalLength * 8.0 * std::numeric_limits<float>::epsilon());
+    const bool reachable = targetDistance <= totalLength + reachTolerance &&
+                           targetDistance + reachTolerance >= minimumReach;
+    if (targetDistance <= 1e-12) {
+        rootToTarget = subtract(positions.back(), root);
+        if (length(rootToTarget) <= 1e-12)
+            rootToTarget = subtract(positions[1], root);
+        if (length(rootToTarget) <= 1e-12) rootToTarget = {1.0, 0.0, 0.0};
+    }
+    const DoubleVector3 targetDirection = normalized(rootToTarget);
+    const double solvedDistance = std::clamp(targetDistance, minimumReach, totalLength);
+    const DoubleVector3 solvedTarget = add(root, multiply(targetDirection, solvedDistance));
+    if (!reachable) {
+        positions.front() = root;
+        if (targetDistance > totalLength) {
+            double travelled = 0.0;
+            for (std::size_t index = 1; index < positions.size(); ++index) {
+                travelled += lengths[index - 1];
+                positions[index] = add(root, multiply(targetDirection, travelled));
+            }
+        } else {
+            double travelled = 0.0;
+            for (std::size_t index = 1; index < positions.size(); ++index) {
+                const double sign = index - 1 == longestIndex ? 1.0 : -1.0;
+                travelled += sign * lengths[index - 1];
+                positions[index] = add(root, multiply(targetDirection, travelled));
+            }
+        }
+    }
+
+    const DoubleVector3 polePoint = toDouble(pole);
+    const auto applyPole = [&]() {
+        for (std::size_t index = 1; index + 1 < positions.size(); ++index) {
+            const DoubleVector3 axis = normalized(subtract(positions[index + 1], positions[index - 1]));
+            if (length(axis) <= 1e-12) continue;
+            const DoubleVector3 jointOffset = subtract(positions[index], positions[index - 1]);
+            const DoubleVector3 poleOffset = subtract(polePoint, positions[index - 1]);
+            const DoubleVector3 jointRadial = subtract(jointOffset, multiply(axis, dot(jointOffset, axis)));
+            const DoubleVector3 poleRadial = subtract(poleOffset, multiply(axis, dot(poleOffset, axis)));
+            if (length(jointRadial) <= 1e-12 || length(poleRadial) <= 1e-12) continue;
+            const DoubleVector3 from = normalized(jointRadial);
+            const DoubleVector3 toward = normalized(poleRadial);
+            const double angle = std::atan2(dot(axis, cross(from, toward)),
+                                            std::clamp(dot(from, toward), -1.0, 1.0));
+            const double cosine = std::cos(angle);
+            const double sine = std::sin(angle);
+            const DoubleVector3 rotated = add(
+                    add(multiply(jointRadial, cosine), multiply(cross(axis, jointRadial), sine)),
+                    multiply(axis, dot(axis, jointRadial) * (1.0 - cosine)));
+            positions[index] = add(positions[index - 1],
+                    add(multiply(axis, dot(jointOffset, axis)), rotated));
+        }
+    };
+
+    if (reachable) {
+        for (unsigned iteration = 0; iteration < iterations; ++iteration) {
+            positions.back() = solvedTarget;
+            for (std::size_t index = positions.size() - 1; index > 0; --index) {
+                DoubleVector3 direction = normalized(subtract(positions[index - 1], positions[index]));
+                if (length(direction) <= 1e-12) direction = multiply(targetDirection, -1.0);
+                positions[index - 1] = add(positions[index], multiply(direction, lengths[index - 1]));
+            }
+            positions.front() = root;
+            for (std::size_t index = 1; index < positions.size(); ++index) {
+                DoubleVector3 direction = normalized(subtract(positions[index], positions[index - 1]));
+                if (length(direction) <= 1e-12) direction = targetDirection;
+                positions[index] = add(positions[index - 1], multiply(direction, lengths[index - 1]));
+            }
+            applyPole();
+            if (length(subtract(positions.back(), solvedTarget)) <= tolerance) break;
+        }
+    } else {
+        applyPole();
+    }
+
+    IK3Result result;
+    result.joints.reserve(positions.size());
+    for (const auto& position : positions) result.joints.push_back(toFloat(position, "solveIKChain3D"));
+    result.targetReachable = reachable;
+    return result;
+}
+
+BakedIKChain3D bakeIKChain3D(const IK3BakeSpec& spec, int firstFrame, int lastFrame) {
+    validateFrameRange(firstFrame, lastFrame);
+    if (spec.initialJoints.size() < 2 || spec.targetTrack.empty() ||
+        !finite(spec.pole) || !std::isfinite(spec.fps) || spec.fps <= 0.f ||
+        spec.iterations == 0 || spec.iterations > 256 ||
+        !std::isfinite(spec.tolerance) || spec.tolerance <= 0.f) {
+        throw std::invalid_argument("bakeIKChain3D: chain, target track and solver settings must be valid");
+    }
+    if (!spec.targetTrack.modifierProblem().empty())
+        throw std::invalid_argument("bakeIKChain3D: target track has invalid modifiers");
+    for (const auto& modifier : spec.targetTrack.modifiers()) {
+        if (std::holds_alternative<LinkModifier>(modifier))
+            throw std::invalid_argument("bakeIKChain3D: target track must not require a scene link resolver");
+    }
+    for (const auto& key : spec.targetTrack.keys()) {
+        if (!std::isfinite(key.time) || !finite(key.value))
+            throw std::invalid_argument("bakeIKChain3D: target track keys must be finite");
+    }
+    const std::size_t frameCount = static_cast<std::size_t>(lastFrame - firstFrame) + 1;
+    const std::size_t jointCount = spec.initialJoints.size();
+    if (jointCount > kMaximumBakedFrames / frameCount ||
+        spec.iterations > kMaximumBakedWork / frameCount / (jointCount - 1)) {
+        throw std::invalid_argument("bakeIKChain3D: requested samples or solver work exceed the offline budget");
+    }
+    validateFrameTimes(spec.fps, firstFrame, lastFrame, "bakeIKChain3D");
+
+    BakedIKChain3D result;
+    result.samples.reserve(frameCount);
+    result.jointPositions.resize(jointCount);
+    result.targetReachable.reserve(frameCount);
+    for (std::size_t offset = 0; offset < frameCount; ++offset) {
+        const int frame = firstFrame + static_cast<int>(offset);
+        const float seconds = static_cast<float>(frame) / spec.fps;
+        const Vector3 target = spec.targetTrack.sample(seconds);
+        const IK3Result solved = solveIKChain3D(spec.initialJoints, target, spec.pole,
+                                                spec.iterations, spec.tolerance);
+        result.samples.push_back(solved.joints);
+        result.targetReachable.push_back(solved.targetReachable);
+        for (std::size_t joint = 0; joint < jointCount; ++joint) {
+            result.jointPositions[joint].add(seconds, solved.joints[joint]);
+        }
+    }
     return result;
 }
 

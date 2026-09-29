@@ -87,6 +87,42 @@ namespace chrononmotion::motion {
                                                  float parentRotation = 0.f,
                                                  bool bendPositive = true);
 
+    struct IK3Result {
+        std::vector<Vector3> joints{}; // Root first, solved end effector last.
+        bool targetReachable{false};
+    };
+
+    /// Deterministic FABRIK solve for an open 3D chain. `initialJoints` defines
+    /// the root and fixed segment lengths; `pole` is a world-space point that
+    /// selects the preferred bend plane. Unreachable targets clamp to the
+    /// nearest reachable radius and are reported in targetReachable.
+    [[nodiscard]] IK3Result solveIKChain3D(std::span<const Vector3> initialJoints,
+                                           const Vector3& target,
+                                           const Vector3& pole,
+                                           unsigned iterations = 32,
+                                           float tolerance = 1e-4f);
+
+    struct IK3BakeSpec {
+        std::vector<Vector3> initialJoints{};
+        Track<Vector3> targetTrack{}; // Unlinked target positions, sampled in seconds.
+        Vector3 pole{};               // World-space pole point.
+        float fps{60.f};
+        unsigned iterations{32};
+        float tolerance{1e-4f};
+    };
+
+    struct BakedIKChain3D {
+        // samples[frame][joint]; one world-position track for each joint.
+        std::vector<std::vector<Vector3>> samples{};
+        std::vector<Track<Vector3>> jointPositions{};
+        std::vector<bool> targetReachable{};
+    };
+
+    /// Solve from the same bind/rest pose at every requested frame (not the
+    /// previous sample), so random-access seeks and repeated bakes agree.
+    [[nodiscard]] BakedIKChain3D bakeIKChain3D(const IK3BakeSpec& spec,
+                                               int firstFrame, int lastFrame);
+
     enum class AudioFeature { Rms, Bass, Mid, Treble, Onset };
     enum class AudioDriverProperty { Position, Rotation, Scale, Opacity };
     struct AudioAnalysisSpec {

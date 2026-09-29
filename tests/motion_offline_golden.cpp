@@ -51,6 +51,17 @@ int main() {
     near(ik.end.y, 1.f, 1e-6f, "IK endpoint golden y");
     check(ik.targetReachable, "IK reachable status golden");
 
+    const std::array<Vector3, 3> ikRest{{{0.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, {2.f, 0.f, 0.f}}};
+    const auto ik3 = solveIKChain3D(ikRest, {1.f, 1.f, 0.f}, {0.f, 0.f, 4.f});
+    const auto ik3Again = solveIKChain3D(ikRest, {1.f, 1.f, 0.f}, {0.f, 0.f, 4.f});
+    check(ik3.joints == ik3Again.joints, "3D IK pose repeats bit-exactly");
+    check(ik3.targetReachable && ik3.joints.size() == 3, "3D IK reach status and joint count golden");
+    near(ik3.joints.front().x, 0.f, 1e-7f, "3D IK root X golden");
+    near(ik3.joints[1].x, .5f, 2e-4f, "3D IK pole-selected middle-joint X golden");
+    near(ik3.joints[1].y, .5f, 2e-4f, "3D IK pole-selected middle-joint Y golden");
+    near(ik3.joints[1].z, .70710678f, 2e-4f, "3D IK pole-selected middle-joint Z golden");
+    near(ik3.joints.back().y, 1.f, 1e-6f, "3D IK end-effector Y golden");
+
     constexpr std::uint32_t sampleRate = 8000;
     std::vector<float> pcm(512);
     constexpr float pi = 3.14159265358979323846f;

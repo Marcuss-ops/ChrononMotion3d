@@ -148,6 +148,59 @@ void testTwoSegmentIk() {
           "IK rejects zero segment lengths");
 }
 
+void testThreeDimensionalIkChain() {
+    section("deterministic 3D FABRIK IK and pole vector");
+    const std::array<Vector3, 3> rest{{{0.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, {2.f, 0.f, 0.f}}};
+    const auto solved = solveIKChain3D(rest, {1.f, 1.f, 0.f}, {0.f, 0.f, 4.f});
+    check(solved.targetReachable && solved.joints.size() == 3,
+          "reachable 3D IK reports its endpoint and stable joint count");
+    checkNear(solved.joints.front(), rest.front(), 1e-6f, "3D IK keeps its root pinned");
+    checkNear(solved.joints.back(), Vector3(1.f, 1.f, 0.f), 2e-4f,
+              "3D IK reaches a reachable target");
+    checkNear(solved.joints[0].distanceTo(solved.joints[1]), 1.f, 2e-4f,
+              "3D IK preserves the first segment length");
+    checkNear(solved.joints[1].distanceTo(solved.joints[2]), 1.f, 2e-4f,
+              "3D IK preserves the second segment length");
+    check(solved.joints[1].z > 0.5f, "pole vector bends the chain toward its positive-Z side");
+
+    const auto oppositePole = solveIKChain3D(rest, {1.f, 1.f, 0.f}, {0.f, 0.f, -4.f});
+    check(oppositePole.joints[1].z < -0.5f,
+          "reversing the pole vector selects the opposite bend plane side");
+
+    const auto tooFar = solveIKChain3D(rest, {5.f, 0.f, 0.f}, {0.f, 0.f, 1.f});
+    check(!tooFar.targetReachable, "3D IK reports an unreachable distant target");
+    checkNear(tooFar.joints.back(), Vector3(2.f, 0.f, 0.f), 1e-5f,
+              "distant target clamps to the maximum chain reach");
+
+    const std::array<Vector3, 3> unequalRest{{{0.f, 0.f, 0.f}, {2.f, 0.f, 0.f}, {3.f, 0.f, 0.f}}};
+    const auto insideAnnulus = solveIKChain3D(unequalRest, {0.1f, 0.f, 0.f}, {0.f, 0.f, 2.f});
+    check(!insideAnnulus.targetReachable,
+          "3D IK reports targets inside the chain's minimum reachable radius");
+    checkNear(insideAnnulus.joints.back().distanceTo(unequalRest.front()), 1.f, 1e-5f,
+              "inside-annulus target clamps to the minimum reachable radius");
+
+    IK3BakeSpec spec;
+    spec.initialJoints.assign(rest.begin(), rest.end());
+    spec.pole.set(0.f, 0.f, 4.f);
+    spec.fps = 10.f;
+    spec.targetTrack.add(0.f, Vector3(2.f, 0.f, 0.f));
+    spec.targetTrack.add(1.f, Vector3(1.f, 1.f, 0.f));
+    const auto baked = bakeIKChain3D(spec, 0, 10);
+    const auto bakedAgain = bakeIKChain3D(spec, 0, 10);
+    check(baked.samples.size() == 11 && baked.jointPositions.size() == 3 &&
+          baked.targetReachable.size() == 11,
+          "3D IK baker emits inclusive frame samples, reach status and one track per joint");
+    check(baked.samples == bakedAgain.samples,
+          "3D IK baking is bit-repeatable and independent of evaluation history");
+    checkNear(baked.jointPositions[2].sample(1.f), Vector3(1.f, 1.f, 0.f), 2e-4f,
+              "baked endpoint track matches the target track at the final frame");
+    check(throwsInvalid([&] { auto bad = spec; bad.initialJoints[1].x = bad.initialJoints[0].x;
+        (void)bakeIKChain3D(bad, 0, 1); }),
+        "3D IK baker rejects zero-length bind segments");
+    check(throwsInvalid([&] { (void)solveIKChain3D(rest, {0.f, 0.f, 0.f}, {}, 0); }),
+          "3D IK rejects a zero-iteration solver configuration");
+}
+
 void testPcmAudioAnalysis() {
     section("PCM audio feature analysis and keyframes");
     constexpr std::uint32_t sampleRate = 8000;
@@ -704,6 +757,7 @@ void testTypedChronon3dLowering() {
 int main() {
     testVerletAndRigidBodyBaking();
     testTwoSegmentIk();
+    testThreeDimensionalIkChain();
     testPcmAudioAnalysis();
     testPresetTrackGolden();
     testDynamicFlowLayout();

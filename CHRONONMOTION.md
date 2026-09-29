@@ -541,13 +541,16 @@ accepts in-memory JSON/GLB and only invokes a caller resolver for external buffe
 bytes; it never resolves paths or performs implicit file/network I/O.
 
 `motion/OfflineBaking.hpp` exposes deterministic authoring-time Verlet chain and
-2D rigid-body baking, analytic 2D two-segment IK, normalized interleaved-PCM
-feature analysis and frame-sampled audio drivers, measured row/column flow
-layout, and SVG path parsing/morph/repeater baking. Solvers return ordinary
-samples/tracks/paths; they are not called during rendering and the PCM API never
-decodes files or performs implicit I/O. Work, geometry and sample budgets are
-validated, and `tests/motion_offline_golden.cpp` pins fixed outputs plus repeat
-stability.
+2D rigid-body baking, analytic 2D two-segment IK, multi-segment 3D FABRIK IK with
+a world-space pole vector and optional frame-sampled joint-position tracks,
+normalized interleaved-PCM feature analysis and frame-sampled audio drivers,
+measured row/column flow layout, and SVG path parsing/morph/repeater baking.
+Solvers return ordinary samples/tracks/paths; they are not called during
+rendering and the PCM API never decodes files or performs implicit I/O. Work,
+geometry and sample budgets are validated, and
+`tests/motion_offline_golden.cpp` pins fixed outputs plus repeat stability.
+3D IK solves each target from the authored initial pose rather than carrying
+solver state between frames, so seeking and rebaking remain deterministic.
 
 `motion/RenderPlanLowering.hpp` is an opt-in adapter built only when a consumer
 provides Chronon3d headers. It evaluates Motion at integer output frames and
