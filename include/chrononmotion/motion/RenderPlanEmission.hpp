@@ -17,8 +17,8 @@
 //   root     schema, version, job_id, canvas, budget (only when the caller
 //            expressed one), camera, camera_animation, layers, output
 //   layer    id, type, asset, source, color, size, position, scale, rotation,
-//            enable_3d, opacity, start_frame, duration_frames, text, style,
-//            animation
+//            enable_3d, blend_mode, opacity, start_frame, duration_frames, text,
+//            style, animation, and V3 video time_remap
 //   style    font, font_size, fill, glow
 //   track    property, easing, keyframes (frame + value)
 //
@@ -27,13 +27,14 @@
 // drop it — a plan that loses a mask or an effect on the way out would render
 // as a different composition, which is worse than no file. The unsupported
 // families are the ones with no producer side here yet: hierarchy that is not
-// already flattened, track mattes, masks, time remap, transitions, effects and
-// their parameter tracks, shapes and inline meshes, particles, lights, blend
-// modes, text animators and spans, gradient animation, a layer-level
-// `auto_orient` (the plan expresses it only inside a follow-path driver, which
-// is itself unsupported here), and every animation driver (wiggle, spring,
-// oscillate, random hold, posterize, data feed, audio react) plus per-key
-// easing, because the lowering bakes all of those into linear samples.
+// already flattened, track mattes, masks, transitions, effects and
+// their parameter tracks, shapes and inline meshes, particles, lights, text
+// animators and spans, gradient animation, a layer-level `auto_orient` (the plan
+// expresses it only inside a follow-path driver, which is itself unsupported
+// here), and every animation driver (wiggle, spring, oscillate, random hold,
+// posterize, data feed, audio react) plus per-key easing, because the lowering
+// bakes all of those into linear samples. Blend modes are supported and written
+// directly from the canonical decoder vocabulary.
 //
 // Every key written here must exist in the consumer's schema: a plan that
 // carries one unknown field is rejected wholesale by

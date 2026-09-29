@@ -208,7 +208,7 @@ namespace chrononmotion::motion {
 
     float Layer::endTime() const {
 
-        return tracks.endTime();
+        return std::max(tracks.endTime(), timeRemapTrack.endTime());
     }
 
     Layer& Layer::named(std::string value) {

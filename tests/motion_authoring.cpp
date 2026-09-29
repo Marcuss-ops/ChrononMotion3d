@@ -2,7 +2,10 @@
 #include "chrononmotion/motion/OfflineBaking.hpp"
 #include "motion_check.hpp"
 #if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)
+#include "chrononmotion/motion/RenderPlanEmission.hpp"
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
+
+#include <nlohmann/json.hpp>
 #endif
 
 #include <array>
@@ -539,6 +542,73 @@ void testTypedChronon3dLowering() {
     const auto repeatedV3 = lowerToRenderPlan(scene, options);
     check(sameLoweredPlan(v3, repeatedV3),
           "typed V3 lowering repeats every emitted transform and keyframe bit-exactly");
+
+    MotionScene videoScene("time remap", 30.f);
+    auto& video = videoScene.addContent(31, "video", ContentRef::video("source-video", {640.f, 360.f}));
+    video.lifetime = FrameRange::between(0, 3);
+    video.timeRemap.stretch = 2.f;
+    RenderPlanLoweringOptions videoOptions;
+    videoOptions.width = 640;
+    videoOptions.height = 360;
+    videoOptions.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
+    chronon3d::render_plan::LayerPlan videoPlan;
+    videoPlan.type = chronon3d::render_plan::LayerType::Video;
+    videoPlan.source = "source-video";
+    videoOptions.contentLayers.emplace("31", videoPlan);
+    const auto slowedVideo = lowerToRenderPlan(videoScene, videoOptions);
+    check(slowedVideo.layers[0].time_remap && slowedVideo.layers[0].time_remap->speed == 0.5f,
+          "static Motion stretch lowers to the equivalent positive RenderPlan playback speed");
+    const std::string slowedJson = renderPlanToJson(slowedVideo);
+    const auto parsedSlowedJson = nlohmann::json::parse(slowedJson);
+    check(parsedSlowedJson.at("layers").at(0).at("time_remap").at("speed") == 0.5f,
+          "V3 emitter writes static video time-remap speed");
+    check(renderPlanToJson(slowedVideo) == slowedJson,
+          "time-remap JSON emission is byte-for-byte deterministic");
+
+    MotionScene remappedVideoScene("animated time remap", 30.f);
+    auto& remappedVideo = remappedVideoScene.addContent(
+        32, "animated video", ContentRef::video("animated-source-video", {640.f, 360.f}));
+    remappedVideo.lifetime = FrameRange::between(0, 3);
+    remappedVideo.timeRemapTrack.add(0.f, 0.f).add(1.f, 20.f);
+    videoOptions.contentLayers.clear();
+    videoPlan.source = "animated-source-video";
+    videoOptions.contentLayers.emplace("32", videoPlan);
+    const auto animatedRemap = lowerToRenderPlan(remappedVideoScene, videoOptions);
+    check(animatedRemap.canvas.duration.integral() == 31,
+          "composition duration includes the end of a keyed time-remap curve");
+    check(animatedRemap.layers[0].time_remap && animatedRemap.layers[0].time_remap->animation &&
+          animatedRemap.layers[0].time_remap->animation->keyframes.size() == 31,
+          "keyframed video remap lowers to a bounded deterministic scalar track");
+    checkNear(animatedRemap.layers[0].time_remap->animation->keyframes[15].value.front(), 10.f, 1e-5f,
+              "keyframed time-remap samples the authored source frame at the midpoint");
+    const auto parsedAnimatedRemap = nlohmann::json::parse(renderPlanToJson(animatedRemap));
+    check(parsedAnimatedRemap.at("layers").at(0).at("time_remap").at("animation")
+              .at("keyframes").at(15).at("value") == 10.f,
+          "V3 emitter preserves scalar time-remap keyframes");
+
+    auto legacyVideoOptions = videoOptions;
+    legacyVideoOptions.contentLayers.clear();
+    legacyVideoOptions.contentLayers.emplace("31", videoPlan);
+    legacyVideoOptions.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
+    check(throwsInvalid([&] { (void)lowerToRenderPlan(videoScene, legacyVideoOptions); }),
+          "Motion time remap fails closed when the selected RenderPlan schema is V2");
+    auto illegalRemapPlan = slowedVideo;
+    illegalRemapPlan.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
+    check(!renderPlanEmissionProblem(illegalRemapPlan).empty(),
+          "time remap diagnostics reject a V3-only feature on V2");
+    check(throwsInvalid([&] { (void)renderPlanToJson(illegalRemapPlan); }),
+          "the emitter rejects V3 time remapping attached to a V2 plan");
+    auto loopedVideoScene = MotionScene("looped time remap", 30.f);
+    auto& loopedVideo = loopedVideoScene.addContent(
+        33, "looped video", ContentRef::video("looped-source-video", {640.f, 360.f}));
+    loopedVideo.lifetime = FrameRange::between(0, 3);
+    loopedVideo.timeRemap.loopEnd = 12;
+    auto loopedVideoOptions = videoOptions;
+    loopedVideoOptions.contentLayers.clear();
+    videoPlan.source = "looped-source-video";
+    loopedVideoOptions.contentLayers.emplace("33", videoPlan);
+    check(throwsInvalid([&] { (void)lowerToRenderPlan(loopedVideoScene, loopedVideoOptions); }),
+          "looping time remap is explicitly rejected instead of silently changing its V3 semantics");
     const auto shapePath = lowerBakedPath(parseSvgPath("M0 0 C1 0 2 1 3 1 Z"));
     check(shapePath.size() == 3 && shapePath[1].type == chronon3d::render_plan::ShapePathCommandTypePlan::CubicTo,
           "baked paths map to Chronon3D's native shape path command type");

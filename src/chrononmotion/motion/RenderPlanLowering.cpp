@@ -141,6 +141,90 @@ void preserveNonTransformTracks(LayerPlan& layer, AnimationPlan& baked) {
     }
 }
 
+void lowerTimeRemap(const Layer& source, LayerPlan& target, const std::string& schema,
+                    float fps, std::size_t frameCount) {
+    const TimeRemap& remap = source.timeRemap;
+    const bool hasTrack = !source.timeRemapTrack.empty();
+    const bool hasLoop = remap.loopEnd >= remap.loopStart;
+    const bool configured = hasTrack || remap.offsetFrames != 0.f || remap.stretch != 1.f ||
+                            remap.reverse || remap.freeze || remap.pingPong || hasLoop;
+    if (!configured) return;
+    if (schema != kRenderPlanSchemaV3)
+        throw std::invalid_argument("lowerToRenderPlan: time remap requires RenderPlan v3");
+    if (target.type != LayerType::Video)
+        throw std::invalid_argument("lowerToRenderPlan: time remap is supported only for video layers");
+    if (!hasTrack && !remap.valid())
+        throw std::invalid_argument("lowerToRenderPlan: invalid Motion time remap");
+    if (!hasTrack && remap.reverse)
+        throw std::invalid_argument("lowerToRenderPlan: Motion reverse uses a different source-frame origin than RenderPlan V3 reverse");
+    if (frameCount == 0)
+        throw std::invalid_argument("lowerToRenderPlan: time remap requires a non-empty composition");
+
+    TimeRemapPlan output;
+    if (hasTrack) {
+        if (frameCount > 65536)
+            throw std::invalid_argument("lowerToRenderPlan: time-remap animation exceeds the 65536-key V3 contract");
+        for (const auto& modifier : source.timeRemapTrack.modifiers()) {
+            if (std::holds_alternative<LinkModifier>(modifier))
+                throw std::invalid_argument("lowerToRenderPlan: linked time-remap tracks cannot be lowered without a resolved source curve");
+        }
+        AnimationTrackPlan track;
+        track.property = "time_remap";
+        track.easing = "linear";
+        track.keyframes.reserve(frameCount);
+        for (std::size_t frame = 0; frame < frameCount; ++frame) {
+            const float mapped = source.mapFrame(static_cast<float>(frame),
+                                                 static_cast<float>(frame) / fps);
+            if (!std::isfinite(mapped) || mapped < 0.f || mapped > 1'000'000.f)
+                throw std::invalid_argument("lowerToRenderPlan: time-remap source frame is outside V3's [0, 1000000] range");
+            track.keyframes.push_back(makePlanKeyframe(
+                chronon3d::Frame{static_cast<std::int64_t>(frame)}, {mapped}));
+        }
+        output.animation = std::move(track);
+    } else if (remap.freeze) {
+        if (remap.loopStart != 0 || remap.loopEnd >= remap.loopStart || remap.pingPong)
+            throw std::invalid_argument("lowerToRenderPlan: freeze cannot be combined with looping or ping-pong remapping");
+        if (!std::isfinite(remap.offsetFrames) || remap.offsetFrames < 0.f || remap.offsetFrames > 1'000'000.f)
+            throw std::invalid_argument("lowerToRenderPlan: frozen source frame is outside V3's [0, 1000000] range");
+        const float integral = std::floor(remap.offsetFrames);
+        if (integral == remap.offsetFrames) {
+            output.freeze_frame = chronon3d::Frame{static_cast<std::int64_t>(integral)};
+        } else {
+            AnimationTrackPlan track;
+            track.property = "time_remap";
+            track.easing = "linear";
+            track.keyframes.push_back(makePlanKeyframe(chronon3d::Frame{0}, {remap.offsetFrames}));
+            output.animation = std::move(track);
+        }
+    } else if (remap.pingPong) {
+        throw std::invalid_argument("lowerToRenderPlan: ping-pong time remap is not representable by the V3 time-remap contract");
+    } else if (hasLoop) {
+        throw std::invalid_argument("lowerToRenderPlan: looping time remap is not representable by the V3 time-remap contract");
+    } else if (remap.offsetFrames == 0.f) {
+        const float speed = 1.f / remap.stretch;
+        if (!std::isfinite(speed) || speed <= 0.f || speed > 1000.f)
+            throw std::invalid_argument("lowerToRenderPlan: time-remap speed is outside V3's (0, 1000] range");
+        output.speed = speed;
+    } else {
+        if (frameCount > 65536)
+            throw std::invalid_argument("lowerToRenderPlan: time-remap animation exceeds the 65536-key V3 contract");
+        AnimationTrackPlan track;
+        track.property = "time_remap";
+        track.easing = "linear";
+        track.keyframes.reserve(frameCount);
+        for (std::size_t frame = 0; frame < frameCount; ++frame) {
+            const float mapped = remap.mapFrame(static_cast<float>(frame));
+            if (!std::isfinite(mapped) || mapped < 0.f || mapped > 1'000'000.f)
+                throw std::invalid_argument("lowerToRenderPlan: time-remap source frame is outside V3's [0, 1000000] range");
+            track.keyframes.push_back(makePlanKeyframe(
+                chronon3d::Frame{static_cast<std::int64_t>(frame)}, {mapped}));
+        }
+        output.animation = std::move(track);
+    }
+    target.time_remap = std::move(output);
+}
+
+
 RenderPlan lowerSamplesToRenderPlan(
     float fps, std::size_t frameCount, const RenderPlanLoweringOptions& options,
     const std::vector<Layer>& metadata,
@@ -398,6 +482,15 @@ RenderPlan lowerSamplesToRenderPlan(
             output.enable_3d = true;
         output.start_frame = chronon3d::Frame{0};
         output.duration_frames = chronon3d::Frame{static_cast<std::int64_t>(frameCount)};
+        const TimeRemap& authoredTimeRemap = layer.timeRemap;
+        const bool hasMotionTimeRemap = !layer.timeRemapTrack.empty() || authoredTimeRemap.offsetFrames != 0.f ||
+            authoredTimeRemap.stretch != 1.f || authoredTimeRemap.reverse || authoredTimeRemap.freeze ||
+            authoredTimeRemap.pingPong || authoredTimeRemap.loopEnd >= authoredTimeRemap.loopStart;
+        if (hasMotionTimeRemap && output.time_remap)
+            throw std::invalid_argument("lowerToRenderPlan: caller-supplied RenderPlan time remap conflicts with Motion layer timing");
+        if (hasMotionTimeRemap && !layer.content.isVideo())
+            throw std::invalid_argument("lowerToRenderPlan: Motion time remap is supported only for video content");
+        lowerTimeRemap(layer, output, options.schema, fps, frameCount);
 
         AnimationPlan baked;
         preserveNonTransformTracks(output, baked);

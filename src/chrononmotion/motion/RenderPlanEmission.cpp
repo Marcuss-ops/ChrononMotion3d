@@ -216,7 +216,7 @@ namespace chrononmotion::motion {
             return {};
         }
 
-        [[nodiscard]] std::string layerProblem(const LayerPlan& layer) {
+        [[nodiscard]] std::string layerProblem(const LayerPlan& layer, const std::string& schema) {
 
             if (layer.id.empty()) return "a layer has no id";
 
@@ -245,7 +245,32 @@ namespace chrononmotion::motion {
 
             if (layer.parent) return owner + " is parented; the plan contract already flattens hierarchy";
             if (layer.track_matte) return owner + " carries a track matte";
-            if (layer.time_remap) return owner + " carries a time remap";
+            if (layer.time_remap) {
+                if (schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                    return owner + " carries a time remap, which requires RenderPlan v3";
+                if (layer.type != LayerType::Video)
+                    return owner + " carries a time remap, which is supported only for video layers";
+                const auto& remap = *layer.time_remap;
+                if (remap.speed && (!std::isfinite(*remap.speed) || *remap.speed <= 0.f || *remap.speed > 1000.f))
+                    return owner + " carries an invalid time-remap speed";
+                if (remap.freeze_frame && (remap.freeze_frame->integral() < 0 ||
+                                           remap.freeze_frame->integral() > 1'000'000))
+                    return owner + " carries an out-of-range time-remap freeze frame";
+                if (remap.freeze_frame && remap.animation)
+                    return owner + " carries both a time-remap freeze frame and animation";
+                if (remap.animation) {
+                    const AnimationTrackPlan& track = *remap.animation;
+                    const std::string problem = trackProblem(owner + " time-remap animation", track);
+                    if (!problem.empty()) return problem;
+                    if (track.keyframes.empty()) return owner + " carries an empty time-remap animation";
+                    for (const AnimationKeyframePlan& key : track.keyframes) {
+                        if (key.frame.integral() < 0 || key.frame.integral() > 1'000'000 ||
+                            key.value.size() != 1 || !std::isfinite(key.value.front()) ||
+                            key.value.front() < 0.f || key.value.front() > 1'000'000.f)
+                            return owner + " carries an invalid time-remap keyframe";
+                    }
+                }
+            }
             if (!layer.text_spans.empty()) return owner + " carries text span overrides";
             if (!layer.font.empty()) {
                 return owner + " carries a normalized font path, which the plan derives from style.font";
@@ -357,7 +382,7 @@ namespace chrononmotion::motion {
             }
 
             for (const LayerPlan& layer : plan.layers) {
-                const std::string problem = layerProblem(layer);
+                const std::string problem = layerProblem(layer, plan.schema);
                 if (!problem.empty()) return problem;
             }
 
@@ -543,6 +568,33 @@ namespace chrononmotion::motion {
             if (layer.animation) {
                 writer.key("animation");
                 writeAnimation(writer, *layer.animation);
+            }
+            if (layer.time_remap) {
+                writer.key("time_remap");
+                const auto& remap = *layer.time_remap;
+                writer.beginObject();
+                if (remap.speed) {
+                    writer.key("speed");
+                    writer.number(*remap.speed);
+                }
+                if (remap.reverse) {
+                    writer.key("reverse");
+                    writer.boolean(true);
+                }
+                if (remap.freeze_frame) {
+                    writer.key("freeze_frame");
+                    writer.integer(remap.freeze_frame->integral());
+                }
+                if (remap.animation) {
+                    writer.key("animation");
+                    writer.beginObject();
+                    writer.key("easing");
+                    writer.text(remap.animation->easing);
+                    writer.key("keyframes");
+                    writeKeyframes(writer, remap.animation->keyframes, true);
+                    writer.endObject();
+                }
+                writer.endObject();
             }
 
             writer.endObject();
