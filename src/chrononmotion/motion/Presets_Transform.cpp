@@ -213,4 +213,97 @@ namespace chrononmotion::motion::presets {
         }
     }
 
+    // ----------------------------------------------------------- documentary
+
+    namespace {
+
+        /// The resting scale, multiplied on every axis. A ping and a draw both
+        /// scale the layer the caller handed in, so the factor composes with
+        /// whatever size that layer was authored at instead of replacing it.
+        Vector3 scaledCopy(const Vector3& base, float factor) {
+
+            Vector3 out = base;
+            out.multiplyScalar(factor);
+            return out;
+        }
+
+        /// The scale a draw-on starts from. Not zero: a zero component makes the
+        /// layer's world matrix singular, and a singular transform has no
+        /// inverse to place the layer with — so a `lineDraw` would be a plan the
+        /// lowering is right to refuse. Read against the layer's own width, a
+        /// thousandth of it is the same as nothing on screen.
+        constexpr float kDrawOnStartScale = 1e-3f;
+
+    }// namespace
+
+    void radarPing(Layer& layer, int inFrame, int duration, int pulses,
+                   float fromScale, float toScale, float fps, const Easing& easing) {
+
+        if (duration <= 0) return;
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+        const int count = std::max(pulses, 1);
+        const float ringSeconds = (t1 - t0) / static_cast<float>(count);
+        if (!(ringSeconds > 0.f)) return;
+
+        // Scale: one ring's expansion, *repeated* by the channel's own loop
+        // window. A loop rather than a list of hand keys is what lets the ring
+        // reset instantly at every boundary (the loop wraps time, so there are
+        // no two keys on one frame to collide) without the number of pulses
+        // changing the shape of a single ring.
+        auto& scale = layer.tracks.scale;
+        scale.add(t0, scaledCopy(rest.scale, fromScale), easing);
+        scale.add(t0 + ringSeconds, scaledCopy(rest.scale, toScale), Easing::linear());
+        scale.loop(t0, t0 + ringSeconds);
+
+        // Opacity: fade to nothing across the same ring, then reset with it.
+        auto& opacity = layer.tracks.opacity;
+        opacity.add(t0, rest.opacity, Easing::linear());
+        opacity.add(t0 + ringSeconds, 0.f, Easing::linear());
+        opacity.loop(t0, t0 + ringSeconds);
+    }
+
+    void areaReveal(Layer& layer, int inFrame, int duration, float fps, const Easing& easing) {
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+
+        keyVector3(layer.tracks.scale, t0, t1, scaledCopy(rest.scale, 1.04f), rest.scale, easing);
+        layer.tracks.opacity.add(t0, 0.f, Easing::easeOut());
+        layer.tracks.opacity.add(t1, rest.opacity, Easing::linear());
+    }
+
+    void extrudeRise(Layer& layer, int inFrame, int duration, float height, float fps,
+                     const Easing& easing) {
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+
+        // Only the Z end differs, so an overshoot on the segment lifts the block
+        // past its height and settles it back; X and Y are the same value at
+        // both ends and cannot shear.
+        const Vector3 raised(rest.position.x, rest.position.y, rest.position.z + height);
+        keyVector3(layer.tracks.position, t0, t1, rest.position, raised, easing);
+        layer.tracks.opacity.add(t0, 0.f, Easing::easeOut());
+        layer.tracks.opacity.add(t1, rest.opacity, Easing::linear());
+    }
+
+    void lineDraw(Layer& layer, int inFrame, int duration, float fps, const Easing& easing) {
+
+        const Transform rest = restOf(layer, inFrame, fps);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+
+        // Uncovered along its own width: the height and depth keep the resting
+        // value, so the rule grows out of its anchor rather than squashing.
+        const Vector3 folded(kDrawOnStartScale, rest.scale.y, rest.scale.z);
+        keyVector3(layer.tracks.scale, t0, t1, folded, rest.scale, easing);
+        layer.tracks.opacity.add(t0, 0.f, Easing::easeOut());
+        layer.tracks.opacity.add(t1, rest.opacity, Easing::linear());
+    }
+
 }// namespace chrononmotion::motion::presets

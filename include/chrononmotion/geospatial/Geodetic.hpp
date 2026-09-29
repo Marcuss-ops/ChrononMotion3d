@@ -10,6 +10,7 @@
 
 #include "chrononmotion/math/Vector3.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -142,6 +143,41 @@ namespace chrononmotion::geospatial {
         const double c = 2.0 * std::atan2(std::sqrt(h), std::sqrt(1.0 - h));
 
         return kWgs84SemiMajorAxis * c;
+    }
+
+    /// A point `fraction` of the way along the great circle from `from` to `to`
+    /// (spherical linear interpolation on the unit sphere).
+    ///
+    /// The route a documentary draws between two places is the great circle the
+    /// aircraft or ship would actually follow, not the straight line the current
+    /// projection happens to make of it: on a Mercator plate a great circle bows
+    /// towards the pole, which is the whole reason a plotted route reads as a
+    /// route instead of as a rule laid across the map.
+    [[nodiscard]] inline GeoCoord greatCirclePoint(const GeoCoord& from, const GeoCoord& to,
+                                                   double fraction) noexcept {
+        constexpr double kDegToRad = std::numbers::pi / 180.0;
+        constexpr double kRadToDeg = 180.0 / std::numbers::pi;
+        const double lat1 = from.latitudeDeg * kDegToRad;
+        const double lon1 = from.longitudeDeg * kDegToRad;
+        const double lat2 = to.latitudeDeg * kDegToRad;
+        const double lon2 = to.longitudeDeg * kDegToRad;
+
+        const double dLat = lat2 - lat1;
+        const double dLon = lon2 - lon1;
+        const double h = std::sin(dLat * 0.5) * std::sin(dLat * 0.5) +
+                         std::cos(lat1) * std::cos(lat2) * std::sin(dLon * 0.5) * std::sin(dLon * 0.5);
+        const double angle = 2.0 * std::atan2(std::sqrt(h), std::sqrt(std::max(0.0, 1.0 - h)));
+        if (angle < 1e-12) return GeoCoord{from.latitudeDeg, from.longitudeDeg, from.altitudeM};
+
+        const double sinAngle = std::sin(angle);
+        const double w1 = std::sin((1.0 - fraction) * angle) / sinAngle;
+        const double w2 = std::sin(fraction * angle) / sinAngle;
+        const double x = w1 * std::cos(lat1) * std::cos(lon1) + w2 * std::cos(lat2) * std::cos(lon2);
+        const double y = w1 * std::cos(lat1) * std::sin(lon1) + w2 * std::cos(lat2) * std::sin(lon2);
+        const double z = w1 * std::sin(lat1) + w2 * std::sin(lat2);
+        return GeoCoord{std::atan2(z, std::sqrt(x * x + y * y)) * kRadToDeg,
+                        std::atan2(y, x) * kRadToDeg,
+                        from.altitudeM + (to.altitudeM - from.altitudeM) * fraction};
     }
 
 } // namespace chrononmotion::geospatial

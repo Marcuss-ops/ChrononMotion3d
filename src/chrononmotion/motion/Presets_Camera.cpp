@@ -11,6 +11,7 @@
 #include "chrononmotion/math/MathUtils.hpp"
 #include "chrononmotion/motion/Procedural.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
@@ -204,6 +205,54 @@ namespace chrononmotion::motion::presets {
 
         rig.fovTrack().add(t0, fromFov, Easing::easeInOut());
         rig.fovTrack().add(t1, toFov, Easing::linear());
+    }
+
+    void orbitalSlamZoom(CameraRig& rig, int inFrame, int duration,
+                         float yawDeg, float pitchDeg, float dollyDistance,
+                         float fromFov, float toFov, float fps) {
+
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+
+        CameraPose start = rig.sample(t0);
+        CameraPose end = start;
+        CameraRig::orbit(end, math::degToRad(yawDeg), math::degToRad(pitchDeg));
+        CameraRig::dolly(end, dollyDistance);
+
+        // The slam curve: little travel at first, the bulk of it through the
+        // middle, then a long soft landing. That asymmetry is what the eye reads
+        // as a dive, where the symmetric ease a plain push uses reads as a slide.
+        const Easing slam = Easing::cubicBezier(0.72f, 0.f, 0.2f, 1.f);
+        keyVector3(rig.positionTrack(), t0, t1, start.position, end.position, slam);
+        rig.fovTrack().add(t0, fromFov, slam);
+        rig.fovTrack().add(t1, toFov, Easing::linear());
+    }
+
+    void cameraDrift(CameraRig& rig, int inFrame, int duration,
+                     float yawRateDegPerSec, float pitchRateDegPerSec, float fps) {
+
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+        const float span = t1 - t0;
+        if (!(span > 0.f)) return;
+
+        // One pose sampled once, then the *whole* drift drawn as an orbit about
+        // it, keyed at a fixed step. Keying a rate instead would need one key at
+        // each end, and a two-key orbit is exactly the move that freezes; the
+        // step is what keeps the camera alive across the tail of the shot.
+        const CameraPose base = rig.sample(t0);
+        const int steps = std::max(2, static_cast<int>(std::round(span * fps / 6.f)));
+        auto& track = rig.positionTrack();
+        for (int i = 0; i <= steps; ++i) {
+            const float time = i == steps
+                                       ? t1
+                                       : t0 + span * (static_cast<float>(i) / static_cast<float>(steps));
+            const float elapsed = time - t0;
+            CameraPose pose = base;
+            CameraRig::orbit(pose, math::degToRad(yawRateDegPerSec) * elapsed,
+                             math::degToRad(pitchRateDegPerSec) * elapsed);
+            track.add(time, pose.position, Easing::linear());
+        }
     }
 
 }// namespace chrononmotion::motion::presets

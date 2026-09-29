@@ -71,6 +71,57 @@ namespace {
         std::vector<GeoCoord> route;
     };
 
+    /// Documentary content for a place, used only with `--documentary`. The
+    /// assets are Chronon-owned; a place that ships none authors none, so the
+    /// flag is inert for every place but the ones that have them.
+    struct DocumentaryAssets {
+        std::string area;
+        std::string leader;
+        std::string reticle;
+        std::string route;
+        std::string vignette;
+        std::string dim;
+        float dimOpacity{0.f};
+        GeoCoord routeFrom{};
+        GeoCoord routeTo{};
+        bool pinPulse{false};
+    };
+
+    DocumentaryAssets documentaryFor(const std::string& place) {
+
+        DocumentaryAssets assets;
+        assets.vignette = "assets/maps/doc_vignette.png";
+        if (place == "alps") {
+            assets.area = "assets/maps/doc_area_matterhorn.png";
+            assets.leader = "assets/maps/doc_leader.png";
+            assets.reticle = "assets/maps/doc_reticle.png";
+            // A single placed POI is a spotlight: the whole plate steps back a
+            // step so the zone, the reticle and the pin are what the eye lands on.
+            assets.dim = "assets/maps/doc_dim.png";
+            assets.dimOpacity = 0.18f;
+            assets.pinPulse = true;
+        } else if (place == "italy_usa") {
+            assets.area = "assets/maps/doc_atlantic_dual.png";
+            // One soft glow sprite, drawn many times along the great circle: the
+            // route is a chain of these rather than a single stretched strip.
+            assets.route = "assets/maps/doc_glow_dot.png";
+            assets.routeFrom = GeoCoord{41.9028, 12.4964, 0.0}; // Rome
+            assets.routeTo = GeoCoord{40.7128, -74.0060, 0.0};  // New York
+            assets.reticle = "assets/maps/doc_reticle.png";
+            assets.pinPulse = true;
+        }
+        return assets;
+    }
+
+    /// The plate size a place is rendered for, when it is not the canvas size.
+    /// A place whose camera pans across its plate needs a plate wider than the
+    /// window, or the pan would expose the canvas edges.
+    Vector2 windowSizeFor(const std::string& place) {
+
+        if (place == "italy_usa") return Vector2{3200.f, 1080.f};
+        return Vector2{static_cast<float>(kWidth), static_cast<float>(kHeight)};
+    }
+
     /// The shipped plates. Each one is a real crop: the basemap assets were
     /// rendered with exactly these centres and zooms, so the georeferencing below
     /// is a fact about the file rather than a plausible guess.
@@ -141,7 +192,10 @@ namespace {
             // lines in the imagery.
             MapPlace{
                 "alps",
-                "assets/maps/alps_basemap.png",
+                // The graded copy of the plate: the same DEM-baked terrain, with
+                // its colour and highlights quietened so the overlays drawn on it
+                // read. Produced by `make_documentary_assets.py`.
+                "assets/maps/alps_basemap_doc.png",
                 // No drape layer: this plate was rendered shaded (map_cartography
                 // `basemap --relief`), so the terrain is already in its pixels,
                 // with the plate's own contrast intact. `relief` is for a plate
@@ -157,6 +211,23 @@ namespace {
                     GeoCoord{45.9763, 7.6586, 4478.0}, // Matterhorn
                     GeoCoord{45.9834, 7.7847, 3089.0}, // Gornergrat
                     GeoCoord{46.0207, 7.7491, 1620.0}, // Zermatt
+                },
+            },
+            // Two continents in one shot: the plate is a wide North-Atlantic
+            // window, the route runs Rome -> New York, and the flyover travels
+            // from one to the other. Both ends are documented by the same
+            // georeferencing as every other marker.
+            MapPlace{
+                "italy_usa",
+                "assets/maps/italy_usa_basemap.png",
+                "",
+                41.0, -30.0, 4,
+                GeoCoord{40.7128, -74.0060, 0.0},
+                "NEW YORK",
+                "USA \u00b7 40.7128\u00b0 N, 74.0060\u00b0 W",
+                {
+                    GeoCoord{41.9028, 12.4964, 0.0},  // Rome
+                    GeoCoord{40.7128, -74.0060, 0.0}, // New York
                 },
             },
         };
@@ -205,7 +276,8 @@ namespace {
 
     void printUsage(const std::vector<MapPlace>& all) {
 
-        std::cerr << "usage: chrononmotion_map_flyover [place] [output.plan.json] [font] [frames]\n";
+        std::cerr << "usage: chrononmotion_map_flyover [place] [output.plan.json] [font] [frames]"
+                 " [--documentary]\n";
         std::cerr << "places:";
         for (const auto& place : all) std::cerr << ' ' << place.name;
         std::cerr << '\n';
@@ -227,6 +299,9 @@ int main(int argc, char** argv) {
     const std::string outputPath = argc > 2 ? argv[2] : "map_flyover.plan.json";
     const std::string font = argc > 3 ? argv[3] : "assets/fonts/Inter-Bold.ttf";
     const int frames = argc > 4 ? std::atoi(argv[4]) : kFrames;
+    bool documentary = false;
+    for (int i = 1; i < argc; ++i)
+        if (std::string(argv[i]) == "--documentary") documentary = true;
     if (frames <= 1) {
         std::cerr << "map_flyover: frames must be greater than one\n";
         return 2;
@@ -257,12 +332,72 @@ int main(int argc, char** argv) {
         // every marker against a window the pixels never came from. The POI is
         // where the callout points, and it only has to be inside the window.
         spec.window = MapWindow::centeredOn(
-            GeoCoord{place->centerLat, place->centerLon, 0.0}, place->zoom, spec.canvasSize);
+            GeoCoord{place->centerLat, place->centerLon, 0.0}, place->zoom,
+            windowSizeFor(place->name));
         // The camera rig flies in metres, so the descent is expressed in the
         // plate's own geography rather than in canvas pixels.
         spec.startAltitudeM = 2600.f;
         spec.endAltitudeM = 900.f;
         spec.orbitRadiusM = 1800.f;
+
+        // The documentary punctuation, only when the caller asks for it. A plain
+        // run authors exactly the flyover it always did.
+        if (documentary) {
+            const DocumentaryAssets assets = documentaryFor(place->name);
+            spec.areaOverlayAsset = assets.area;
+            spec.leaderLineAsset = assets.leader;
+            spec.crosshairAsset = assets.reticle;
+            spec.vignetteAsset = assets.vignette;
+            spec.dimAsset = assets.dim;
+            spec.dimOpacity = assets.dimOpacity;
+            spec.enablePinPulse = assets.pinPulse;
+
+            // A route between two places is drawn from the first to the second,
+            // and the camera travels with it: the flyover pans from centring the
+            // start towards centring the end, both as plane points of this
+            // window. The pan stops short of the destination on purpose. A
+            // window is 1920px wide and these two places sit ~984px apart on the
+            // plate, so a full centred pan would push the origin clean off the
+            // frame; ending at 76% of the travel keeps *both* ends of the line —
+            // both highlighted glow discs — inside the shot when the line lands.
+            if (!assets.route.empty()) {
+                const Vector2 planeFrom = spec.window.toPlane(assets.routeFrom);
+                const Vector2 planeTo = spec.window.toPlane(assets.routeTo);
+                spec.docRouteAsset = assets.route;
+                spec.docRouteFrom = assets.routeFrom;
+                spec.docRouteTo = assets.routeTo;
+                spec.startMapScale = 1.0f;
+                spec.endMapScale = 1.0f;
+                // The shot opens on the origin, led in from the right by a
+                // sliver of the route: the destination's glow disc is present
+                // from the first frame (both ends are the subject), and starting
+                // it just outside the west edge lets it *slide* in as the camera
+                // travels rather than popping in clipped against the frame.
+                const float routeSpanX = std::fabs(planeTo.x - planeFrom.x);
+                const float leadInX = routeSpanX * 0.14f;
+                spec.startMapPan = Vector2{-planeFrom.x - leadInX, -planeFrom.y};
+                // Travel most of the way to the destination, then stop: the last
+                // quarter is left unwound so the origin stays inside the frame
+                // and both highlighted ends read in the same shot. A window is
+                // 1920px wide and these two places sit ~984px apart on the plate,
+                // so a full centred pan would push the origin clean off it.
+                const Vector2 centredOnEnd{-planeTo.x, -planeTo.y};
+                constexpr float kArrivalFraction = 0.76f;
+                spec.endMapPan = Vector2{
+                    spec.startMapPan.x + (centredOnEnd.x - spec.startMapPan.x) * kArrivalFraction,
+                    spec.startMapPan.y + (centredOnEnd.y - spec.startMapPan.y) * kArrivalFraction};
+                // Both ends are the subject of the shot, so the glow discs are
+                // present from the first frame instead of fading up mid-flight;
+                // the camera opening on Italy is what shows Italy highlighted,
+                // and the westward pan is what brings the second disc in.
+                spec.areaRevealStartFrame = 0;
+                spec.areaRevealEndFrame = 0;
+                // The line draws across most of the clip and then holds lit, so
+                // the arrival is the shot's climax rather than a blip.
+                spec.docRouteStartFrame = 6;
+                spec.docRouteEndFrame = 120;
+            }
+        }
 
         MotionScene scene{"map_flyover_" + place->name, kFps};
         const MapFlyoverBuilder builder(spec);
@@ -294,6 +429,23 @@ int main(int argc, char** argv) {
             content.emplace(key(id), textPlan(spec.markerText, font, spec.markerFontSize, "#F59E0B"));
         if (ids.pin != Layer::kRoot)
             content.emplace(key(ids.pin), textPlan(spec.pinText, font, spec.pinFontSize, "#EF4444"));
+        if (ids.area != Layer::kRoot)
+            content.emplace(key(ids.area), imagePlan(spec.areaOverlayAsset));
+        if (ids.vignette != Layer::kRoot)
+            content.emplace(key(ids.vignette), imagePlan(spec.vignetteAsset));
+        if (ids.dim != Layer::kRoot)
+            content.emplace(key(ids.dim), imagePlan(spec.dimAsset));
+        if (ids.leader_line != Layer::kRoot)
+            content.emplace(key(ids.leader_line), imagePlan(spec.leaderLineAsset));
+        if (ids.crosshair != Layer::kRoot)
+            content.emplace(key(ids.crosshair), imagePlan(spec.crosshairAsset));
+        // The route is one sprite drawn many times along the arc, plus the
+        // brighter head that rides the reveal front. They share one asset; the
+        // scene decided how many and where.
+        for (const Layer::Id id : ids.doc_route_sprites)
+            content.emplace(key(id), imagePlan(spec.docRouteAsset));
+        if (ids.doc_route_head != Layer::kRoot)
+            content.emplace(key(ids.doc_route_head), imagePlan(spec.docRouteAsset));
         if (ids.title != Layer::kRoot)
             content.emplace(key(ids.title), textPlan(spec.poiTitle, font, spec.titleFontSize, "#FFFFFF"));
         if (ids.subtitle != Layer::kRoot)

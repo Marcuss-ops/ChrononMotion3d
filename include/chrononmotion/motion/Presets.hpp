@@ -220,6 +220,59 @@ namespace chrononmotion::motion {
         void pathMotion(Layer& layer, const MotionPath& path, int inFrame, int duration, float fps,
                         bool orient = false, unsigned int steps = 16);
 
+        // ---------------------------------------------------------- documentary
+        //
+        // The motion-graphics vocabulary a documentary map sequence is built
+        // from. Every one keys the transform of a layer the caller supplies (a
+        // ring, a reticle, an area, a rule, a line); none of them invents
+        // content, which is why they live here and not in the content engine.
+
+        /// An expanding target ping: a ring that grows from `fromScale` to
+        /// `toScale` while it fades to nothing, repeated `pulses` times across
+        /// the duration.
+        ///
+        /// The repeat is a channel `Loop` over one ring's window rather than a
+        /// list of hand-written keys, so the ring resets instantly at every
+        /// boundary and the number of pulses never changes the shape of one
+        /// ring — the only thing that decides how a single ping looks is the
+        /// ring itself.
+        void radarPing(Layer& layer, int inFrame, int duration, int pulses,
+                       float fromScale, float toScale, float fps,
+                       const Easing& easing = Easing::circOut());
+
+        /// An area fill arriving: the layer fades up while a slight scale settle
+        /// closes the loop it was drawn with. The fade is the reveal; the settle
+        /// is only what makes it read as an area coming together instead of a
+        /// rectangle switching on.
+        void areaReveal(Layer& layer, int inFrame, int duration, float fps,
+                        const Easing& easing = Easing::overshoot());
+
+        /// A 2.5D extrusion: the layer rises off the plane by `height` on Z
+        /// while it fades in, so a flat area gains a shallow prism without a
+        /// second geometry. The rise overshoots and settles, so the block lands
+        /// on its height rather than sliding onto it.
+        void extrudeRise(Layer& layer, int inFrame, int duration, float height, float fps,
+                         const Easing& easing = Easing::overshoot());
+
+        /// A rule or leader line that draws itself: the layer is uncovered along
+        /// its own width (scale X from nothing to the resting width) while it
+        /// fades in, so it grows out of its anchor instead of popping in whole.
+        void lineDraw(Layer& layer, int inFrame, int duration, float fps,
+                      const Easing& easing = Easing::easeInOut());
+
+        /// A reticle that locks on: each segment starts `outward` away from its
+        /// own resting place and collapses onto it with a snap, so the segments
+        /// close around the point together.
+        ///
+        /// `outward` is indexed in lockstep with `segments`; a segment with no
+        /// offset, or a null entry, is skipped rather than given a guessed one.
+        /// The snap is the segment's easing (`overshoot` by default), so the
+        /// reticle settles exactly on the point it locked rather than near it.
+        void crosshairLock(const std::vector<Layer*>& segments,
+                           const std::vector<Vector3>& outward,
+                           int inFrame, int duration, float fps,
+                           const Easing& easing = Easing::overshoot(0.72f));
+
         // -------------------------------------------------------------- hierarchy
 
         /// The same entrance, offset per layer: the classic staggered reveal.
@@ -290,6 +343,25 @@ namespace chrononmotion::motion {
 
         /// Animated field of view.
         void cameraFov(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps);
+
+        /// The slam: one move that orbits, closes in and compresses the lens at
+        /// once, on a curve that accelerates through the middle and lands softly.
+        /// The camera arrives *over* the target rather than sliding onto it.
+        ///
+        /// `dollyDistance` is how far the camera closes along its own view axis
+        /// (positive toward the target), `yawDeg`/`pitchDeg` how far it swings
+        /// around the target, and the two fov ends compress the lens as it
+        /// arrives.
+        void orbitalSlamZoom(CameraRig& rig, int inFrame, int duration,
+                             float yawDeg, float pitchDeg, float dollyDistance,
+                             float fromFov, float toFov, float fps);
+
+        /// A continuous drift: a slow orbit keyed at a fixed step so the camera
+        /// never freezes after the target is locked, at `yawRateDegPerSec` and
+        /// `pitchRateDegPerSec`. Deterministic, like every other camera move
+        /// here: the same frames always drift the same way.
+        void cameraDrift(CameraRig& rig, int inFrame, int duration,
+                         float yawRateDegPerSec, float pitchRateDegPerSec, float fps);
 
         // -------------------------------------------------------- environment & background
 

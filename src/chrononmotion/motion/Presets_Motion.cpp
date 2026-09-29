@@ -302,4 +302,34 @@ namespace chrononmotion::motion::presets {
         layer.tracks.position.delay(lagSeconds);
     }
 
+    void crosshairLock(const std::vector<Layer*>& segments,
+                       const std::vector<Vector3>& outward,
+                       int inFrame, int duration, float fps, const Easing& easing) {
+
+        if (segments.empty()) return;
+
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+
+        // Every resting pose is captured before a single key is written, so one
+        // segment's collapse can never become another segment's baseline.
+        for (std::size_t i = 0; i < segments.size(); ++i) {
+            Layer* segment = segments[i];
+            if (segment == nullptr) continue;
+            if (i >= outward.size()) continue;
+
+            const Transform rest = restOf(*segment, inFrame, fps);
+            const Vector3 from(rest.position.x + outward[i].x,
+                               rest.position.y + outward[i].y,
+                               rest.position.z + outward[i].z);
+
+            // The snap is the segment's easing: it overshoots past the point and
+            // settles exactly on the resting place, so the reticle closes rather
+            // than merely getting near.
+            keyVector3(segment->tracks.position, t0, t1, from, rest.position, easing);
+            segment->tracks.opacity.add(t0, 0.f, Easing::easeOut());
+            segment->tracks.opacity.add(t1, rest.opacity, Easing::linear());
+        }
+    }
+
 }// namespace chrononmotion::motion::presets

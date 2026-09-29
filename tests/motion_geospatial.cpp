@@ -367,6 +367,342 @@ namespace {
         check(bareIds.relief == Layer::kRoot, "a spec without a relief plate authors no drape");
     }
 
+    void testDocumentaryFlyover() {
+
+        std::cout << "\n=== documentary flyover layers ===\n";
+        constexpr int kFrames = 120;
+        constexpr float fps = 60.f;
+        const float frameSeconds = 1.f / fps;
+
+        // Off by default: a place that supplies no content authors no documentary
+        // layer, so a plain flyover is exactly what it always was.
+        {
+            MapFlyoverSpec plain = romeSpec(kFrames, fps);
+            MotionScene plainScene{"plain", fps};
+            const MapSceneLayers plainIds = MapFlyoverBuilder(plain).buildScene(plainScene);
+            check(plainIds.area == Layer::kRoot && plainIds.leader_line == Layer::kRoot &&
+                      plainIds.crosshair == Layer::kRoot,
+                  "the documentary layers are off unless a place opts in");
+        }
+
+        MapFlyoverSpec spec = romeSpec(kFrames, fps);
+        spec.enablePinPulse = true;
+        spec.areaOverlayAsset = "map/area";
+        spec.leaderLineAsset = "map/leader";
+        spec.crosshairAsset = "map/reticle";
+
+        const MapFlyoverBuilder builder(spec);
+        MotionScene scene{"documentary", fps};
+        const MapSceneLayers ids = builder.buildScene(scene);
+
+        check(ids.area != Layer::kRoot, "an area asset authors an area layer");
+        check(ids.leader_line != Layer::kRoot, "a leader asset authors a leader line");
+        check(ids.crosshair != Layer::kRoot, "opting in authors the reticle");
+        check(ids.count() == 1 + spec.route.size() + 1 + 2 + 3,
+              "the layer count includes the documentary layers");
+        check(scene.validate().empty(), "the documentary scene has no hierarchy problems");
+
+        // The area fades in across its own window and takes the whole flyover.
+        const Layer* area = scene.findLayer(ids.area);
+        check(area != nullptr, "the area layer is reachable");
+        if (area != nullptr) {
+            checkNear(area->tracks.opacity.sample(0.f), 0.f, 1e-4f, "the area starts invisible");
+            checkNear(area->tracks.opacity.sample(19.f * frameSeconds), 0.f, 1e-4f,
+                      "the area is still invisible before its reveal window");
+            checkNear(area->tracks.opacity.sample(40.f * frameSeconds), 0.5f, 1e-3f,
+                      "the area is half revealed at the middle of its window");
+            checkNear(area->tracks.opacity.sample(60.f * frameSeconds), 1.f, 1e-4f,
+                      "the area is fully revealed at the end of its window");
+            scene.evaluate(kFrames);
+            checkNear(scene.state(ids.area).local.scale.x, builder.mapScaleAt(1.f), 1e-4,
+                      "the area rides the flyover's scale like the plate it sits on");
+        }
+
+        // The leader line draws itself along its own width.
+        const Layer* line = scene.findLayer(ids.leader_line);
+        check(line != nullptr, "the leader line layer is reachable");
+        if (line != nullptr) {
+            checkNear(line->tracks.scale.sample(10.f * frameSeconds).x, 1e-3f, 1e-4f,
+                      "the leader line starts from a hairline, never a singular zero");
+            checkNear(line->tracks.scale.sample(26.f * frameSeconds).x, 1.f, 1e-4f,
+                      "the leader line is drawn to its full width across the window");
+            checkNear(line->tracks.opacity.sample(10.f * frameSeconds), 0.f, 1e-4f,
+                      "the leader line starts transparent");
+        }
+
+        // The reticle is welded to the POI and closes with a snap.
+        const Layer* reticle = scene.findLayer(ids.crosshair);
+        check(reticle != nullptr, "the reticle layer is reachable");
+        if (reticle != nullptr) {
+            checkNear(reticle->tracks.scale.sample(16.f * frameSeconds).x, spec.crosshairStartScale, 1e-3f,
+                      "the reticle starts wide open");
+            checkNear(reticle->tracks.scale.sample(34.f * frameSeconds).x, 1.f, 1e-3f,
+                      "the reticle closes onto the target");
+            for (const int frame : {40, 60, 90}) {
+                scene.evaluate(frame);
+                const Vector3 expected = builder.authoredPosition(
+                    builder.mapPointToCanvas(spec.poi,
+                                             static_cast<float>(frame) / static_cast<float>(kFrames)), 0.f);
+                const Vector3 actual = scene.state(ids.crosshair).local.position;
+                checkNear(actual.x, expected.x, 1e-3,
+                          "the reticle stays on the POI column at frame " + std::to_string(frame));
+                checkNear(actual.y, expected.y, 1e-3,
+                          "the reticle stays on the POI row at frame " + std::to_string(frame));
+            }
+        }
+
+        // The pin pings in place after it lands: one ring repeated, so the scale
+        // resets at each boundary while the pin's own opacity is untouched.
+        const Layer* pin = scene.findLayer(ids.pin);
+        check(pin != nullptr, "the pin layer is reachable");
+        if (pin != nullptr) {
+            const float ringSeconds = frameSeconds * static_cast<float>(kFrames - spec.pinPulseStartFrame) /
+                                      static_cast<float>(spec.pinPulseCount);
+            const float startSeconds = static_cast<float>(spec.pinPulseStartFrame) * frameSeconds;
+            checkNear(pin->tracks.scale.sample(startSeconds).x, 1.f, 1e-4f,
+                      "the ping starts at the pin's own scale");
+            check(pin->tracks.scale.sample(startSeconds + ringSeconds - 1e-3f).x > 1.5f,
+                  "the ping expands the pin across one ring");
+            check(pin->tracks.scale.sample(startSeconds + ringSeconds + 1e-3f).x < 1.1f,
+                  "the ping resets at the ring boundary");
+        }
+
+        // The connecting route is a *curved* chain of glow sprites: the great
+        // circle between the two places, walked at even arc length, lit in
+        // sequence, with a brighter head riding the reveal front.
+        {
+            constexpr int kRouteSprites = 12;
+            MapFlyoverSpec routed = romeSpec(kFrames, fps);
+            routed.window = MapWindow::centeredOn(GeoCoord{41.0, -30.0, 0.0}, 4,
+                                                  Vector2{3200.f, 1080.f});
+            routed.docRouteAsset = "map/glow";
+            routed.docRouteFrom = GeoCoord{41.9028, 12.4964, 0.0}; // Rome
+            routed.docRouteTo = GeoCoord{40.7128, -74.0060, 0.0};  // New York
+            routed.docRouteSprites = kRouteSprites;
+            routed.docRouteStartFrame = 10;
+            routed.docRouteEndFrame = 60;
+            MotionScene rs{"routed", fps};
+            const MapSceneLayers rids = MapFlyoverBuilder(routed).buildScene(rs);
+            check(static_cast<int>(rids.doc_route_sprites.size()) == kRouteSprites,
+                  "a route authors one glow sprite per step of the chain");
+            check(rids.doc_route_head != Layer::kRoot, "the route has a leading glow");
+            check(rids.count() == 1 + routed.route.size() + 1 + 2 + kRouteSprites + 1,
+                  "the layer count includes every route sprite and the head");
+
+            const Layer* near = rs.findLayer(rids.doc_route_sprites.front());
+            const Layer* far = rs.findLayer(rids.doc_route_sprites.back());
+            const Layer* head = rs.findLayer(rids.doc_route_head);
+            check(near != nullptr && far != nullptr && head != nullptr,
+                  "the route's ends and its head are reachable");
+            if (near != nullptr && far != nullptr && head != nullptr) {
+                const float startT = static_cast<float>(routed.docRouteStartFrame) / fps;
+                const float endT = static_cast<float>(routed.docRouteEndFrame) / fps;
+                checkNear(near->tracks.opacity.sample(startT - 0.1f), 0.f, 1e-4f,
+                          "the near end is dark before the reveal opens");
+                check(near->tracks.opacity.sample(startT + 0.2f) > 0.6f,
+                      "the near end lights first");
+                checkNear(far->tracks.opacity.sample(startT + 0.2f), 0.f, 1e-4f,
+                          "the far end is still dark while the near end lights");
+                check(far->tracks.opacity.sample(endT + 0.2f) > 0.6f,
+                      "the far end lights last, so the route draws on");
+                checkNear(head->tracks.opacity.sample(startT - 0.1f), 0.f, 1e-4f,
+                          "the head waits for the reveal to open");
+                check(head->tracks.opacity.sample(startT + 0.2f) > 0.5f,
+                      "the head rides the reveal front");
+                checkNear(head->tracks.opacity.sample((endT + 0.5f)), 0.f, 1e-4f,
+                          "the head fades out once the route is complete");
+
+                // The route keeps moving once it is drawn: a brightness wave
+                // travels the chain and the head breathes as it goes, so a
+                // finished route is never a dead stroke over the map.
+                const Layer* mid = rs.findLayer(rids.doc_route_sprites[kRouteSprites / 2]);
+                check(mid != nullptr, "a mid-chain sprite is reachable");
+                if (mid != nullptr) {
+                    float low = 1.f;
+                    float high = 0.f;
+                    for (int frame = 60; frame <= 150; ++frame) {
+                        const float value = mid->tracks.opacity.sample(
+                            static_cast<float>(frame) / fps);
+                        if (value < low) low = value;
+                        if (value > high) high = value;
+                    }
+                    check(high - low > 0.05f,
+                          "a lit route sprite modulates: the wave travels the chain");
+                    check(low > 0.f, "the wave never darkens the route to nothing");
+                }
+                {
+                    float low = 1e9f;
+                    float high = -1e9f;
+                    for (int frame = 20; frame <= 55; ++frame) {
+                        const float value = head->tracks.scale.sample(
+                            static_cast<float>(frame) / fps).x;
+                        if (value < low) low = value;
+                        if (value > high) high = value;
+                    }
+                    check(high - low > 0.1f, "the head pulses while it travels the route");
+                    check(low > 0.5f, "the head pulse never reaches a singular scale");
+                }
+
+                // The chain bows off the chord: the route is the great circle,
+                // not the straight line the projection makes of it.
+                rs.evaluate(static_cast<int>(endT * fps) + 6);
+                const Vector3 a = rs.state(rids.doc_route_sprites.front()).local.position;
+                const Vector3 b = rs.state(rids.doc_route_sprites.back()).local.position;
+                const Vector3 m = rs.state(rids.doc_route_sprites[kRouteSprites / 2]).local.position;
+                const float dx = b.x - a.x;
+                const float dy = b.y - a.y;
+                const float chord = std::sqrt(dx * dx + dy * dy);
+                const float bow = chord > 1e-3f
+                    ? std::fabs(((m.x - a.x) * dy - (m.y - a.y) * dx) / chord) : 0.f;
+                check(bow > 40.f, "the route bows off the chord, a great circle not a bar");
+            }
+        }
+
+        // The camera: the slam dives, the drift keeps moving.
+        const float endSeconds = static_cast<float>(kFrames) / fps;
+        {
+            motion::CameraRig plain(20, 60.f, 16.f / 9.f, 0.1f, 2000.f);
+            plain.setPosition(Vector3(0.f, 0.f, 12.f)).setTarget(Vector3(0.f, 0.f, 0.f));
+            MapFlyoverSpec plainSpec = spec;
+            plainSpec.enableSlamZoom = false;
+            plainSpec.enableCameraDrift = false;
+            MapFlyoverBuilder(plainSpec).rigCamera(plain);
+
+            motion::CameraRig slam(20, 60.f, 16.f / 9.f, 0.1f, 2000.f);
+            slam.setPosition(Vector3(0.f, 0.f, 12.f)).setTarget(Vector3(0.f, 0.f, 0.f));
+            MapFlyoverSpec slamSpec = spec;
+            slamSpec.enableSlamZoom = true;
+            MapFlyoverBuilder(slamSpec).rigCamera(slam);
+
+            // Same endpoints, different middle: the slam is the curve, not the stops.
+            checkNear(slam.sample(0.f).position.distanceTo(plain.sample(0.f).position), 0.f, 1e-4f,
+                      "the slam shares the plain file's start pose");
+            checkNear(slam.sample(endSeconds).position.distanceTo(plain.sample(endSeconds).position),
+                      0.f, 1e-4f, "the slam shares the plain file's end pose");
+            check(slam.sample(endSeconds * 0.5f).position.distanceTo(Vector3(0.f, 0.f, 0.f)) <
+                      plain.sample(endSeconds * 0.5f).position.distanceTo(Vector3(0.f, 0.f, 0.f)),
+                  "the slam covers more of the descent by the middle of the move");
+
+            motion::CameraRig drift(20, 60.f, 16.f / 9.f, 0.1f, 2000.f);
+            drift.setPosition(Vector3(0.f, 0.f, 12.f)).setTarget(Vector3(0.f, 0.f, 0.f));
+            MapFlyoverSpec driftSpec = spec;
+            driftSpec.enableCameraDrift = true;
+            MapFlyoverBuilder(driftSpec).rigCamera(drift);
+            check(drift.sample(endSeconds).position.distanceTo(plain.sample(endSeconds).position) > 0.1f,
+                  "the drift moves the camera off the plain file's arrival");
+        }
+    }
+
+    void testDocumentaryPunctuation() {
+
+        std::cout << "\n=== documentary punctuation: vignette, dim, territory ===\n";
+        constexpr int kFrames = 120;
+        constexpr float fps = 60.f;
+        const float frameSeconds = 1.f / fps;
+
+        MapFlyoverSpec spec = romeSpec(kFrames, fps);
+        spec.vignetteAsset = "map/vignette";
+        spec.dimAsset = "map/dim";
+        spec.dimOpacity = 0.34f;
+        spec.territoryFillAsset = "map/zone_fill";
+        spec.territoryContourAsset = "map/glow";
+        spec.territorySprites = 8;
+        spec.territoryStartFrame = 20;
+        spec.territoryEndFrame = 70;
+        spec.territoryFillOpacity = 0.20f;
+        spec.territory = {
+            GeoCoord{41.9000, 12.4800, 0.0},
+            GeoCoord{41.9000, 12.5000, 0.0},
+            GeoCoord{41.8800, 12.5000, 0.0},
+            GeoCoord{41.8800, 12.4800, 0.0},
+        };
+
+        MotionScene scene{"punctuation", fps};
+        const MapSceneLayers ids = MapFlyoverBuilder(spec).buildScene(scene);
+
+        check(ids.vignette != Layer::kRoot, "a vignette asset authors a vignette layer");
+        check(ids.dim != Layer::kRoot, "a dim asset authors a dim layer");
+        check(ids.territory_fill != Layer::kRoot, "a fill asset authors a territory fill");
+        check(static_cast<int>(ids.territory_contour.size()) == spec.territorySprites,
+              "the contour is a chain of the requested number of sprites");
+
+        // The vignette is a plate of the frame that never moves: it exists to
+        // darken the imagery, not to travel with it.
+        const Layer* vignette = scene.findLayer(ids.vignette);
+        check(vignette != nullptr, "the vignette layer is reachable");
+        if (vignette != nullptr) {
+            checkNear(vignette->transform.position.x, 0.0, 1e-4,
+                      "the vignette is placed on the canvas centre, in scene space");
+            checkNear(vignette->tracks.opacity.sample(0.f), 1.f, 1e-4,
+                      "the vignette is present from the first frame");
+            checkNear(vignette->tracks.opacity.sample(static_cast<float>(kFrames) * frameSeconds),
+                      1.f, 1e-4, "the vignette holds to the last frame");
+        }
+
+        // The dim rises to the authored fraction of its own alpha and no further.
+        const Layer* dim = scene.findLayer(ids.dim);
+        check(dim != nullptr, "the dim layer is reachable");
+        if (dim != nullptr) {
+            checkNear(dim->tracks.opacity.sample(0.f), 0.f, 1e-4, "the dim starts clear");
+            checkNear(dim->tracks.opacity.sample(spec.dimEndFrame * frameSeconds),
+                      spec.dimOpacity, 1e-3, "the dim rises to exactly its authored strength");
+            checkNear(dim->tracks.opacity.sample(static_cast<float>(kFrames) * frameSeconds),
+                      spec.dimOpacity, 1e-3, "the dim holds after it has risen");
+        }
+
+        // The fill rises to its own fraction, and it rides the map plane like the
+        // plate it sits on: a zone drawn in the plate's window has to move with it.
+        const Layer* fill = scene.findLayer(ids.territory_fill);
+        check(fill != nullptr, "the territory fill layer is reachable");
+        if (fill != nullptr) {
+            checkNear(fill->tracks.opacity.sample(0.f), 0.f, 1e-4, "the fill starts clear");
+            checkNear(fill->tracks.opacity.sample(spec.territoryEndFrame * frameSeconds),
+                      spec.territoryFillOpacity, 1e-3,
+                      "the fill rises to a fraction of its own alpha, never opaque");
+            scene.evaluate(kFrames);
+            checkNear(scene.state(ids.territory_fill).local.scale.x,
+                      MapFlyoverBuilder(spec).mapScaleAt(1.f), 1e-4,
+                      "the fill rides the flyover's scale like the plate it annotates");
+        }
+
+        // The contour is walked as a closed ring and lit in sequence, so the
+        // shape draws itself round; the last sprite lights after the first.
+        const Layer* first = scene.findLayer(ids.territory_contour.front());
+        const Layer* last = scene.findLayer(ids.territory_contour.back());
+        check(first != nullptr && last != nullptr, "the contour's ends are reachable");
+        if (first != nullptr && last != nullptr) {
+            const float startT = static_cast<float>(spec.territoryStartFrame) / fps;
+            const float endT = static_cast<float>(spec.territoryEndFrame) / fps;
+            checkNear(first->tracks.opacity.sample(startT - 0.1f), 0.f, 1e-4f,
+                      "the contour lights only once its window opens");
+            check(first->tracks.opacity.sample(startT + 0.2f) > 0.6f,
+                  "the first contour sprite lights first");
+            checkNear(last->tracks.opacity.sample(startT + 0.2f), 0.f, 1e-4f,
+                      "the ring is still dark where it has not reached yet");
+            check(last->tracks.opacity.sample(endT + 0.2f) > 0.6f,
+                  "the ring closes on its last sprite");
+        }
+
+        // The callout is centred inside the safe margin: the frame can never clip it.
+        const Layer* title = scene.findLayer(ids.title);
+        check(title != nullptr, "the callout title exists");
+        if (title != nullptr) {
+            const float safeWidth = spec.canvasSize.x - 2.f * spec.calloutSafeMargin;
+            checkNear(title->content.metrics.naturalSize.x, safeWidth, 1e-3f,
+                      "the callout box is the frame minus the safe margin");
+            check(spec.calloutSafeMargin >= 60.f,
+                  "a callout keeps at least a 60px safe margin");
+        }
+
+        // Off by default: a plain flyover authors none of it.
+        MapFlyoverSpec plain = romeSpec(kFrames, fps);
+        MotionScene plainScene{"plain_punctuation", fps};
+        const MapSceneLayers plainIds = MapFlyoverBuilder(plain).buildScene(plainScene);
+        check(plainIds.vignette == Layer::kRoot && plainIds.dim == Layer::kRoot &&
+                  plainIds.territory_fill == Layer::kRoot && plainIds.territory_contour.empty(),
+              "the vignette, the dim and the territory are all opt-in");
+    }
+
 #ifdef CHRONONMOTION_HAS_CHRONON3D_ADAPTER
     void testPlanPlacement() {
 
@@ -518,6 +854,79 @@ namespace {
         check(json.find("soft_light") != std::string::npos,
               "the emitted plan names the drape's blend so a render cannot silently ignore it");
     }
+
+    void testDocumentaryPlan() {
+
+        std::cout << "\n=== documentary layers reach the plan ===\n";
+        MapFlyoverSpec spec = romeSpec(120, 30.f);
+        spec.enablePinPulse = true;
+        spec.areaOverlayAsset = "map/area";
+        spec.leaderLineAsset = "map/leader";
+        spec.crosshairAsset = "map/reticle";
+        const MapFlyoverBuilder builder(spec);
+
+        MotionScene scene{"documentary_plan", 30.f};
+        const MapSceneLayers ids = builder.buildScene(scene);
+
+        std::unordered_map<std::string, chronon3d::render_plan::LayerPlan> content;
+        auto key = [](Layer::Id id) { return std::to_string(id); };
+        auto text = [](const std::string& words) {
+            chronon3d::render_plan::LayerPlan plan;
+            plan.type = chronon3d::render_plan::LayerType::Text;
+            plan.text = words;
+            chronon3d::render_plan::LayerStylePlan style;
+            style.font = "font-asset";
+            style.font_size = 46.f;
+            style.fill = "#FFFFFF";
+            plan.style = style;
+            return plan;
+        };
+        auto image = [](const std::string& asset) {
+            chronon3d::render_plan::LayerPlan plan;
+            plan.type = chronon3d::render_plan::LayerType::Image;
+            plan.asset = asset;
+            return plan;
+        };
+        content.emplace(key(ids.basemap), image(spec.basemapAsset));
+        content.emplace(key(ids.area), image(spec.areaOverlayAsset));
+        content.emplace(key(ids.leader_line), image(spec.leaderLineAsset));
+        for (const Layer::Id id : ids.markers) content.emplace(key(id), text("marker"));
+        content.emplace(key(ids.pin), text("pin"));
+        content.emplace(key(ids.crosshair), image(spec.crosshairAsset));
+        content.emplace(key(ids.title), text(spec.poiTitle));
+        content.emplace(key(ids.subtitle), text(spec.poiSubtitle));
+
+        motion::RenderPlanLoweringOptions options;
+        options.width = 1920;
+        options.height = 1080;
+        options.jobId = "documentary_plan";
+        options.outputPath = "documentary_plan.mp4";
+        options.contentLayers = content;
+
+        const chronon3d::render_plan::RenderPlan plan = motion::lowerToRenderPlan(scene, options);
+        check(plan.layers.size() == ids.count(), "every documentary layer reaches the plan");
+        check(motion::renderPlanEmissionProblem(plan).empty(),
+              "the documentary plan is expressible by the canonical writer");
+
+        // The ping is baked, not left as a loop the emitter would have to refuse:
+        // the pin's scale track carries per-frame keys the renderer can play.
+        const auto findPlan = [&plan](const std::string& id) -> const chronon3d::render_plan::LayerPlan* {
+            for (const auto& layer : plan.layers)
+                if (layer.id == id) return &layer;
+            return nullptr;
+        };
+        const auto* pinPlan = findPlan(key(ids.pin));
+        check(pinPlan != nullptr, "the pin is in the plan");
+        if (pinPlan != nullptr) {
+            bool hasScale = false;
+            if (pinPlan->animation) {
+                for (const auto& track : pinPlan->animation->tracks) {
+                    if (track.property == "scale") hasScale = true;
+                }
+            }
+            check(hasScale, "the pin's ping reaches the plan as a baked scale track");
+        }
+    }
 #endif
 
 }// namespace
@@ -529,8 +938,11 @@ int main() {
     testWebMercator();
     testFlyoverScene();
     testCalloutAndClamp();
+    testDocumentaryFlyover();
+    testDocumentaryPunctuation();
 #ifdef CHRONONMOTION_HAS_CHRONON3D_ADAPTER
     testPlanPlacement();
+    testDocumentaryPlan();
 #else
     std::cout << "\n=== plan placement skipped (no Chronon3D adapter in this build) ===\n";
 #endif

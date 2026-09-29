@@ -17,3 +17,6 @@ temp/
 
 # Local planning / strategy scratch docs — kept on disk, not tracked
 plans/
+
+# Render output
+/out/

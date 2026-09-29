@@ -278,6 +278,30 @@ The public surface is unchanged: `motion/Presets.hpp` is still the whole list.
 * **Parallax is automatic.** `PerspectiveView::pixelsPerUnit(distance)` shrinks
   with distance, so the same camera move shifts a near plane more than a far one
   and a dolly enlarges it more. No parallax is authored anywhere.
+* **A documentary map vocabulary.** The map-sequence patterns sit on top of the
+  same primitives, and none of them invents content: `radarPing` (an expanding
+  target ping — one ring repeated by the channel's own `Loop`, so the reset at
+  each boundary is instantaneous without ever keying the same instant twice),
+  `areaReveal`, `extrudeRise`, `lineDraw` (a hairline, never a singular zero),
+  `crosshairLock` (a reticle whose segments snap onto their own resting places),
+  and the two camera moves `orbitalSlamZoom` (a dive curve on the descent) and
+  `cameraDrift` (a slow orbit that never freezes) and `cameraOrbit`, the 2.5D move
+  that swings `yaw` while it pitches `pitch` and never lets the target leave the
+  frame. The geospatial `MapFlyoverBuilder` composes the ones that fit a map — a
+  ping on the landed POI pin, an area overlay, a leader line, a reticle, a
+  screen-space vignette and a dim — behind opt-in flags, so a plain flyover
+  authors exactly the layers it always did.
+* **A course is walked, not drawn.** A route between two places is the **great
+  circle** between them (`greatCirclePoint`), not the straight line the
+  projection makes of it, and so is a territory contour. Both are authored as a
+  chain of soft glow sprites walked at **even arc length** (`authorGlowChain`):
+  even spacing is what makes the chain read as one line however the projection
+  bends, the sprite's falloff is wider than the step so neighbours composite, and
+  the sprites light in sequence so the shape draws itself. A brightness wave then
+  travels the chain and a brighter head rides the reveal front, so a drawn course
+  keeps moving instead of dying on the map. The plan contract carries images and
+  symbols, never paths — a curve has to be paid for in sprites. Whether the pixels
+  look right is still the content owner's; this side only ever keys space and time.
 
 ### What the guardrail still guarantees
 

@@ -136,10 +136,17 @@ namespace {
         follow.path = std::make_shared<MotionPath>(MotionPath::line(Vector3(0.f, 0.f, 0.f), Vector3(10.f, 0.f, 0.f)));
         follow.amount = 1.f;
         follow.progress = 0.25f;
+        follow.orientToPath = true;
         pathLayer->constraints.push_back(follow);
+        // targetId defaults to Layer::kRoot: this exercises the no-target path
+        // without a target layer existing in the scene.
         scene.evaluate(0);
         checkNear(worldPositionOf(scene, 2), Vector3(2.5f, 0.f, 0.f), 1e-4f,
-                  "follow-path constraint places a layer on its path");
+                  "root-target follow-path places a layer on its path");
+        const Matrix4 rootFollowPose = scene.worldMatrix(2);
+        scene.evaluate(0);
+        check(sameMatrix(rootFollowPose, scene.worldMatrix(2)),
+              "root-target follow-path evaluation is deterministic");
     }
 
     void frameRangeLifetime() {

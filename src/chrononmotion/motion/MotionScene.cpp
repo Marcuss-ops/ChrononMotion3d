@@ -428,23 +428,31 @@ namespace chrononmotion::motion {
 
             for (const auto& constraint : layers_[index].constraints) {
                 const std::size_t target = indexOf(constraint.targetId);
-                Vector3 targetPosition;
                 if (constraint.targetId == Layer::kRoot &&
                     constraint.kind == ConstraintKind::FollowPath) {
-                    targetPosition.set(0.f, 0.f, 0.f);
-                } else {
-                    if (target == npos || !states_[target].evaluated) {
-                        if (constraint.targetId != Layer::kRoot) {
-                            throw std::invalid_argument("MotionScene::evaluate: constraint has an unknown or unsolved target");
-                        }
-                        continue;
-                    }
-                    targetPosition.setFromMatrixPosition(states_[target].world);
+                    // Root-target FollowPath has no target layer to index. The
+                    // constraint only consumes seconds and its path, so pass
+                    // neutral target values and never dereference npos.
+                    const Vector3 rootPosition{};
+                    const Quaternion rootRotation{};
+                    const Vector3 rootScale{1.f, 1.f, 1.f};
+                    (void)applyConstraint(constraint, state.local, rootPosition,
+                                          rootRotation, rootScale, layerSeconds);
+                    continue;
                 }
+                if (target == npos || !states_[target].evaluated) {
+                    if (constraint.targetId != Layer::kRoot) {
+                        throw std::invalid_argument("MotionScene::evaluate: constraint has an unknown or unsolved target");
+                    }
+                    continue;
+                }
+                Vector3 targetPosition;
+                targetPosition.setFromMatrixPosition(states_[target].world);
                 (void)applyConstraint(constraint, state.local, targetPosition,
-                                layers_[target].transform.orientation,
-                                layers_[target].transform.scale, layerSeconds);
+                                      layers_[target].transform.orientation,
+                                      layers_[target].transform.scale, layerSeconds);
             }
+
             for (const auto& driver : layers_[index].drivers) {
                 const std::size_t target = indexOf(driver.targetId);
                 Vector3 targetPosition;
