@@ -55,6 +55,14 @@ namespace chrononmotion::motion {
         return *this;
     }
 
+    CameraRig& CameraRig::setAspect(float widthOverHeight) {
+        if (!std::isfinite(widthOverHeight) || widthOverHeight <= 0.f) {
+            throw std::invalid_argument("CameraRig::setAspect: aspect must be finite and positive");
+        }
+        aspect_ = widthOverHeight;
+        return *this;
+    }
+
     CameraRig& CameraRig::setFocalLength(float millimetres) {
 
         if (!std::isfinite(millimetres) || millimetres <= 0.f) {
@@ -213,6 +221,55 @@ namespace chrononmotion::motion {
         pose.orientation.multiply(rollRotation);
     }
 
+    CameraPoseDerivative CameraRig::sampleDerivative(float seconds) const {
+
+        CameraPoseDerivative d;
+
+        if (!layer_.tracks.position.empty()) {
+            d.linearVelocity = layer_.tracks.position.velocity(seconds);
+        }
+        if (!targetTrack_.empty()) {
+            d.targetVelocity = targetTrack_.velocity(seconds);
+        }
+        if (!fovTrack_.empty()) {
+            d.fovRate = fovTrack_.velocity(seconds);
+        }
+        if (!focusDistanceTrack_.empty()) {
+            d.focusRate = focusDistanceTrack_.velocity(seconds);
+        }
+        if (!rollTrack_.empty()) {
+            d.rollRate = rollTrack_.velocity(seconds);
+        }
+
+        // ω = 2·q·q̇·q⁻¹ : the world-space angular velocity of the orientation
+        // channel. The track reports the rate as a quaternion delta in the
+        // segment's local frame (q̇ ∝ q·Δq_local/2), so the world-space vector
+        // needs one extra sandwich. This is the form a shutter/blur integrator consumes.
+        if (!layer_.tracks.orientation.empty()) {
+            const Quaternion q = layer_.tracks.orientation.sample(seconds);
+            const Quaternion dq = layer_.tracks.orientation.velocity(seconds);
+            Quaternion worldRate;
+            worldRate.multiplyQuaternions(q, dq);
+            Quaternion inv = q;
+            inv.invert();
+            worldRate.multiply(inv);
+            // The track's rate quaternion is an axis-angle step (Track::
+            // sampleScaled builds quat(axis, angle·rate)), so the angular
+            // speed is its rotation angle θ = 2·atan2(|v|, w) and the axis is
+            // its normalized vector part.
+            const float vl = std::sqrt(worldRate.x * worldRate.x +
+                                       worldRate.y * worldRate.y +
+                                       worldRate.z * worldRate.z);
+            if (vl > 1e-12f) {
+                const float angle = 2.f * std::atan2(vl, worldRate.w);
+                const float s = angle / vl;
+                d.angularVelocity.set(worldRate.x * s, worldRate.y * s, worldRate.z * s);
+            }
+        }
+
+        return d;
+    }
+
     CameraPose CameraRig::sample(float seconds) const {
 
         const Transform transform = layer_.sample(seconds);
@@ -220,7 +277,7 @@ namespace chrononmotion::motion {
         CameraPose pose;
         pose.position = transform.position;
         pose.orientation = transform.localQuaternion();
-        pose.hasTarget = hasTarget_;
+        pose.hasTarget = hasTarget_ || !targetTrack_.empty();
         pose.target = targetTrack_.empty() ? target_ : targetTrack_.sample(seconds);
         pose.fov = fovTrack_.empty() ? fov_ : fovTrack_.sample(seconds);
         pose.focalLength = focalTrack_.empty() ? focalLength_ : focalTrack_.sample(seconds);

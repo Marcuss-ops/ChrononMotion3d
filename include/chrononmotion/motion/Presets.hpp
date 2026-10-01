@@ -10,6 +10,7 @@
 #define CHRONONMOTION_MOTION_PRESETS_HPP
 
 #include "chrononmotion/motion/CameraRig.hpp"
+#include "chrononmotion/motion/CameraMotion.hpp"
 #include "chrononmotion/motion/Easing.hpp"
 #include "chrononmotion/motion/Layer.hpp"
 #include "chrononmotion/motion/MotionPath.hpp"

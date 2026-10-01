@@ -81,6 +81,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/MotionPath.cpp
         src/chrononmotion/motion/MotionPlane.cpp
         src/chrononmotion/motion/CameraRig.cpp
+        src/chrononmotion/motion/CameraMotion.cpp
         src/chrononmotion/motion/Lighting.cpp
         src/chrononmotion/motion/Procedural.cpp
         src/chrononmotion/motion/Constraints.cpp
@@ -240,6 +241,29 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_presets tests/motion_presets.cpp)
     target_link_libraries(chrononmotion_presets PRIVATE chrononmotion)
     add_test(NAME chrononmotion_presets COMMAND chrononmotion_presets)
+
+    add_executable(chrononmotion_camera_v1 tests/motion_camera_v1.cpp)
+    target_link_libraries(chrononmotion_camera_v1 PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_camera_v1 COMMAND chrononmotion_camera_v1)
+
+    # Eye-trace continuity, screen-space camera math, analytic pose derivatives
+    # and multi-aspect auto-reframing.
+    add_executable(chrononmotion_eye_trace tests/motion_eye_trace.cpp)
+    target_link_libraries(chrononmotion_eye_trace PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_eye_trace COMMAND chrononmotion_eye_trace)
+
+    add_executable(chrononmotion_export_camera_v1 tools/export_camera_trajectories.cpp)
+    target_link_libraries(chrononmotion_export_camera_v1 PRIVATE chrononmotion)
+
+    # The innovation animations: eye-trace handoff/director, multi-aspect
+    # reframe triplet and the dolly-zoom derivative map, self-certifying JSON.
+    add_executable(chrononmotion_export_camera_innovations tools/export_camera_innovations.cpp)
+    target_link_libraries(chrononmotion_export_camera_innovations PRIVATE chrononmotion)
+
+    # The preview renderer: software-rasterized frame sequences for the four
+    # innovation animations, for ffmpeg to turn into shareable MP4s.
+    add_executable(chrononmotion_render_innovation_previews tools/render_innovation_previews.cpp)
+    target_link_libraries(chrononmotion_render_innovation_previews PRIVATE chrononmotion)
 
     add_executable(chrononmotion_canary tests/motion_canary.cpp)
     target_link_libraries(chrononmotion_canary PRIVATE chrononmotion)

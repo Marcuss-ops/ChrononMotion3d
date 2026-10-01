@@ -49,6 +49,20 @@ namespace chrononmotion::motion {
         float roll{0.f};
     };
 
+    /// First-order motion of a sampled camera pose, in channel units per
+    /// second. The exact analytic derivative of the rig's own keys (the same
+    /// math as `Track::velocity`): no finite-difference sampling error, no
+    /// dependence on neighboring frames, which is what makes shutter motion
+    /// blur computable per frame in isolation.
+    struct CameraPoseDerivative {
+        Vector3 linearVelocity{0.f, 0.f, 0.f};  ///< d(position)/dt, world space.
+        Vector3 angularVelocity{0.f, 0.f, 0.f}; ///< ω = 2·q̇·q⁻¹, world space, rad/s.
+        Vector3 targetVelocity{0.f, 0.f, 0.f};  ///< d(target)/dt, world space.
+        float fovRate{0.f};                     ///< d(fov)/dt, degrees per second.
+        float focusRate{0.f};                   ///< d(focusDistance)/dt, units per second.
+        float rollRate{0.f};                    ///< d(roll)/dt, radians per second.
+    };
+
     /// An animated perspective camera.
     class CameraRig {
     public:
@@ -70,6 +84,7 @@ namespace chrononmotion::motion {
         CameraRig& setTarget(const Vector3& value);
         CameraRig& clearTarget();
         CameraRig& setFov(float degrees);
+        CameraRig& setAspect(float widthOverHeight);
         CameraRig& setFocalLength(float millimetres);
         CameraRig& setRoll(float radians);
         CameraRig& setAperture(float millimetres);
@@ -107,6 +122,14 @@ namespace chrononmotion::motion {
 
         /// Sample the local pose at `seconds`.
         [[nodiscard]] CameraPose sample(float seconds) const;
+
+        /// The analytic derivative of the pose at `seconds`. Reports zero for
+        /// every channel without keys at the requested time (outside the keyed
+        /// range a track holds its value, so its rate is zero), and zero
+        /// angular velocity when the orientation channel is empty. The
+        /// quaternion rate is converted to the world-space angular velocity
+        /// vector ω = 2·q̇·q⁻¹, the form a shutter/blur integrator consumes.
+        [[nodiscard]] CameraPoseDerivative sampleDerivative(float seconds) const;
 
         /// Sample and write into a camera node, optionally under a parent world
         /// matrix (the rig's own parented motion).
