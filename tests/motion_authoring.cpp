@@ -10,6 +10,8 @@
 
 #include <array>
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
 #include <limits>
 #include <string>
 #include <stdexcept>
@@ -863,6 +865,13 @@ void testTypedChronon3dLowering() {
     check(renderPlanEmissionProblem(chalkDustPlan).empty(),
           "the deterministic chalk-particle payload is accepted by RenderPlan v3");
     const std::string dustJson = renderPlanToJson(chalkDustPlan);
+    if (const char* canaryPath = std::getenv("CHRONONMOTION_RENDER_PLAN_CANARY")) {
+        auto canaryPlan = chalkDustPlan;
+        canaryPlan.layers[1].particle_emitter->sprite_asset.clear();
+        std::ofstream canaryFile(canaryPath, std::ios::binary);
+        if (!canaryFile || !(canaryFile << renderPlanToJson(canaryPlan)))
+            throw std::runtime_error("cannot write requested RenderPlan consumer canary");
+    }
     const auto emittedDust = nlohmann::json::parse(dustJson).at("layers").at(1).at("particle_emitter");
     check(emittedDust.at("count") == 48 && emittedDust.at("seed") == 0xC4A1U &&
           emittedDust.at("shape") == "path" && emittedDust.at("path_id") == "chalk-stroke" &&
