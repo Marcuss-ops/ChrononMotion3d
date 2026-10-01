@@ -568,6 +568,22 @@ static DoF camera descriptor preservation.
 Chronon3d consumes RenderPlan data; it does not run Motion solvers or analyze PCM
 in its frame path.
 
+The producer-to-consumer canary is executable across both repositories. Build
+`chrononmotion_authoring` with the optional Chronon3D adapter, build
+`chronon3d_cli`, then run:
+
+```shell
+tools/check_render_plan_consumer_canary.sh \
+  build/adapter/chrononmotion_authoring \
+  ../Chronon3d/build/chronon/linux-video-fast-dev/apps/chronon3d_cli/chronon3d_cli
+```
+
+It asks the C++ Motion test to emit its deterministic V3 path-and-particle
+scene, validates those bytes with Chronon3D's canonical decoder, then renders
+the same scene through the software video lane. It checks the decoded video
+dimensions, duration and frame changes. The optional output-directory argument
+keeps the plan, validation report, MP4 and decoded-frame hashes for inspection.
+
 ### Closed since the fork
 
 Three items this file used to list as open are now landed and pinned, so they are
