@@ -91,6 +91,10 @@ namespace chrononmotion::geospatial {
         /// The output canvas the map is placed on.
         Vector2 canvasSize{1920.f, 1080.f};
 
+        /// Render the raster plate and its annotations as one perspective plane.
+        /// Positions use the camera's y-up basis while this mode is enabled.
+        bool cameraBackedPlate{false};
+
         /// Optional terrain relief to drape on the basemap: a plate derived from a
         /// DEM (SRTM / Copernicus) for *the same window* as `basemapAsset`, so it
         /// lands on the imagery pixel for pixel. It is not scaled, tinted or
@@ -143,7 +147,7 @@ namespace chrononmotion::geospatial {
         // naming typefaces has started to become a second content engine.
         // ------------------------------------------------------------------
         std::string markerText{"●"};      ///< waypoint marker
-        std::string pinText{"📍"};        ///< drop pin
+        std::string pinText{"●"};         ///< glyph present in the bundled fallback fonts
         float markerFontSize{46.f};
         float pinFontSize{104.f};
         float titleFontSize{58.f};
@@ -361,7 +365,10 @@ namespace chrononmotion::geospatial {
         /// text layer: the canvas pixel the layer's own centre lands on.
         [[nodiscard]] Vector3 authoredPosition(const Vector2& canvasPoint, float z) const noexcept {
             return Vector3{canvasPoint.x - spec_.canvasSize.x * 0.5f,
-                           canvasPoint.y - spec_.canvasSize.y * 0.5f, z};
+                           spec_.cameraBackedPlate
+                               ? spec_.canvasSize.y * 0.5f - canvasPoint.y
+                               : canvasPoint.y - spec_.canvasSize.y * 0.5f,
+                           z};
         }
 
         /// Scale of the map plane at normalized progress in [0,1].
@@ -790,6 +797,9 @@ namespace chrononmotion::geospatial {
                 motion::presets::lineDraw(line, spec_.leaderLineFrame, 16, fps);
             }
 
+            if (spec_.cameraBackedPlate) {
+                for (Layer& layer : scene.layers()) layer.is3D = true;
+            }
             return ids;
         }
 
@@ -836,6 +846,72 @@ namespace chrononmotion::geospatial {
                 // Interpolate FOV for cinematic compression
                 const float fov = spec_.startFovDeg + (spec_.endFovDeg - spec_.startFovDeg) * eased;
                 fovTrack.add(tSec, fov);
+            }
+        }
+
+        /// Rig a perspective dolly over a plate-normalized surface. The map
+        /// controller places the requested POI at (0,0,0); the renderer's
+        /// canonical front-facing camera looks along +Z from negative Z.
+        void rigCameraForPlate(motion::CameraRig& rig, float startDepth,
+                               float endDepth) const {
+            if (!spec_.cameraBackedPlate)
+                throw std::invalid_argument("rigCameraForPlate requires cameraBackedPlate=true");
+            if (!(startDepth > 0.f) || !(endDepth > 0.f) ||
+                !std::isfinite(startDepth) || !std::isfinite(endDepth))
+                throw std::invalid_argument("rigCameraForPlate requires finite positive depths");
+
+            rig.clearTarget().setPosition(Vector3{0.f, 0.f, -startDepth}).setFov(spec_.startFovDeg);
+            auto& position = rig.positionTrack();
+            auto& fov = rig.fovTrack();
+            position.clear();
+            fov.clear();
+
+            const int frames = frameCount();
+            const float fps = spec_.fps > 0.f ? spec_.fps : 30.f;
+            for (int frame = 0; frame <= frames; ++frame) {
+                const float progress = static_cast<float>(frame) / static_cast<float>(frames);
+                const float eased = motion::Easing::easeInOut()(progress);
+                const float depth = startDepth + (endDepth - startDepth) * eased;
+                position.add(static_cast<float>(frame) / fps, Vector3{0.f, 0.f, -depth});
+                fov.add(static_cast<float>(frame) / fps,
+                    spec_.startFovDeg + (spec_.endFovDeg - spec_.startFovDeg) * eased);
+            }
+        }
+
+        /// Move the complete georeferenced plate under a shared tilt controller
+        /// and translate the requested POI to the surface origin. This preserves
+        /// exact registration while the plate rotates as one object.
+        void configureCameraBackedPlate(MotionScene& scene, float startTiltDeg,
+                                        float endTiltDeg) const {
+            if (!spec_.cameraBackedPlate)
+                throw std::invalid_argument("configureCameraBackedPlate requires cameraBackedPlate=true");
+            if (!std::isfinite(startTiltDeg) || !std::isfinite(endTiltDeg) ||
+                std::abs(startTiltDeg) > 80.f || std::abs(endTiltDeg) > 80.f)
+                throw std::invalid_argument("map plate tilt must be finite and within +/-80 degrees");
+
+            const Vector3 poi = authoredPosition(mapPointToCanvas(spec_.poi, 0.f), 0.f);
+            const Layer::Id controllerId = scene.allocateLayerId();
+            Layer& controller = scene.addNull(controllerId, "georeferenced_map_surface");
+            const float fps = spec_.fps > 0.f ? spec_.fps : 30.f;
+            const int frames = frameCount();
+            const float radiansPerDegree = std::numbers::pi_v<float> / 180.f;
+            for (int frame = 0; frame <= frames; ++frame) {
+                const float progress = static_cast<float>(frame) / static_cast<float>(frames);
+                const float eased = motion::Easing::easeInOut()(progress);
+                const float tilt = startTiltDeg + (endTiltDeg - startTiltDeg) * eased;
+                controller.tracks.rotation.add(static_cast<float>(frame) / fps,
+                    Vector3{tilt * radiansPerDegree, 0.f, 0.f}, motion::Easing::linear());
+            }
+
+            for (Layer& layer : scene.layers()) {
+                if (layer.id == controllerId) continue;
+                layer.parentId = controllerId;
+                layer.transform.position.x -= poi.x;
+                layer.transform.position.y -= poi.y;
+                for (auto& key : layer.tracks.position.keys()) {
+                    key.value.x -= poi.x;
+                    key.value.y -= poi.y;
+                }
             }
         }
 

@@ -1,5 +1,19 @@
 # ChrononMotion
 
+## Rigging Final V1 — core certified on executed tests
+
+The authoring rig authority (`RigGraph`, typed controllers/drivers, pose
+layers, geometry deformers, skin/morph mixing, staged `RigProgram` scheduling
+and canonical solver adapters) is available through
+`chrononmotion/motion/Motion.hpp`. It bakes ordinary tracks, transforms and
+geometry with one deterministic signature per bake; Chronon3D remains outside
+rig evaluation. The 20 rig canaries, the 10-second Mega Rig, Release/Debug
+gates and an ASan/UBSan leak gate pass on the current tree; see the
+[evidence-based milestone checklist](docs/RIGGING_FINAL_V1.md) for the exact
+gates, implemented contracts, remaining scope limits (schedule serialization,
+puppet-triangle deformation, planar secondary, narrow glTF motion import) and
+evidence log.
+
 **A Linux-only motion engine, forked from [threepp](https://github.com/markaren/threepp).**
 
 ChrononMotion keeps the half of threepp that a deterministic motion/transform
@@ -69,7 +83,10 @@ available. Verlet/rigid-body, IK, PCM audio feature/driver, flow layout, SVG
 morph/repeater, and RenderPlan lowering execute at authoring time only. The
 optional Chronon3d adapter is built only when `CHRONON3D_INCLUDE_DIR` is supplied;
 it lowers representable poses into typed V2/V3 plans and is never a renderer
-runtime dependency. Static glTF 2.0/GLB 2.0 import is geometry-only and fail-closed;
+runtime dependency. Schema-defined static camera DoF round-trips through the
+plan adapter; physical lens metadata and animated camera DoF fail closed. A
+schema-driven CTest gate detects camera-field contract drift. Static glTF
+2.0/GLB 2.0 import is geometry-only and fail-closed;
 see [GLTF_READER.md](docs/GLTF_READER.md). The public headers and C++ namespace
 use `chrononmotion`; Box, Plane, Sphere, and imported BufferGeometry primitives
 are available.
@@ -165,6 +182,11 @@ cmake --preset release        # -Wall -Wextra -Werror, the gate a change must pa
 cmake --build --preset release
 ctest --preset release
 ```
+
+The optional adapter preserves schema-defined static camera depth of field
+through RenderPlan JSON and Chronon3D camera evaluation; unsupported physical
+lens metadata and animated camera DoF are rejected rather than discarded. A
+schema-derived CTest gate checks camera-field transport parity.
 
 To build the optional Chronon3d RenderPlan adapter and its authoring tests, use
 an adjacent Chronon3d checkout and configure with the Chronon3d include root,

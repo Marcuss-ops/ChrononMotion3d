@@ -96,7 +96,8 @@ namespace chrononmotion::motion {
           transform(source.transform),
           tracks(source.tracks),
           constraints(source.constraints),
-          drivers(source.drivers) {
+          drivers(source.drivers),
+          spaceSwitches(source.spaceSwitches) {
 
         this->name = source.name;
     }
@@ -121,6 +122,7 @@ namespace chrononmotion::motion {
         tracks = std::move(source.tracks);
         constraints = std::move(source.constraints);
         drivers = std::move(source.drivers);
+        spaceSwitches = std::move(source.spaceSwitches);
         return *this;
     }
 

@@ -58,12 +58,18 @@ namespace chrononmotion::motion::presets {
 
         const float t0 = frameToTime(inFrame, fps);
         const float t1 = frameToTime(inFrame + duration, fps);
+        const unsigned int steps = static_cast<unsigned int>(std::max(duration, 2));
 
-        CameraPose start = rig.sample(t0);
-        CameraPose end = start;
-        CameraRig::orbit(end, yaw, pitch);
-
-        keyVector3(rig.positionTrack(), t0, t1, start.position, end.position, Easing::easeInOut());
+        const CameraPose start = rig.sample(t0);
+        auto& position = rig.positionTrack();
+        for (unsigned int step = 0; step <= steps; ++step) {
+            const float progress = static_cast<float>(step) / static_cast<float>(steps);
+            CameraPose sample = start;
+            CameraRig::orbit(sample, yaw * progress, pitch * progress);
+            const float time = t0 + (t1 - t0) * progress;
+            position.add(time, sample.position,
+                         step == steps ? Easing::linear() : Easing::easeInOut());
+        }
     }
 
     void shakeMild(CameraRig& rig, int inFrame, int duration, float amplitude, float fps) {

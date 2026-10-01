@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -173,6 +174,16 @@ namespace chrononmotion::motion {
         return addLayer(std::move(layer));
     }
 
+    Layer::Id MotionScene::allocateLayerId() {
+        Layer::Id candidate = 1;
+        while (index_.contains(candidate)) {
+            if (candidate == std::numeric_limits<Layer::Id>::max())
+                throw std::overflow_error("MotionScene::allocateLayerId: no layer ids remain");
+            ++candidate;
+        }
+        return candidate;
+    }
+
     Light& MotionScene::addLight(std::unique_ptr<Light> light) {
         if (!light) throw std::invalid_argument("MotionScene::addLight: light is required");
         if (lightIndex_.contains(light->id)) {
@@ -263,7 +274,8 @@ namespace chrononmotion::motion {
 
     bool MotionScene::orderStale() const {
 
-        if (orderDirty_ || order_.size() != layers_.size()) {
+        if (orderDirty_ || order_.size() != layers_.size() ||
+            orderSwitchParentIds_.size() != layers_.size()) {
             return true;
         }
 
@@ -271,9 +283,11 @@ namespace chrononmotion::motion {
         // cache instead remembers the parent *id* each slot was built from, and
         // an integer compare per layer exposes any direct write.
         for (std::size_t position = 0; position < order_.size(); ++position) {
-            if (layers_[order_[position]].parentId != orderParentIds_[position]) {
-                return true;
-            }
+            const Layer& layer = layers_[order_[position]];
+            if (layer.parentId != orderParentIds_[position]) return true;
+            if (layer.spaceSwitches.size() != orderSwitchParentIds_[position].size()) return true;
+            for (std::size_t point = 0; point < layer.spaceSwitches.size(); ++point)
+                if (layer.spaceSwitches[point].parentId != orderSwitchParentIds_[position][point]) return true;
         }
         return false;
     }
@@ -281,14 +295,15 @@ namespace chrononmotion::motion {
     void MotionScene::syncGraph() {
 
         // The Object3D graph is the one hierarchy. `parentId` is its id-addressed
-        // authoring form, so every rebuild reconciles the two: a layer becomes a
-        // child of its authored parent's node, and is detached when it has none.
-        // A link the object graph cannot express (unknown parent, self-parenting,
-        // a cycle) is left unmaterialized — `validate()` reports why, and the
-        // evaluation order still derives from the authored ids, so a broken
-        // authoring link is an error rather than a silently different graph.
-        for (auto& layer : layers_) {
-            Layer* parent = (layer.parentId == Layer::kRoot) ? nullptr : findLayer(layer.parentId);
+        // authoring form, so an unevaluated layer is reconciled to its authored
+        // parent. A switched layer's graph parent, however, is time-dependent and
+        // is written by evaluate(); rebuilding the order must preserve the last
+        // evaluated parent rather than jumping ahead to a future switch target.
+        for (std::size_t index = 0; index < layers_.size(); ++index) {
+            auto& layer = layers_[index];
+            if (!layer.spaceSwitches.empty() && states_[index].evaluated) continue;
+            const Layer::Id graphParentId = layer.parentId;
+            Layer* parent = (graphParentId == Layer::kRoot) ? nullptr : findLayer(graphParentId);
             if (parent == &layer) parent = nullptr;
 
             if (parent == nullptr) {
@@ -317,52 +332,69 @@ namespace chrononmotion::motion {
         syncGraph();
 
         const std::size_t count = layers_.size();
+        const auto authoredIndexOf = [&](Layer::Id id) {
+            const auto found = index_.find(id);
+            return found == index_.end() ? npos : found->second;
+        };
         order_.clear();
         orderParents_.clear();
         orderParentIds_.clear();
+        orderSwitchParentIds_.clear();
         orderValid_ = true;
         order_.reserve(count);
         orderParents_.reserve(count);
         orderParentIds_.reserve(count);
+        orderSwitchParentIds_.reserve(count);
+
+        // A switched-to space is also an evaluation dependency: its world
+        // matrix must exist before the switching layer can be composed. Validate
+        // that the dependency schedule does not contain a space-switch cycle.
+        std::vector<std::vector<std::size_t>> dependencies(count);
+        for (std::size_t index = 0; index < count; ++index) {
+            const auto addDependency = [&](Layer::Id id) {
+                if (id == Layer::kRoot) return;
+                const std::size_t dependency = authoredIndexOf(id);
+                if (dependency == npos || dependency == index) {
+                    orderValid_ = false;
+                    return;
+                }
+                if (std::find(dependencies[index].begin(), dependencies[index].end(), dependency) ==
+                    dependencies[index].end()) dependencies[index].push_back(dependency);
+            };
+            addDependency(layers_[index].parentId);
+            for (const auto& point : layers_[index].spaceSwitches) addDependency(point.parentId);
+        }
 
         // 0 = unvisited, 1 = on the current path, 2 = emitted.
         std::vector<char> color(count, 0);
-
-        // Iterative parents-first DFS over indices: emit a layer only after its
-        // parent chain, so a cycle is broken by the visiting mark instead of
-        // recursing forever. Resolved parent indices are cached alongside, so
-        // the evaluate loop does no id→index lookups at all.
         struct Frame {
             std::size_t index;
-            bool parentVisited;
+            std::size_t nextDependency;
         };
 
         std::vector<Frame> stack;
         for (std::size_t root = 0; root < count; ++root) {
             if (color[root] != 0) continue;
-            color[root] = 1; // on the current path
-            stack.push_back({root, false});
+            color[root] = 1;
+            stack.push_back({root, 0});
             while (!stack.empty()) {
                 Frame& top = stack.back();
-                if (!top.parentVisited) {
-                    top.parentVisited = true;
-                    const std::size_t parent = indexOf(layers_[top.index].parentId);
-                    if (parent == npos && layers_[top.index].parentId != Layer::kRoot) {
-                        orderValid_ = false;
-                    } else if (parent == top.index) {
-                        orderValid_ = false;
-                    } else if (parent != npos && color[parent] == 0) {
-                        color[parent] = 1; // on the current path
-                        stack.push_back({parent, false});
+                const auto& links = dependencies[top.index];
+                if (top.nextDependency < links.size()) {
+                    const std::size_t dependency = links[top.nextDependency++];
+                    if (color[dependency] == 0) {
+                        color[dependency] = 1;
+                        stack.push_back({dependency, 0});
                         continue;
-                    } else if (parent != npos && color[parent] == 1) {
-                        orderValid_ = false;
                     }
+                    if (color[dependency] == 1) orderValid_ = false;
+                    continue;
                 }
                 color[top.index] = 2;
                 order_.push_back(top.index);
-                orderParents_.push_back(npos); // placeholder, filled below
-                orderParentIds_.push_back(Layer::kRoot); // placeholder, filled below
+                orderParents_.push_back(npos);
+                orderParentIds_.push_back(Layer::kRoot);
+                orderSwitchParentIds_.emplace_back();
                 stack.pop_back();
             }
         }
@@ -370,9 +402,14 @@ namespace chrononmotion::motion {
         // Fill the cached parent indices now that every layer has a slot.
         for (std::size_t position = 0; position < order_.size(); ++position) {
             const std::size_t index = order_[position];
-            const std::size_t parent = indexOf(layers_[index].parentId);
+            const std::size_t parent = authoredIndexOf(layers_[index].parentId);
             orderParents_[position] = (parent != npos && parent != index) ? parent : npos;
             orderParentIds_[position] = layers_[index].parentId;
+            auto& switchParents = orderSwitchParentIds_[position];
+            switchParents.clear();
+            switchParents.reserve(layers_[index].spaceSwitches.size());
+            for (const auto& point : layers_[index].spaceSwitches)
+                switchParents.push_back(point.parentId);
         }
 
         orderDirty_ = false;
@@ -412,6 +449,57 @@ namespace chrononmotion::motion {
         std::vector<std::pair<Layer::Id, TrackChannel>> visiting;
         const LinkResolver resolve = linkResolver(visiting, false);
 
+        using EvaluatedSpace = std::pair<Layer::Id, Matrix4>;
+        std::function<EvaluatedSpace(Layer::Id, float, std::vector<Layer::Id>&)> spaceAt;
+        std::function<Matrix4(Layer::Id, float, std::vector<Layer::Id>&)> worldAt;
+        spaceAt = [&](Layer::Id id, float atSeconds,
+                      std::vector<Layer::Id>& recursion) -> EvaluatedSpace {
+            const Layer* layer = findLayer(id);
+            if (!layer) throw std::invalid_argument("MotionScene::evaluate: space switch references an unknown layer");
+            Layer::Id parentId = layer->parentId;
+            Matrix4 offset;
+            float previousSwitchTime = -1.f;
+            for (const SpaceSwitchPoint& point : layer->spaceSwitches) {
+                if (!std::isfinite(point.seconds) || point.seconds < 0.f || point.seconds <= previousSwitchTime)
+                    throw std::invalid_argument("MotionScene::evaluate: space switches must have strictly sorted finite non-negative times");
+                previousSwitchTime = point.seconds;
+                if (point.seconds > atSeconds) break;
+                if (point.parentId == parentId) continue;
+                Matrix4 oldWorld;
+                if (parentId != Layer::kRoot)
+                    oldWorld = worldAt(parentId, point.seconds, recursion);
+                Matrix4 newWorld;
+                if (point.parentId != Layer::kRoot) {
+                    if (!findLayer(point.parentId))
+                        throw std::invalid_argument("MotionScene::evaluate: space switch references an unknown parent");
+                    newWorld = worldAt(point.parentId, point.seconds, recursion);
+                    if (std::fabs(newWorld.determinant()) < 1e-10f)
+                        throw std::invalid_argument("MotionScene::evaluate: space switch parent world matrix is singular");
+                    newWorld.invert();
+                }
+                Matrix4 handoff;
+                handoff.multiplyMatrices(newWorld, oldWorld);
+                offset.premultiply(handoff);
+                parentId = point.parentId;
+            }
+            return {parentId, offset};
+        };
+        worldAt = [&](Layer::Id id, float atSeconds,
+                      std::vector<Layer::Id>& recursion) -> Matrix4 {
+            if (std::find(recursion.begin(), recursion.end(), id) != recursion.end())
+                throw std::invalid_argument("MotionScene::evaluate: cyclic space-switch dependency");
+            recursion.push_back(id);
+            const Layer* layer = findLayer(id);
+            if (!layer) throw std::invalid_argument("MotionScene::evaluate: space switch references an unknown layer");
+            const EvaluatedSpace evaluated = spaceAt(id, atSeconds, recursion);
+            Matrix4 local = layer->sample(atSeconds, resolve).toMatrix();
+            local.premultiply(evaluated.second);
+            if (evaluated.first != Layer::kRoot)
+                local.premultiply(worldAt(evaluated.first, atSeconds, recursion));
+            recursion.pop_back();
+            return local;
+        };
+
         for (std::size_t position = 0; position < order_.size(); ++position) {
             const std::size_t index = order_[position];
 
@@ -425,18 +513,29 @@ namespace chrononmotion::motion {
             const float layerSeconds =
                     layers_[index].mapFrame(exactFrame, sceneSeconds, resolve) / time.fps;
             layers_[index].sample(layerSeconds, state.local, resolve);
+            std::vector<Layer::Id> visitingSpaces;
+            const EvaluatedSpace activeSpace = spaceAt(layers_[index].id, layerSeconds, visitingSpaces);
+            const Layer::Id activeParentId = activeSpace.first;
+            const Matrix4 localOffset = activeSpace.second;
 
             for (const auto& constraint : layers_[index].constraints) {
+                ConstraintSpec evaluatedConstraint = constraint;
+                if (constraint.amountTrack) {
+                    float sampledAmount = constraint.amount;
+                    constraint.amountTrack->sample(layerSeconds, sampledAmount, resolve);
+                    evaluatedConstraint.amount = std::clamp(sampledAmount, 0.f, 1.f);
+                }
                 const std::size_t target = indexOf(constraint.targetId);
                 if (constraint.targetId == Layer::kRoot &&
-                    constraint.kind == ConstraintKind::FollowPath) {
+                    (constraint.kind == ConstraintKind::FollowPath || constraint.kind == ConstraintKind::LimitPosition ||
+                     constraint.kind == ConstraintKind::LimitRotation || constraint.kind == ConstraintKind::LimitScale)) {
                     // Root-target FollowPath has no target layer to index. The
                     // constraint only consumes seconds and its path, so pass
                     // neutral target values and never dereference npos.
                     const Vector3 rootPosition{};
                     const Quaternion rootRotation{};
                     const Vector3 rootScale{1.f, 1.f, 1.f};
-                    (void)applyConstraint(constraint, state.local, rootPosition,
+                    (void)applyConstraint(evaluatedConstraint, state.local, rootPosition,
                                           rootRotation, rootScale, layerSeconds);
                     continue;
                 }
@@ -446,9 +545,34 @@ namespace chrononmotion::motion {
                     }
                     continue;
                 }
+                if (constraint.kind == ConstraintKind::Parent || constraint.kind == ConstraintKind::Orient ||
+                    constraint.kind == ConstraintKind::Point || constraint.kind == ConstraintKind::StretchTo ||
+                    constraint.kind == ConstraintKind::DampedAim || constraint.kind == ConstraintKind::SurfaceAttach ||
+                    constraint.kind == ConstraintKind::LookAtWithRoll) {
+                    Matrix4 relative = states_[target].world;
+                    if (activeParentId != Layer::kRoot) {
+                        const auto parent = indexOf(activeParentId);
+                        if (parent == npos || !states_[parent].evaluated)
+                            throw std::invalid_argument("MotionScene::evaluate: unsolved constraint parent");
+                        Matrix4 inverse = states_[parent].world;
+                        if (inverse.determinant() == 0.f)
+                            throw std::invalid_argument("MotionScene::evaluate: singular constraint parent");
+                        relative.premultiply(inverse.invert());
+                    }
+                    Matrix4 inverseOffset = localOffset;
+                    if (inverseOffset.determinant() == 0.f)
+                        throw std::invalid_argument("MotionScene::evaluate: singular space offset");
+                    relative.premultiply(inverseOffset.invert());
+                    Vector3 position, scale;
+                    Quaternion rotation;
+                    relative.decompose(position, rotation, scale);
+                    if (!applyConstraint(evaluatedConstraint, state.local, position, rotation, scale, layerSeconds))
+                        throw std::invalid_argument("MotionScene::evaluate: constraint failed");
+                    continue;
+                }
                 Vector3 targetPosition;
                 targetPosition.setFromMatrixPosition(states_[target].world);
-                (void)applyConstraint(constraint, state.local, targetPosition,
+                (void)applyConstraint(evaluatedConstraint, state.local, targetPosition,
                                       layers_[target].transform.orientation,
                                       layers_[target].transform.scale, layerSeconds);
             }
@@ -473,6 +597,8 @@ namespace chrononmotion::motion {
             // from position/quaternion/scale.
             Matrix4 localMatrix;
             state.local.compose(localMatrix);
+            if (!layers_[index].spaceSwitches.empty())
+                localMatrix.premultiply(localOffset);
             state.world.copy(localMatrix);
 
             Transform previousLocal;
@@ -487,13 +613,20 @@ namespace chrononmotion::motion {
                     layers_[index].mapFrame(previousExactFrame, previousSceneSeconds, resolve) / time.fps;
             layers_[index].sample(previousSeconds, previousLocal, resolve);
             previousLocal.compose(state.previousWorld);
+            std::vector<Layer::Id> previousSpaceRecursion;
+            const EvaluatedSpace previousSpace = spaceAt(layers_[index].id, previousSeconds, previousSpaceRecursion);
+            const Layer::Id previousParentId = previousSpace.first;
+            if (!layers_[index].spaceSwitches.empty())
+                state.previousWorld.premultiply(previousSpace.second);
 
             // Lifetime is a whole-frame contract: a layer's in/out point is an
             // authoring decision, not a continuous one, so visibility stays
             // keyed to the integer frame and is unaffected by the fraction.
             const bool alive = layers_[index].visibleAt(time.frame);
             const bool previousAlive = layers_[index].visibleAt(time.frame - 1);
-            const std::size_t parent = orderParents_[position];
+            const std::size_t parent = activeParentId == Layer::kRoot ? npos : indexOf(activeParentId);
+            if (parent != npos && !states_[parent].evaluated)
+                throw std::invalid_argument("MotionScene::evaluate: space-switch parent was not evaluated first");
 
             if (parent != npos && states_[parent].evaluated) {
                 // parents-first order guarantees the parent is solved; compose in
@@ -507,14 +640,23 @@ namespace chrononmotion::motion {
                 // Lifetime hides the subtree: a hidden null hides its children.
                 state.visible = alive && states_[parent].visible;
                 state.worldOpacity = states_[parent].worldOpacity * state.local.opacity;
-                state.previousWorld.multiplyMatrices(states_[parent].previousWorld, state.previousWorld);
-                state.previousVisible = previousAlive && states_[parent].previousVisible;
-                state.previousWorldOpacity = states_[parent].previousWorldOpacity * previousLocal.opacity;
+                const std::size_t previousParent = previousParentId == Layer::kRoot ? npos : indexOf(previousParentId);
+                if (previousParent != npos && states_[previousParent].evaluated)
+                    state.previousWorld.multiplyMatrices(states_[previousParent].previousWorld, state.previousWorld);
+                state.previousVisible = previousAlive &&
+                        (previousParent == npos || states_[previousParent].previousVisible);
+                state.previousWorldOpacity = previousLocal.opacity *
+                        (previousParent == npos ? 1.f : states_[previousParent].previousWorldOpacity);
             } else {
                 state.visible = alive;
                 state.worldOpacity = state.local.opacity;
                 state.previousVisible = previousAlive;
                 state.previousWorldOpacity = previousLocal.opacity;
+                if (!layers_[index].spaceSwitches.empty() && previousParentId != Layer::kRoot) {
+                    const std::size_t previousParent = indexOf(previousParentId);
+                    if (previousParent != npos && states_[previousParent].evaluated)
+                        state.previousWorld.multiplyMatrices(states_[previousParent].previousWorld, state.previousWorld);
+                }
             }
 
             // `Layer` is the Object3D graph node, so the evaluated pose is written
@@ -524,6 +666,11 @@ namespace chrononmotion::motion {
             // the layer's local TRS for generic Object3D readers; `rotation` is the
             // composed orientation (`orientation * euler`) as an Euler.
             Layer& node = layers_[index];
+            Object3D* evaluatedParent = parent == npos ? nullptr : &layers_[parent];
+            if (node.parent != evaluatedParent) {
+                if (node.parent) node.removeFromParent();
+                if (evaluatedParent) evaluatedParent->addRef(node);
+            }
             node.position.copy(state.local.position);
             node.scale.copy(state.local.scale);
             node.quaternion.copy(state.local.localQuaternion());
@@ -729,6 +876,45 @@ namespace chrononmotion::motion {
             reportTrack("opacity track", layer.tracks.opacity.modifierProblem());
             reportTrack("time remap track", layer.timeRemapTrack.modifierProblem());
 
+            for (const auto& constraint : layer.constraints) {
+                if (constraint.kind < ConstraintKind::Billboard || constraint.kind > ConstraintKind::LookAtWithRoll ||
+                    !std::isfinite(constraint.amount))
+                    problems.push_back("layer " + std::to_string(layer.id) + ": invalid constraint kind/amount");
+                if (constraint.kind == ConstraintKind::LimitPosition || constraint.kind == ConstraintKind::LimitRotation ||
+                    constraint.kind == ConstraintKind::LimitScale) {
+                    for (unsigned axis = 0; axis < 3; ++axis)
+                        if (!std::isfinite(constraint.minimum[axis]) || !std::isfinite(constraint.maximum[axis]) ||
+                            constraint.minimum[axis] > constraint.maximum[axis] ||
+                            (constraint.kind == ConstraintKind::LimitScale && constraint.minimum[axis] <= 0.f))
+                            problems.push_back("layer " + std::to_string(layer.id) + ": invalid constraint limit interval");
+                }
+                if (constraint.kind == ConstraintKind::StretchTo &&
+                    (!std::isfinite(constraint.restLength) || constraint.restLength <= 0.f))
+                    problems.push_back("layer " + std::to_string(layer.id) + ": invalid StretchTo restLength");
+                if (constraint.amountTrack) {
+                    for (const auto& key : constraint.amountTrack->keys()) {
+                        if (!std::isfinite(key.time) || !std::isfinite(key.value)) {
+                            problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                               "'): constraint amount track requires finite key times and values");
+                            break;
+                        }
+                    }
+                    const std::string amountTrackProblem = constraint.amountTrack->modifierProblem();
+                    if (!amountTrackProblem.empty()) {
+                        problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                           "'): constraint amount track: " + amountTrackProblem);
+                    }
+                }
+                if (constraint.kind == ConstraintKind::FollowPath && !constraint.path) {
+                    problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                       "'): FollowPath constraint requires a path");
+                }
+                if (constraint.targetId != Layer::kRoot && !hasLayer(constraint.targetId)) {
+                    problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                       "'): constraint references unknown target " + std::to_string(constraint.targetId));
+                }
+            }
+
             const auto checkLinks = [&](const char* trackName, TrackChannel requesting, const auto& track) {
                 for (const auto& modifier : track.modifiers()) {
                     const auto* link = std::get_if<LinkModifier>(&modifier);
@@ -765,6 +951,33 @@ namespace chrononmotion::motion {
             checkLinks("orientation track", TrackChannel::Orientation, layer.tracks.orientation);
             checkLinks("opacity track", TrackChannel::Opacity, layer.tracks.opacity);
             checkLinks("time remap track", TrackChannel::TimeRemap, layer.timeRemapTrack);
+            for (const auto& constraint : layer.constraints) {
+                if (constraint.amountTrack)
+                    checkLinks("constraint amount track", TrackChannel::Opacity, *constraint.amountTrack);
+            }
+
+            float previousSwitchTime = -1.f;
+            Layer::Id previousSpace = layer.parentId;
+            for (const auto& point : layer.spaceSwitches) {
+                if (!std::isfinite(point.seconds) || point.seconds < 0.f || point.seconds <= previousSwitchTime) {
+                    problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                       "'): space switches require strictly increasing finite non-negative times");
+                    break;
+                }
+                previousSwitchTime = point.seconds;
+                if (point.parentId != Layer::kRoot && !hasLayer(point.parentId)) {
+                    problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                       "'): space switch references unknown parent " + std::to_string(point.parentId));
+                } else if (point.parentId == layer.id) {
+                    problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                       "'): space switch cannot parent a layer to itself");
+                }
+                if (point.parentId == previousSpace) {
+                    problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                       "'): space switch does not change the active parent");
+                }
+                previousSpace = point.parentId;
+            }
 
             if (layer.parentId == Layer::kRoot) continue;
 

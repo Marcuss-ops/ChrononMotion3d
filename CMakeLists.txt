@@ -84,6 +84,12 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/Lighting.cpp
         src/chrononmotion/motion/Procedural.cpp
         src/chrononmotion/motion/Constraints.cpp
+        src/chrononmotion/motion/RigGraph.cpp
+        src/chrononmotion/motion/RigDrivers.cpp
+        src/chrononmotion/motion/RigDeformers.cpp
+        src/chrononmotion/motion/RigBaking.cpp
+        src/chrononmotion/motion/RigProgram.cpp
+        src/chrononmotion/motion/RigOperators.cpp
         src/chrononmotion/motion/OfflineBaking.cpp
         # presets — one translation unit per family, plus the shared vocabulary
         src/chrononmotion/motion/Presets_Common.cpp
@@ -172,6 +178,47 @@ endif()
 
 if(CHRONONMOTION_BUILD_TESTS)
     enable_testing()
+    add_executable(chrononmotion_rig tests/motion_rig.cpp)
+    target_link_libraries(chrononmotion_rig PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_rig PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_rig PRIVATE -Werror)
+    endif()
+    add_test(NAME chrononmotion_rig COMMAND chrononmotion_rig)
+    add_executable(chrononmotion_rig_program tests/motion_rig_program.cpp)
+    target_link_libraries(chrononmotion_rig_program PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_rig_program PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_rig_program PRIVATE -Werror)
+    endif()
+    add_test(NAME chrononmotion_rig_program COMMAND chrononmotion_rig_program)
+    add_executable(chrononmotion_rig_pipeline tests/motion_rig_pipeline.cpp)
+    target_link_libraries(chrononmotion_rig_pipeline PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_rig_pipeline PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_rig_pipeline PRIVATE -Werror)
+    endif()
+    add_test(NAME chrononmotion_rig_pipeline COMMAND chrononmotion_rig_pipeline)
+    add_executable(chrononmotion_rig_canaries tests/motion_rig_canaries.cpp)
+    target_link_libraries(chrononmotion_rig_canaries PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_rig_canaries PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_rig_canaries PRIVATE -Werror)
+    endif()
+    add_test(NAME chrononmotion_rig_canaries COMMAND chrononmotion_rig_canaries --all)
+    foreach(_rig_case fk_arm two_bone_ik eight_bone_snake pole_knee ik_reach_limits fk_ik_switch
+            space_switch aim_turret rotation_limit stretch_arm spline_tail secondary_tail svg_rigid svg_puppet
+            svg_lattice skin_mesh pose_mixer controller_joystick gltf_skeleton mega_character)
+        add_test(NAME chrononmotion_rig_${_rig_case} COMMAND chrononmotion_rig_canaries --case ${_rig_case})
+    endforeach()
+    add_executable(chrononmotion_rig_performance tests/motion_rig_performance.cpp)
+    target_link_libraries(chrononmotion_rig_performance PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_rig_performance PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_rig_performance PRIVATE -Werror)
+    endif()
+    add_test(NAME chrononmotion_rig_performance COMMAND chrononmotion_rig_performance)
+
     add_executable(chrononmotion_smoke tests/motion_smoke.cpp)
     target_link_libraries(chrononmotion_smoke PRIVATE chrononmotion)
     add_test(NAME chrononmotion_smoke COMMAND chrononmotion_smoke)
@@ -218,6 +265,10 @@ if(CHRONONMOTION_BUILD_TESTS)
     endif()
     add_test(NAME chrononmotion_authoring COMMAND chrononmotion_authoring)
 
+    add_executable(chrononmotion_advanced_authoring tests/motion_advanced_authoring.cpp)
+    target_link_libraries(chrononmotion_advanced_authoring PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_advanced_authoring COMMAND chrononmotion_advanced_authoring)
+
     add_executable(chrononmotion_offline_golden tests/motion_offline_golden.cpp)
     target_link_libraries(chrononmotion_offline_golden PRIVATE chrononmotion)
     add_test(NAME chrononmotion_offline_golden COMMAND chrononmotion_offline_golden)
@@ -239,6 +290,28 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_link_libraries(chrononmotion_upstream_regressions PRIVATE chrononmotion)
     add_test(NAME chrononmotion_upstream_regressions COMMAND chrononmotion_upstream_regressions)
 
+    # Showcase acceptance is independently selectable at the case id/number and
+    # emits deterministic motion/plan signatures; no pixel renderer is required.
+    add_executable(chrononmotion-showcase tests/motion_showcase.cpp)
+    target_link_libraries(chrononmotion-showcase PRIVATE chrononmotion)
+    target_compile_features(chrononmotion-showcase PRIVATE cxx_std_20)
+    target_compile_options(chrononmotion-showcase PRIVATE -Wall -Wextra)
+    target_compile_definitions(chrononmotion-showcase PRIVATE
+        CHRONONMOTION_SHOWCASE_GOLDEN="${CMAKE_CURRENT_SOURCE_DIR}/tests/showcase_golden.json")
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion-showcase PRIVATE -Werror)
+    endif()
+    if(CHRONON3D_INCLUDE_DIR)
+        target_link_libraries(chrononmotion-showcase PRIVATE chrononmotion_chronon3d_adapter)
+        target_compile_definitions(chrononmotion-showcase PRIVATE CHRONONMOTION_SHOWCASE_HAS_ADAPTER=1)
+    endif()
+    add_test(NAME chrononmotion_showcase_all COMMAND chrononmotion-showcase --all)
+    add_test(NAME chrononmotion_showcase_catalog COMMAND chrononmotion-showcase --list)
+    add_test(NAME chrononmotion_showcase_renderplan COMMAND chrononmotion-showcase --case renderplan_roundtrip)
+    if(NOT CHRONON3D_INCLUDE_DIR)
+        set_tests_properties(chrononmotion_showcase_renderplan PROPERTIES DISABLED TRUE)
+    endif()
+
     # Architectural guardrail: this tree must not reference content machinery
     # (text shaping, fonts, glyphs, raster, image/video decoding) or acquire a
     # dependency. See tests/check_motion_boundary.cmake.
@@ -246,4 +319,13 @@ if(CHRONONMOTION_BUILD_TESTS)
             COMMAND ${CMAKE_COMMAND}
             -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_motion_boundary.cmake)
+
+    if(CHRONON3D_INCLUDE_DIR)
+        get_filename_component(_chronon3d_root "${CHRONON3D_INCLUDE_DIR}" DIRECTORY)
+        add_test(NAME chrononmotion_renderplan_camera_parity
+                COMMAND ${CMAKE_COMMAND}
+                -DCHRONON3D_ROOT=${_chronon3d_root}
+                -DMOTION_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_renderplan_camera_parity.cmake)
+    endif()
 endif()

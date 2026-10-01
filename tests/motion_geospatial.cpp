@@ -31,6 +31,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <numbers>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -44,6 +45,7 @@
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
 
 #include <chronon3d/render_plan/render_plan.hpp>
+#include <chronon3d/math/camera_pose.hpp>
 #endif
 
 using namespace chrononmotion;
@@ -317,6 +319,189 @@ namespace {
         check(evaluateSpringBounce(1.5f, 1.2f, 15.0f, 0.52f) == 1.0f, "the drop spring settles at one");
         check(evaluateSpringBounce(0.6f, 1.2f, 15.0f, 0.52f) > 0.9f,
               "the drop spring is most of the way there at half the drop");
+    }
+
+    // The Europe flyTo: one flight, London -> Paris -> Rome, framed by a zoom-5
+    // plate centred on Rome and flown by the perspective camera rig. Every
+    // reference number below is the spherical/Mercator formula this tree
+    // implements (Haversine on the WGS84 semi-major sphere, Web Mercator),
+    // recomputed independently to double precision — so this fails the moment
+    // the geography and the flight disagree about where Europe is.
+    void testEuropeFlyTo() {
+
+        std::cout << "\n=== europe flyTo: London -> Paris -> Rome ===\n";
+        const GeoCoord london{51.5074, -0.1278, 0.0};
+        const GeoCoord paris{48.8566, 2.3522, 0.0};
+        const GeoCoord rome{41.890210, 12.492231, 50.0};
+
+        // ── The geodesy the flight flies ──────────────────────────────
+        // The arc the waypoints are keyed against, on the same sphere
+        // `distanceMeters` uses (`kWgs84SemiMajorAxis`).
+        checkNear(distanceMeters(london, rome) / 1000.0, 1436.32, 2.0,
+                  "Haversine London-Rome is about 1436 km");
+        checkNear(distanceMeters(paris, rome) / 1000.0, 1107.35, 2.0,
+                  "Haversine Paris-Rome is about 1107 km");
+        checkNear(distanceMeters(london, paris) / 1000.0, 343.95, 2.0,
+                  "Haversine London-Paris is about 344 km");
+
+        // The great-circle mid London-Rome: the subject the flight frames at
+        // its halfway frame. Radius-independent (angles only), so it is pinned
+        // exactly, and the interpolation must return its own endpoints.
+        const GeoCoord gcMid = greatCirclePoint(london, rome, 0.5);
+        checkNear(gcMid.latitudeDeg, 46.87115777, 1e-6, "the great-circle mid London-Rome latitude");
+        checkNear(gcMid.longitudeDeg, 6.74775451, 1e-6, "the great-circle mid London-Rome longitude");
+        const GeoCoord gcStart = greatCirclePoint(london, rome, 0.0);
+        const GeoCoord gcEnd = greatCirclePoint(london, rome, 1.0);
+        checkNear(gcStart.latitudeDeg, london.latitudeDeg, 1e-4, "the great circle starts at London");
+        checkNear(gcStart.longitudeDeg, london.longitudeDeg, 1e-4, "the great circle starts at London's longitude");
+        checkNear(gcEnd.latitudeDeg, rome.latitudeDeg, 1e-4, "the great circle lands at Rome");
+        checkNear(gcEnd.longitudeDeg, rome.longitudeDeg, 1e-4, "the great circle lands at Rome's longitude");
+
+        // ── The window the flight is framed by ────────────────────────
+        // A zoom-5, 1920x1080 plate centred on Rome: the plate's pixel grid and
+        // the flight's frame must agree on where every city sits, or a marker
+        // lands on the wrong country while the picture shows the right one.
+        const Vector2 rasterSize{1920.f, 1080.f};
+        const MapWindow window = MapWindow::centeredOn(rome, 5, rasterSize);
+
+        const Vector2 romePx = latLonToGlobalPixel(rome.latitudeDeg, rome.longitudeDeg, 5);
+        checkNear(romePx.x, 4380.2676565333, 1e-2, "Rome's global pixel X at zoom 5");
+        checkNear(romePx.y, 3044.3688993837, 1e-2, "Rome's global pixel Y at zoom 5");
+
+        const Vector2 romePlane = window.toPlane(rome);
+        checkNear(romePlane.x, 0.0, 1e-3, "the window centres Rome in plane X");
+        checkNear(romePlane.y, 0.0, 1e-3, "the window centres Rome in plane Y");
+
+        // West of the centre is -x and north of it is +y in plane space, so
+        // London must sit in the plate's north-west quadrant — and inside it.
+        const Vector2 londonPlane = window.toPlane(london);
+        const Vector2 parisPlane = window.toPlane(paris);
+        checkNear(londonPlane.x, -287.18, 0.05, "London sits 287 px west of the Rome window centre");
+        checkNear(londonPlane.y, 320.32, 0.05, "London sits 320 px north of the Rome window centre");
+        checkNear(parisPlane.x, -230.74, 0.05, "Paris sits 231 px west of the Rome window centre");
+        checkNear(parisPlane.y, 226.09, 0.05, "Paris sits 226 px north of the Rome window centre");
+        check(std::abs(londonPlane.x) < rasterSize.x * 0.5f &&
+                  std::abs(londonPlane.y) < rasterSize.y * 0.5f,
+              "London is inside the Rome plate");
+        check(std::abs(parisPlane.x) < rasterSize.x * 0.5f &&
+                  std::abs(parisPlane.y) < rasterSize.y * 0.5f,
+              "Paris is inside the Rome plate");
+
+        // ── The flat-plate flyover authors the flight ─────────────────
+        MapFlyoverSpec spec;
+        spec.origin = rome;
+        spec.poi = rome;
+        spec.poiTitle = "ROMA";
+        spec.poiSubtitle = "41.8902° N, 12.4922° E";
+        spec.durationSeconds = 8.0f;
+        spec.fps = 30.f;
+        spec.canvasSize = rasterSize;
+        spec.window = window;
+        spec.basemapAsset = "map/europe";
+        spec.route = {london, paris, rome};
+        spec.startMapScale = 1.0f;
+        spec.endMapScale = 1.35f;
+        spec.startMapPan = Vector2{0.f, 0.f};
+        spec.endMapPan = Vector2{0.f, 0.f};
+
+        const MapFlyoverBuilder builder(spec);
+        check(builder.frameCount() == 240, "the 8 s flyover is 240 frames at 30 fps");
+
+        MotionScene scene{"europe_flyto", spec.fps};
+        const MapSceneLayers ids = builder.buildScene(scene);
+        check(ids.hasBasemap(), "the Europe flyover owns its basemap");
+        check(ids.markers.size() == spec.route.size(),
+              "one marker per waypoint: London, Paris, Rome");
+        check(ids.pin != Layer::kRoot, "the Rome POI owns its drop pin");
+
+        // Waypoints ride the flyover transform — the same scale and pan the
+        // plate takes — so a marker never separates from the geography the
+        // raster painted. Rome is the window centre, so its column never moves
+        // however far the plate zooms; London starts where Mercator paints it
+        // and is pushed out by the zoom, westward and northward, never across.
+        scene.evaluate(0);
+        const Vector3 londonStart = scene.state(ids.markers.front()).local.position;
+        checkNear(londonStart.x, londonPlane.x, 0.05, "London's marker starts where the plate paints London in X");
+        checkNear(londonStart.y, -londonPlane.y, 0.05, "London's marker starts north of the frame centre (north is -y)");
+
+        scene.evaluate(builder.frameCount() / 2);
+        const Vector3 londonMid = scene.state(ids.markers.front()).local.position;
+        check(londonMid.x > spec.endMapScale * londonPlane.x && londonMid.x < londonPlane.x,
+              "the flight approaches Rome monotonically from the west");
+
+        scene.evaluate(builder.frameCount());
+        const Vector3 londonEnd = scene.state(ids.markers.front()).local.position;
+        checkNear(londonEnd.x, spec.endMapScale * londonPlane.x, 0.05, "London's marker rides the plate zoom in X");
+        checkNear(londonEnd.y, -spec.endMapScale * londonPlane.y, 0.05, "London's marker rides the plate zoom in Y");
+
+        const Vector3 pinEnd = scene.state(ids.pin).local.position;
+        checkNear(pinEnd.x, 0.0, 1e-3, "the pin lands on Rome's column at the flight's end");
+        checkNear(pinEnd.y, 0.0, 1e-3, "the pin lands on Rome's row once the spring settles");
+
+        // ── The same flight, camera-backed ────────────────────────────
+        // The 3D pass: the plate becomes a perspective surface under a shared
+        // tilt controller, and the rig flies the authored dive over it.
+        MapFlyoverSpec flightSpec = spec;
+        flightSpec.cameraBackedPlate = true;
+        flightSpec.poiTitle.clear();
+        flightSpec.poiSubtitle.clear();
+        const MapFlyoverBuilder flight(flightSpec);
+        MotionScene flightScene{"europe_flyto_3d", spec.fps};
+        const MapSceneLayers flightIds = flight.buildScene(flightScene);
+        flight.configureCameraBackedPlate(flightScene, 0.f, 55.f);
+
+        motion::CameraRig rig{1, 55.f, 16.f / 9.f, 1.f, 100000.f};
+        flight.rigCameraForPlate(rig, 4200.f, 1400.f);
+
+        const motion::CameraPose departure = rig.sample(0.f);
+        const motion::CameraPose arrival = rig.sample(spec.durationSeconds);
+        checkNear(departure.position.z, -4200.f, 1e-3, "the Europe flyTo starts 4200 units over the plate");
+        checkNear(arrival.position.z, -1400.f, 1e-3, "the Europe flyTo lands 1400 units over Rome");
+        checkNear(departure.fov, spec.startFovDeg, 1e-4, "the flyTo starts at the wide framing");
+        checkNear(arrival.fov, spec.endFovDeg, 1e-4, "the flyTo ends at the telephoto framing");
+        check(!arrival.hasTarget && std::abs(arrival.orientation.w - 1.f) < 1e-6f,
+              "the plate flyTo stays on the front-facing canonical camera");
+
+        // The descent is monotonic between the authored depths, and a symmetric
+        // ease passes the mid depth at the mid frame.
+        const motion::CameraPose midFlight = rig.sample(spec.durationSeconds * 0.5f);
+        check(midFlight.position.z < arrival.position.z && midFlight.position.z > departure.position.z,
+              "the descent is monotonic between the authored depths");
+        check(std::abs(midFlight.position.z - 0.5f * (departure.position.z + arrival.position.z)) < 60.f,
+              "the eased descent passes the mid depth near the mid frame");
+
+        // No frame of the flight may produce a non-finite pose: a NaN camera
+        // poisons every frame after it, so it must never be authored at all.
+        bool flightFinite = true;
+        for (int frame = 0; frame <= flight.frameCount(); ++frame) {
+            const motion::CameraPose pose = rig.sample(static_cast<float>(frame) / spec.fps);
+            flightFinite = flightFinite && std::isfinite(pose.position.x) &&
+                std::isfinite(pose.position.y) && std::isfinite(pose.position.z) &&
+                std::isfinite(pose.fov) && std::isfinite(pose.orientation.w) &&
+                std::isfinite(pose.orientation.x) && std::isfinite(pose.orientation.y) &&
+                std::isfinite(pose.orientation.z);
+        }
+        check(flightFinite, "every sampled pose of the Europe flyTo is finite");
+
+        // The tilt: the whole georeferenced surface rotates as one object, so
+        // the imagery and every marker on it stay registered while the camera
+        // comes down. The controller is a null rig node, and the plate (and
+        // everything welded to it) hangs off it.
+        flightScene.evaluate(flight.frameCount());
+        const Layer* plate = flightScene.findLayer(flightIds.basemap);
+        check(plate != nullptr && plate->parentId != Layer::kRoot,
+              "the Europe plate is parented under the shared tilt controller");
+        if (plate != nullptr && plate->parentId != Layer::kRoot) {
+            const Layer* controller = flightScene.findLayer(plate->parentId);
+            check(controller != nullptr && controller->isNull() &&
+                      controller->name == "georeferenced_map_surface",
+                  "the tilt controller is the georeferenced surface null node");
+            if (controller != nullptr) {
+                checkNear(controller->tracks.rotation.keys().back().value.x,
+                          55.f * std::numbers::pi_v<float> / 180.f, 1e-4,
+                          "the Europe plate tilts 55 degrees into the arrival");
+            }
+        }
     }
 
     void testCalloutAndClamp() {
@@ -927,6 +1112,113 @@ namespace {
             check(hasScale, "the pin's ping reaches the plan as a baked scale track");
         }
     }
+
+    void testCameraBackedPlatePlan() {
+
+        std::cout << "\n=== camera-backed georeferenced plate ===\n";
+        MapFlyoverSpec spec = romeSpec(12, 30.f);
+        spec.poi = GeoCoord{41.8910, 12.4950, 50.0}; // deliberately off the plate centre
+        spec.route = {spec.poi};
+        spec.poiTitle.clear();
+        spec.poiSubtitle.clear();
+        spec.cameraBackedPlate = true;
+        spec.startMapScale = spec.endMapScale = 1.f;
+        spec.startMapPan = spec.endMapPan = Vector2{0.f, 0.f};
+        const MapFlyoverBuilder builder(spec);
+        MotionScene scene{"camera_backed_map", spec.fps};
+        const MapSceneLayers ids = builder.buildScene(scene);
+        builder.configureCameraBackedPlate(scene, 0.f, 30.f);
+
+        motion::CameraRig rig{1, 55.f, 16.f / 9.f, 1.f, 10000.f};
+        builder.rigCameraForPlate(rig, 1800.f, 1200.f);
+        const motion::CameraPose arrival = rig.sample(spec.durationSeconds);
+        check(!arrival.hasTarget && std::abs(arrival.orientation.w - 1.f) < 1e-6f,
+              "the front-facing camera avoids a backend-specific rotated camera pose");
+        check(arrival.position.z < 0.f,
+              "the perspective camera sits on Chronon's visible negative-Z side of the plate");
+        check(scene.findLayer(ids.basemap)->is3D,
+              "the basemap is lowered as a perspective surface");
+        scene.evaluate(builder.frameCount());
+        const Matrix4& markerWorld = scene.state(ids.markers.front()).world;
+        checkNear(markerWorld.elements[12], 0.f, 1e-3,
+                  "the off-centre geographic POI is translated to the shared surface origin in X");
+        checkNear(markerWorld.elements[13], 0.f, 1e-3,
+                  "the off-centre geographic POI is translated to the shared surface origin in Y");
+
+        motion::RenderPlanLoweringOptions options;
+        options.width = 1920;
+        options.height = 1080;
+        options.jobId = "camera_backed_map";
+        options.outputPath = "camera_backed_map.mp4";
+        for (const Layer& layer : scene.layers()) {
+            if (layer.isNull()) continue;
+            chronon3d::render_plan::LayerPlan content;
+            if (layer.content.kind == motion::ContentKind::Image) {
+                content.type = chronon3d::render_plan::LayerType::Image;
+                content.asset = layer.content.id;
+            } else if (layer.content.kind == motion::ContentKind::Text) {
+                content.type = chronon3d::render_plan::LayerType::Text;
+                content.text = layer.content.id;
+                chronon3d::render_plan::LayerStylePlan style;
+                style.font = "test-font";
+                style.font_size = 32.f;
+                style.fill = "#FFFFFF";
+                content.style = style;
+            }
+            options.contentLayers.emplace(std::to_string(layer.id), content);
+        }
+        options.cameraRig = &rig;
+        const auto plan = motion::lowerToRenderPlan(scene, options);
+        check(plan.camera.has_value(), "the emitted map plan carries a perspective camera");
+        if (plan.camera) {
+            const chronon3d::Vec3 angles{plan.camera->rotation_deg[0],
+                                         plan.camera->rotation_deg[1],
+                                         plan.camera->rotation_deg[2]};
+            const auto loweredOrientation = chronon3d::math::camera_rotation_quat(angles);
+            const motion::CameraPose startPose = rig.sample(0.f);
+            const float orientationDot = loweredOrientation.x * startPose.orientation.x +
+                loweredOrientation.y * startPose.orientation.y +
+                loweredOrientation.z * startPose.orientation.z +
+                loweredOrientation.w * startPose.orientation.w;
+            checkNear(std::abs(orientationDot), 1.0, 1e-4,
+                      "RenderPlan Euler angles preserve the rig's camera orientation");
+        }
+        check(plan.camera_animation.has_value() && !plan.camera_animation->empty(),
+              "the emitted map plan carries animated orbit and dolly tracks");
+        const auto plateLayer = std::find_if(plan.layers.begin(), plan.layers.end(), [&](const auto& layer) {
+            return layer.id == std::to_string(ids.basemap);
+        });
+        check(plateLayer != plan.layers.end() && plateLayer->enable_3d,
+              "the georeferenced raster reaches the plan as a camera-visible 3D layer");
+        if (plateLayer != plan.layers.end() && plateLayer->animation) {
+            const auto tilt = std::find_if(plateLayer->animation->tracks.begin(),
+                                           plateLayer->animation->tracks.end(), [](const auto& track) {
+                return track.property == "rotation";
+            });
+            check(tilt != plateLayer->animation->tracks.end() && !tilt->keyframes.empty() &&
+                      std::abs(tilt->keyframes.back().value[0]) > 1.f,
+                  "the map plate carries the authored camera-angle tilt through lowering");
+        } else {
+            check(false, "the map plate carries the authored camera-angle tilt through lowering");
+        }
+        check(motion::renderPlanEmissionProblem(plan).empty(),
+              "the camera-backed map stays on the canonical render-plan path");
+
+        motion::CameraRig oblique{2, 55.f, 16.f / 9.f, 1.f, 10000.f};
+        oblique.setPosition(Vector3{-140.f, 530.f, -1800.f}).setTarget(Vector3{0.f, 0.f, 0.f});
+        motion::CameraPose resolved = oblique.sample(0.f);
+        resolved.hasTarget = false; // RenderPlan carries the resolved orientation, not target metadata.
+        const auto obliquePlan = motion::lowerCameraPose(resolved, 1.f, 10000.f);
+        const auto obliqueRendererRotation = chronon3d::math::camera_rotation_quat(
+            chronon3d::Vec3{obliquePlan.rotation_deg[0], obliquePlan.rotation_deg[1],
+                            obliquePlan.rotation_deg[2]});
+        const float obliqueDot = obliqueRendererRotation.x * resolved.orientation.x +
+            obliqueRendererRotation.y * resolved.orientation.y +
+            obliqueRendererRotation.z * resolved.orientation.z +
+            obliqueRendererRotation.w * resolved.orientation.w;
+        checkNear(std::abs(obliqueDot), 1.0, 1e-4,
+                  "oblique look-at Euler conversion matches Chronon3D camera convention");
+    }
 #endif
 
 }// namespace
@@ -937,12 +1229,14 @@ int main() {
     testGeodesy();
     testWebMercator();
     testFlyoverScene();
+    testEuropeFlyTo();
     testCalloutAndClamp();
     testDocumentaryFlyover();
     testDocumentaryPunctuation();
 #ifdef CHRONONMOTION_HAS_CHRONON3D_ADAPTER
     testPlanPlacement();
     testDocumentaryPlan();
+    testCameraBackedPlatePlan();
 #else
     std::cout << "\n=== plan placement skipped (no Chronon3D adapter in this build) ===\n";
 #endif

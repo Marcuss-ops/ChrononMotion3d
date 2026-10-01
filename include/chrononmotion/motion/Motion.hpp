@@ -33,6 +33,11 @@
 #include "chrononmotion/motion/Presets.hpp"
 #include "chrononmotion/motion/Procedural.hpp"
 #include "chrononmotion/motion/Constraints.hpp"
+#include "chrononmotion/motion/RigGraph.hpp"
+#include "chrononmotion/motion/RigDrivers.hpp"
+#include "chrononmotion/motion/RigDeformers.hpp"
+#include "chrononmotion/motion/RigBaking.hpp"
+#include "chrononmotion/motion/RigOperators.hpp"
 #include "chrononmotion/motion/Precomp.hpp"
 #include "chrononmotion/motion/OfflineBaking.hpp"
 #if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)

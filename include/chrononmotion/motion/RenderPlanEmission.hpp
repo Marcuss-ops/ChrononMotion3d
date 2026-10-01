@@ -12,13 +12,15 @@
 // only place a plan becomes bytes.
 //
 // What it writes is deliberately the same subset `lowerToRenderPlan` emits, plus
-// the caller-supplied content identity it passes through for text layers:
+// the caller-supplied content identity it passes through for text layers and
+// the schema-defined V2/V3 camera depth-of-field payload:
 //
 //   root     schema, version, job_id, canvas, budget (only when the caller
 //            expressed one), camera, camera_animation, layers, output
 //   layer    id, type, asset, source, color, size, position, scale, rotation,
 //            enable_3d, blend_mode, opacity, start_frame, duration_frames, text,
 //            style, animation, and V3 video time_remap
+//   camera   type, position, rotation_deg, fov_deg, near, far, zoom, optional dof
 //   style    font, font_size, fill, glow
 //   track    property, easing, keyframes (frame + value)
 //
@@ -34,7 +36,9 @@
 // here), and every animation driver (wiggle, spring, oscillate, random hold,
 // posterize, data feed, audio react) plus per-key easing, because the lowering
 // bakes all of those into linear samples. Blend modes are supported and written
-// directly from the canonical decoder vocabulary.
+// directly from the canonical decoder vocabulary. Camera depth-of-field uses
+// the V2 schema contract; physical focal-length and f-stop optics are not part
+// of RenderPlan and remain refused by `lowerCameraPose`.
 //
 // Every key written here must exist in the consumer's schema: a plan that
 // carries one unknown field is rejected wholesale by

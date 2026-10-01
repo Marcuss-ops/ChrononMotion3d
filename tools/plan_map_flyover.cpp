@@ -21,6 +21,7 @@
 // there.
 //
 // Usage: chrononmotion_map_flyover [place] [output.plan.json] [font-asset] [frames]
+//        [--camera-backed] [--documentary]
 //   place           one of the shipped plates (see `places()`); default louisiana
 //   output          default map_flyover.plan.json
 //   font-asset      default assets/fonts/Inter-Bold.ttf, passed to Chronon
@@ -277,7 +278,7 @@ namespace {
     void printUsage(const std::vector<MapPlace>& all) {
 
         std::cerr << "usage: chrononmotion_map_flyover [place] [output.plan.json] [font] [frames]"
-                 " [--documentary]\n";
+                 " [--camera-backed] [--documentary]\n";
         std::cerr << "places:";
         for (const auto& place : all) std::cerr << ' ' << place.name;
         std::cerr << '\n';
@@ -300,8 +301,10 @@ int main(int argc, char** argv) {
     const std::string font = argc > 3 ? argv[3] : "assets/fonts/Inter-Bold.ttf";
     const int frames = argc > 4 ? std::atoi(argv[4]) : kFrames;
     bool documentary = false;
+    bool cameraBacked = false;
     for (int i = 1; i < argc; ++i)
         if (std::string(argv[i]) == "--documentary") documentary = true;
+        else if (std::string(argv[i]) == "--camera-backed") cameraBacked = true;
     if (frames <= 1) {
         std::cerr << "map_flyover: frames must be greater than one\n";
         return 2;
@@ -334,11 +337,24 @@ int main(int argc, char** argv) {
         spec.window = MapWindow::centeredOn(
             GeoCoord{place->centerLat, place->centerLon, 0.0}, place->zoom,
             windowSizeFor(place->name));
-        // The camera rig flies in metres, so the descent is expressed in the
-        // plate's own geography rather than in canvas pixels.
+        spec.cameraBackedPlate = cameraBacked;
+        // These heights are metres for the mesh-terrain camera. The optional
+        // flat-plate path below interprets its overridden depth in plate units.
         spec.startAltitudeM = 2600.f;
         spec.endAltitudeM = 900.f;
         spec.orbitRadiusM = 1800.f;
+        if (cameraBacked) {
+            // Let perspective own the push-in and keep all plate-unit layers
+            // stationary. This pins the camera's target to the POI throughout.
+            spec.startMapScale = 1.f;
+            spec.endMapScale = 1.f;
+            spec.startMapPan = Vector2{0.f, 0.f};
+            spec.endMapPan = Vector2{0.f, 0.f};
+            spec.startAltitudeM = 1800.f;
+            spec.endAltitudeM = 1100.f;
+            spec.startFovDeg = 55.f;
+            spec.endFovDeg = 44.f;
+        }
 
         // The documentary punctuation, only when the caller asks for it. A plain
         // run authors exactly the flyover it always did.
@@ -402,6 +418,13 @@ int main(int argc, char** argv) {
         MotionScene scene{"map_flyover_" + place->name, kFps};
         const MapFlyoverBuilder builder(spec);
         const MapSceneLayers ids = builder.buildScene(scene);
+        if (cameraBacked)
+            builder.configureCameraBackedPlate(scene, 0.f, 34.f);
+        CameraRig cameraRig{1, spec.startFovDeg,
+                            static_cast<float>(kWidth) / static_cast<float>(kHeight), 1.f, 10000.f};
+        if (cameraBacked)
+            builder.rigCameraForPlate(cameraRig, spec.startAltitudeM,
+                                      spec.endAltitudeM);
 
         // Hand every layer its content. This is the only moment the two halves
         // are visible in one place: the scene decided *where and when*, and each
@@ -457,10 +480,7 @@ int main(int argc, char** argv) {
         options.jobId = "map_flyover_" + place->name;
         options.outputPath = outputPath;
         options.contentLayers = content;
-        // The flyover is the map plane's own transform, not a camera move: these
-        // layers are canvas-space rasters and symbols, so the plan carries no
-        // camera. `MapFlyoverBuilder::rigCamera` is the entry point for the other
-        // mode, a mesh-terrain flight, where a camera is what moves.
+        if (cameraBacked) options.cameraRig = &cameraRig;
 
         chronon3d::render_plan::RenderPlan plan = lowerToRenderPlan(scene, options);
         plan.output.format = chronon3d::render_plan::OutputFormat::Mp4;

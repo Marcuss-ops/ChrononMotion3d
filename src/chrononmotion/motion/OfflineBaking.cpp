@@ -461,7 +461,10 @@ BakedVerletChain bakeVerletChain(const VerletChainSpec& spec, int firstFrame, in
     validateFrameRange(firstFrame, lastFrame);
     if (spec.joints.size() < 2 || spec.joints.size() > 65536 || !std::isfinite(spec.fps) || spec.fps <= 0.f ||
         !std::isfinite(spec.damping) || spec.damping < 0.f || spec.damping >= 1.f ||
-        !finite(spec.gravity) || spec.iterations == 0 || spec.iterations > 256)
+        !finite(spec.gravity) || spec.iterations == 0 || spec.iterations > 256 ||
+        !std::isfinite(spec.stiffness) || spec.stiffness < 0.f || !std::isfinite(spec.mass) || spec.mass <= 0.f ||
+        !finite(spec.force) || !std::isfinite(spec.drag) || spec.drag < 0.f ||
+        !std::isfinite(spec.maxAngle) || spec.maxAngle < 0.f || spec.maxAngle > math::PI)
         throw std::invalid_argument("bakeVerletChain: invalid chain or simulation parameters");
     const std::size_t requestedFrames = static_cast<std::size_t>(lastFrame - firstFrame) + 1;
     if (spec.joints.size() > kMaximumBakedFrames / requestedFrames ||
@@ -487,8 +490,12 @@ BakedVerletChain bakeVerletChain(const VerletChainSpec& spec, int firstFrame, in
     auto current = rest;
     auto previous = rest;
     const float dt = 1.f / spec.fps;
-    if (!std::isfinite(dt) || !std::isfinite(dt * dt))
-        throw std::invalid_argument("bakeVerletChain: fps is too small for a finite fixed step");
+    if (!std::isfinite(dt) || !std::isfinite(dt * dt) || !std::isfinite(1.f / spec.mass) ||
+        spec.stiffness / spec.mass * dt * dt > 1.f)
+        throw std::invalid_argument("bakeVerletChain: nonfinite or unstable fixed step");
+    const float dragFactor = std::exp(-spec.drag * dt);
+    const Vector2 acceleration = spec.gravity + spec.force * (1.f / spec.mass);
+    if (!finite(acceleration)) throw std::invalid_argument("bakeVerletChain: force acceleration overflow");
     for (std::size_t frame = 0; frame < frames; ++frame) {
         result.samples.push_back(current);
         const int frameNumber = firstFrame + static_cast<int>(frame);
@@ -499,8 +506,10 @@ BakedVerletChain bakeVerletChain(const VerletChainSpec& spec, int firstFrame, in
         }
         for (std::size_t joint = 1; joint < current.size(); ++joint) {
             const        Vector2 position = current[joint];
-            Vector2 velocity = (current[joint] - previous[joint]) * (1.f - spec.damping);
-            current[joint] = current[joint] + velocity + spec.gravity * (dt * dt);
+            Vector2 velocity = (current[joint] - previous[joint]) * ((1.f - spec.damping) * dragFactor);
+            Vector2 restoring{};
+            if (spec.stiffness > 0.f) restoring = (rest[joint] - current[joint]) * (spec.stiffness / spec.mass);
+            current[joint] = current[joint] + velocity + (acceleration + restoring) * (dt * dt);
             previous[joint] = position;
         }
         for (unsigned iteration = 0; iteration < spec.iterations; ++iteration) {
@@ -518,6 +527,18 @@ BakedVerletChain bakeVerletChain(const VerletChainSpec& spec, int firstFrame, in
             }
         }
         current.front() = rest.front();
+        if (spec.maxAngle < math::PI) {
+            // Parent-first angular projection also reconstructs exact rest lengths.
+            for (std::size_t joint = 1; joint < current.size(); ++joint) {
+                const Vector2 restDirection = rest[joint] - rest[joint - 1];
+                const Vector2 direction = current[joint] - current[joint - 1];
+                const float restAngle = std::atan2(restDirection.y, restDirection.x);
+                const float delta = std::clamp(wrapAngle(std::atan2(direction.y, direction.x) - restAngle),
+                                               -spec.maxAngle, spec.maxAngle);
+                const float angle = restAngle + delta;
+                current[joint] = current[joint - 1] + Vector2(std::cos(angle), std::sin(angle)) * lengths[joint - 1];
+            }
+        }
         for (const Vector2& point : current)
             if (!finite(point))
                 throw std::invalid_argument("bakeVerletChain: simulation state overflowed finite range");
@@ -1256,6 +1277,498 @@ std::vector<BakedPath> bakeSvgPathMorph(std::string_view from, std::string_view 
         frames.push_back(interpolateBakedPaths(start, end, t));
     }
     return frames;
+}
+
+std::vector<BakedPath> bakeWaveDeform(const BakedPath& rest, const WaveDeformerSpec& spec,
+                                        int firstFrame, int lastFrame, float fps) {
+    validateFrameRange(firstFrame, lastFrame);
+    validateBakedPath(rest, "bakeWaveDeform");
+    if (!std::isfinite(fps) || fps <= 0.f || !std::isfinite(spec.amplitude) ||
+        !std::isfinite(spec.wavelength) || spec.wavelength <= 0.f ||
+        !std::isfinite(spec.speed) || !std::isfinite(spec.phase) ||
+        !std::isfinite(spec.speed * (static_cast<float>(lastFrame) / fps)) ||
+        (spec.axis != WaveAxis::X && spec.axis != WaveAxis::Y))
+        throw std::invalid_argument("bakeWaveDeform: invalid wave or frame-rate parameters");
+    validateFrameTimes(fps, firstFrame, lastFrame, "bakeWaveDeform");
+    const std::size_t frameCount = static_cast<std::size_t>(lastFrame - firstFrame) + 1;
+    if (rest.size() > kMaximumBakedPathCommands / frameCount)
+        throw std::invalid_argument("bakeWaveDeform: requested geometry exceeds the offline command budget");
+    const auto deformPoint = [&](Vector2 point, float time) {
+        const float coordinate = spec.axis == WaveAxis::X ? point.x : point.y;
+        const float angular = 2.f * math::PI * coordinate / spec.wavelength + spec.phase;
+        const float temporalPhase = spec.speed * time;
+        if (!std::isfinite(angular) || !std::isfinite(temporalPhase))
+            throw std::invalid_argument("bakeWaveDeform: wave phase overflowed finite range");
+        const float displacement = spec.amplitude *
+                (std::sin(angular - temporalPhase) - std::sin(angular)) * spec.falloff.evaluate(point);
+        if (spec.axis == WaveAxis::X) point.x += displacement;
+        else point.y += displacement;
+        if (!finite(point)) throw std::invalid_argument("bakeWaveDeform: deformation overflowed finite coordinates");
+        return point;
+    };
+    std::vector<BakedPath> result;
+    result.reserve(frameCount);
+    for (std::size_t frame = 0; frame < frameCount; ++frame) {
+        const float time = static_cast<float>(firstFrame + static_cast<int>(frame)) / fps;
+        BakedPath path = rest;
+        for (auto& command : path) {
+            if (command.type == BakedPathCommandType::Close) continue;
+            command.point = deformPoint(command.point, time);
+            if (command.type == BakedPathCommandType::CubicTo) {
+                command.control1 = deformPoint(command.control1, time);
+                command.control2 = deformPoint(command.control2, time);
+            }
+        }
+        result.push_back(std::move(path));
+    }
+    return result;
+}
+
+std::vector<std::vector<Vector2>> bakeFieldSimulation(
+        std::span<const Vector2> restPositions, std::span<const FieldEffectorSpec> effectors,
+        int firstFrame, int lastFrame, float fps) {
+    validateFrameRange(firstFrame, lastFrame);
+    if (!std::isfinite(fps) || fps <= 0.f || restPositions.size() > 100000 || effectors.size() > 1024 ||
+        (restPositions.size() != 0 && effectors.size() > kMaximumBakedWork / restPositions.size()) ||
+        (restPositions.size() != 0 && effectors.size() != 0 &&
+         static_cast<std::size_t>(lastFrame - firstFrame + 1) >
+                 kMaximumBakedWork / restPositions.size() / effectors.size()))
+        throw std::invalid_argument("bakeFieldSimulation: invalid frame rate or offline work budget");
+    validateFrameTimes(fps, firstFrame, lastFrame, "bakeFieldSimulation");
+    const std::size_t frameCount = static_cast<std::size_t>(lastFrame - firstFrame) + 1;
+    if (restPositions.size() != 0 && frameCount > kMaximumBakedFrames / restPositions.size())
+        throw std::invalid_argument("bakeFieldSimulation: requested samples exceed the offline budget");
+    for (const Vector2& point : restPositions)
+        if (!finite(point)) throw std::invalid_argument("bakeFieldSimulation: rest positions must be finite");
+    for (const auto& field : effectors) {
+        if (!finite(field.origin) || !std::isfinite(field.strength) ||
+            !std::isfinite(field.falloffRadius) || field.falloffRadius <= 0.f ||
+            !std::isfinite(field.coreRadius) || field.coreRadius < 0.f ||
+            field.coreRadius >= field.falloffRadius ||
+            !std::isfinite(field.innerFalloffRadius) || field.innerFalloffRadius < 0.f ||
+            field.innerFalloffRadius >= field.falloffRadius ||
+            static_cast<unsigned>(field.kind) > static_cast<unsigned>(FieldEffectorSpec::Kind::Vortex) ||
+            static_cast<unsigned>(field.falloffKind) > static_cast<unsigned>(FalloffField::Kind::Box))
+            throw std::invalid_argument("bakeFieldSimulation: invalid effector settings");
+    }
+    std::vector<std::vector<Vector2>> result;
+    result.reserve(frameCount);
+    for (std::size_t frame = 0; frame < frameCount; ++frame) {
+        const float time = static_cast<float>(firstFrame + static_cast<int>(frame)) / fps;
+        std::vector<Vector2> pose;
+        pose.reserve(restPositions.size());
+        for (const Vector2& rest : restPositions) {
+            Vector2 displaced = rest;
+            for (const auto& field : effectors) {
+                Vector2 radial;
+                radial.subVectors(rest, field.origin);
+                const float radius = std::hypot(radial.x, radial.y);
+                if (!std::isfinite(radius) || radius >= field.falloffRadius) continue;
+                const FalloffField falloffField{field.origin, field.falloffRadius,
+                                                field.innerFalloffRadius, field.falloffKind};
+                const float falloff = falloffField.evaluate(rest);
+                if (falloff <= 0.f) continue;
+                if (field.kind == FieldEffectorSpec::Kind::Vortex) {
+                    if (radius >= field.coreRadius) {
+                        const float angle = field.strength * time * falloff / radius;
+                        const float cosine = std::cos(angle);
+                        const float sine = std::sin(angle);
+                        displaced.set(field.origin.x + radial.x * cosine - radial.y * sine,
+                                      field.origin.y + radial.x * sine + radial.y * cosine);
+                    } else {
+                        const float outward = (field.coreRadius - radius) *
+                                              std::fabs(field.strength) * time * falloff;
+                        Vector2 direction = radius > 1e-6f ? radial / radius : Vector2(1.f, 0.f);
+                        displaced.addScaledVector(direction, outward);
+                        displaced.rotateAround(field.origin, field.strength * time * falloff / field.coreRadius);
+                    }
+                } else {
+                    if (radius <= 1e-6f) continue;
+                    const float inverseRadius = 1.f / std::max(radius, std::max(field.coreRadius, 1e-4f));
+                    const float sign = field.kind == FieldEffectorSpec::Kind::Attractor ? -1.f : 1.f;
+                    const float amount = sign * field.strength * time * falloff * inverseRadius;
+                    displaced.x += radial.x * amount;
+                    displaced.y += radial.y * amount;
+                }
+            }
+            if (!finite(displaced)) throw std::invalid_argument("bakeFieldSimulation: field output overflowed finite range");
+            pose.push_back(displaced);
+        }
+        result.push_back(std::move(pose));
+    }
+    return result;
+}
+
+std::vector<std::vector<Vector2>> bakeFieldSimulation(
+        std::span<const Vector2> restPositions, const FieldEffectorSpec& spec,
+        int firstFrame, int lastFrame, float fps) {
+    return bakeFieldSimulation(restPositions, std::span<const FieldEffectorSpec>(&spec, 1),
+                               firstFrame, lastFrame, fps);
+}
+
+std::vector<std::vector<BakedPath>> bakeSvgSkinDeform(
+        const BakedPath& rest, std::span<const SvgBone> bones,
+        std::span<const std::vector<SvgSkinBinding>> bindings,
+        std::span<const std::vector<Matrix4>> boneWorldPerFrame,
+        int firstFrame, int lastFrame) {
+    validateFrameRange(firstFrame, lastFrame);
+    validateBakedPath(rest, "bakeSvgSkinDeform");
+    if (bones.empty() || bones.size() > 4096 || boneWorldPerFrame.size() !=
+        static_cast<std::size_t>(lastFrame - firstFrame) + 1 ||
+        (bindings.size() != rest.size() * 3))
+        throw std::invalid_argument("bakeSvgSkinDeform: bones, frame matrices, and per-coordinate bindings must agree");
+    for (std::size_t bone = 0; bone < bones.size(); ++bone) {
+        if (!finite(bones[bone].head) || !finite(bones[bone].tail) ||
+            bones[bone].head.distanceTo(bones[bone].tail) <= kEpsilon ||
+            bones[bone].parentIndex >= static_cast<int>(bone) || bones[bone].parentIndex < -1)
+            throw std::invalid_argument("bakeSvgSkinDeform: bones must have finite nonzero segments and parents before children");
+    }
+    for (std::size_t coordinate = 0; coordinate < bindings.size(); ++coordinate) {
+        float totalWeight = 0.f;
+        if (bindings[coordinate].empty() || bindings[coordinate].size() > 2)
+            throw std::invalid_argument("bakeSvgSkinDeform: each coordinate needs one or two bone bindings");
+        for (const auto& binding : bindings[coordinate]) {
+            if (binding.boneIndex < 0 || static_cast<std::size_t>(binding.boneIndex) >= bones.size() ||
+                !std::isfinite(binding.weight) || binding.weight < 0.f)
+                throw std::invalid_argument("bakeSvgSkinDeform: invalid bone binding");
+            totalWeight += binding.weight;
+        }
+        if (!(totalWeight > 0.f) || !std::isfinite(totalWeight))
+            throw std::invalid_argument("bakeSvgSkinDeform: binding weights must have a finite positive sum");
+    }
+    for (const auto& frameMatrices : boneWorldPerFrame) {
+        if (frameMatrices.size() != bones.size())
+            throw std::invalid_argument("bakeSvgSkinDeform: every frame needs one matrix per bone");
+        for (const auto& matrix : frameMatrices)
+            for (float component : matrix.elements)
+                if (!std::isfinite(component)) throw std::invalid_argument("bakeSvgSkinDeform: matrices must be finite");
+    }
+    const std::size_t frameCount = boneWorldPerFrame.size();
+    if (rest.size() > kMaximumBakedPathCommands / frameCount ||
+        bones.size() > kMaximumBakedWork / frameCount)
+        throw std::invalid_argument("bakeSvgSkinDeform: requested geometry or matrix work exceeds the offline budget");
+    std::vector<std::vector<BakedPath>> result;
+    result.reserve(boneWorldPerFrame.size());
+    for (const auto& frameMatrices : boneWorldPerFrame) {
+        BakedPath path = rest;
+        std::size_t coordinate = 0;
+        for (auto& command : path) {
+            if (command.type == BakedPathCommandType::Close) {
+                coordinate += 3;
+                continue;
+            }
+            const auto skinPoint = [&](const Vector2& point, std::size_t bindingIndex) {
+                Vector3 source(point.x, point.y, 0.f);
+                Vector3 output{};
+                float totalWeight = 0.f;
+                for (const auto& binding : bindings[bindingIndex]) {
+                    Vector3 transformedPoint = source;
+                    transformedPoint.applyMatrix4(frameMatrices[static_cast<std::size_t>(binding.boneIndex)]);
+                    output.addScaledVector(transformedPoint, binding.weight);
+                    totalWeight += binding.weight;
+                }
+                output.multiplyScalar(1.f / totalWeight);
+                Vector2 solved(output.x, output.y);
+                if (!finite(solved)) throw std::invalid_argument("bakeSvgSkinDeform: skinned point overflowed finite coordinates");
+                return solved;
+            };
+            command.point = skinPoint(command.point, coordinate++);
+            command.control1 = skinPoint(command.control1, coordinate++);
+            command.control2 = skinPoint(command.control2, coordinate++);
+        }
+        result.push_back({std::move(path)});
+    }
+    return result;
+}
+
+std::vector<std::vector<BakedPath>> bakePathPinDeform(
+        const BakedPath& rest, std::span<const PathPin> pins,
+        float stiffnessFalloff, int firstFrame, int lastFrame) {
+    validateFrameRange(firstFrame, lastFrame);
+    validateBakedPath(rest, "bakePathPinDeform");
+    if (pins.empty() || pins.size() > 4096 || !std::isfinite(stiffnessFalloff) || stiffnessFalloff <= 0.f)
+        throw std::invalid_argument("bakePathPinDeform: pins and positive stiffness falloff are required");
+    std::vector<std::array<float, 3>> arc(rest.size());
+    float totalLength = 0.f;
+    Vector2 current{};
+    Vector2 subpathStart{};
+    bool hasCurrent = false;
+    constexpr unsigned arcSamples = 24;
+    const auto cubicPoint = [](const Vector2& p0, const Vector2& p1,
+                               const Vector2& p2, const Vector2& p3, float t) {
+        const float u = 1.f - t;
+        return p0 * (u * u * u) + p1 * (3.f * u * u * t) +
+               p2 * (3.f * u * t * t) + p3 * (t * t * t);
+    };
+    for (std::size_t i = 0; i < rest.size(); ++i) {
+        const auto& command = rest[i];
+        if (command.type == BakedPathCommandType::Close) {
+            if (hasCurrent) {
+                totalLength += current.distanceTo(subpathStart);
+                current = subpathStart;
+            }
+            continue;
+        }
+        if (command.type == BakedPathCommandType::MoveTo) {
+            current = command.point;
+            subpathStart = current;
+            hasCurrent = true;
+            arc[i] = {totalLength, totalLength, totalLength};
+            continue;
+        }
+        if (!hasCurrent) throw std::invalid_argument("bakePathPinDeform: drawing command has no current subpath");
+        std::array<float, arcSamples + 1> sampledLength{};
+        Vector2 previous = current;
+        for (unsigned sample = 1; sample <= arcSamples; ++sample) {
+            const float t = static_cast<float>(sample) / static_cast<float>(arcSamples);
+            const Vector2 point = cubicPoint(current, command.control1, command.control2, command.point, t);
+            sampledLength[sample] = sampledLength[sample - 1] + previous.distanceTo(point);
+            previous = point;
+        }
+        const float segmentStart = totalLength;
+        const auto lengthAt = [&](float t) {
+            const float samplePosition = t * static_cast<float>(arcSamples);
+            const unsigned lower = static_cast<unsigned>(samplePosition);
+            if (lower >= arcSamples) return segmentStart + sampledLength.back();
+            const float fraction = samplePosition - static_cast<float>(lower);
+            return segmentStart + sampledLength[lower] +
+                   (sampledLength[lower + 1] - sampledLength[lower]) * fraction;
+        };
+        arc[i] = {lengthAt(1.f / 3.f), lengthAt(2.f / 3.f), lengthAt(1.f)};
+        totalLength += sampledLength.back();
+        current = command.point;
+    }
+    if (!(totalLength > kEpsilon)) throw std::invalid_argument("bakePathPinDeform: path must have positive arc length");
+    const std::size_t frameCount = static_cast<std::size_t>(lastFrame - firstFrame) + 1;
+    if (rest.size() > kMaximumBakedPathCommands / frameCount ||
+        (rest.size() != 0 && pins.size() > kMaximumBakedWork / frameCount / rest.size()))
+        throw std::invalid_argument("bakePathPinDeform: requested geometry or pin work exceeds the offline budget");
+    for (const auto& pin : pins)
+        if (!std::isfinite(pin.arcLengthT) || pin.arcLengthT < 0.f || pin.arcLengthT > 1.f ||
+            !finite(pin.target) || !finite(pin.oscillation) || !std::isfinite(pin.stiffness) ||
+            pin.stiffness < 0.f || pin.stiffness > 1.f)
+            throw std::invalid_argument("bakePathPinDeform: invalid pin data");
+    std::vector<std::vector<BakedPath>> result;
+    result.reserve(frameCount);
+    for (std::size_t frame = 0; frame < frameCount; ++frame) {
+        const float time = frameCount <= 1 ? 0.f :
+                static_cast<float>(frame) / static_cast<float>(frameCount - 1);
+        BakedPath path = rest;
+        for (std::size_t i = 0; i < path.size(); ++i) {
+            if (path[i].type == BakedPathCommandType::Close) continue;
+            const auto deformPoint = [&](Vector2& point, float arcLength) {
+                const float pointT = arcLength / totalLength;
+                Vector2 displacement{};
+                for (const auto& pin : pins) {
+                    const float distance = std::fabs(pointT - pin.arcLengthT);
+                    const float decay = std::exp(-distance / stiffnessFalloff);
+                    const float targetWeight = pin.stiffness * decay;
+                    const float oscillationWeight = pin.stiffness * (1.f - decay);
+                    const Vector2 animatedTarget = pin.target + pin.oscillation * std::sin(2.f * math::PI * time);
+                    displacement.addScaledVector(pin.target - point, targetWeight);
+                    displacement.addScaledVector(animatedTarget - pin.target, oscillationWeight);
+                }
+                point.add(displacement);
+                if (!finite(point)) throw std::invalid_argument("bakePathPinDeform: deformation overflowed finite coordinates");
+            };
+            deformPoint(path[i].point, arc[i][2]);
+            if (path[i].type == BakedPathCommandType::CubicTo) {
+                deformPoint(path[i].control1, arc[i][0]);
+                deformPoint(path[i].control2, arc[i][1]);
+            }
+        }
+        result.push_back({std::move(path)});
+    }
+    return result;
+}
+
+std::vector<const Layer*> selectCollection(const MotionScene& scene,
+                                           const CollectionSelector& selector) {
+    constexpr std::size_t kMaximumSelectorIds = 100000;
+    if (selector.includeIds.size() > kMaximumSelectorIds ||
+        selector.excludeIds.size() > kMaximumSelectorIds || selector.namePrefix.size() > 4096 ||
+        (selector.visibleAtFrame && *selector.visibleAtFrame < 0) ||
+        static_cast<unsigned>(selector.layerKind) >
+                static_cast<unsigned>(CollectionSelector::LayerKind::Mesh) ||
+        (selector.contentKind &&
+         static_cast<unsigned>(*selector.contentKind) > static_cast<unsigned>(ContentKind::Mesh))) {
+        throw std::invalid_argument("selectCollection: invalid selector criteria or query budget");
+    }
+
+    const auto makeIdSet = [](const std::vector<Layer::Id>& ids, const char* name) {
+        std::unordered_set<Layer::Id> result;
+        result.reserve(ids.size());
+        for (const Layer::Id id : ids) {
+            if (id == Layer::kRoot || !result.insert(id).second)
+                throw std::invalid_argument(std::string("selectCollection: ") + name +
+                                            " IDs must be positive and unique");
+        }
+        return result;
+    };
+    const auto included = makeIdSet(selector.includeIds, "included");
+    const auto excluded = makeIdSet(selector.excludeIds, "excluded");
+
+    std::vector<const Layer*> result;
+    result.reserve(scene.layerCount());
+    for (const Layer& layer : scene.layers()) {
+        if (!included.empty() && !included.contains(layer.id)) continue;
+        if (excluded.contains(layer.id)) continue;
+        if (selector.parentId && layer.parentId != *selector.parentId) continue;
+        if (!selector.namePrefix.empty() &&
+            (layer.name.size() < selector.namePrefix.size() ||
+             layer.name.compare(0, selector.namePrefix.size(), selector.namePrefix) != 0)) continue;
+        if (selector.contentKind && layer.content.kind != *selector.contentKind) continue;
+        switch (selector.layerKind) {
+            case CollectionSelector::LayerKind::Any: break;
+            case CollectionSelector::LayerKind::Null:
+                if (!layer.isNull()) continue;
+                break;
+            case CollectionSelector::LayerKind::Content:
+                if (!layer.isContent() || layer.isMesh()) continue;
+                break;
+            case CollectionSelector::LayerKind::Mesh:
+                if (!layer.isMesh()) continue;
+                break;
+        }
+        if (selector.is3D && layer.is3D != *selector.is3D) continue;
+        if (selector.visibleAtFrame && !layer.visibleAt(*selector.visibleAtFrame)) continue;
+        result.push_back(&layer);
+    }
+    return result;
+}
+
+std::vector<Layer*> instantiateCloner(MotionScene& scene, const Layer& prototype,
+                                     const ClonerSpec& spec, std::string_view idPrefix) {
+    if (spec.count == 0 || spec.count > 10000 || idPrefix.empty() || idPrefix.size() > 4096 ||
+        !finite(spec.offsetStep) || !finite(spec.scaleStep) || !std::isfinite(spec.rotationStepRad) ||
+        !std::isfinite(spec.spiralRadiusStep) || spec.spiralRadiusStep < 0.f ||
+        !std::isfinite(spec.spiralAngleStepRad) || !std::isfinite(spec.timeOffsetSeconds) ||
+        spec.timeOffsetSeconds < 0.f ||
+        !std::isfinite(spec.count > 1 ? spec.timeOffsetSeconds * static_cast<float>(spec.count - 1) : 0.f) ||
+        (spec.pattern == ClonerSpec::Pattern::Grid &&
+         (spec.gridCols <= 0 || static_cast<unsigned>(spec.gridCols) > spec.count)) ||
+        static_cast<unsigned>(spec.pattern) > static_cast<unsigned>(ClonerSpec::Pattern::Spiral))
+        throw std::invalid_argument("instantiateCloner: invalid count, pattern, or transform settings");
+    if (scene.layerCount() + spec.count > 100000)
+        throw std::invalid_argument("instantiateCloner: scene clone budget exceeded");
+    const std::size_t requestedKeys = prototype.tracks.position.size() + prototype.tracks.anchor.size() +
+        prototype.tracks.scale.size() + prototype.tracks.rotation.size() +
+        prototype.tracks.orientation.size() + prototype.tracks.opacity.size();
+    if (requestedKeys != 0 && requestedKeys > kMaximumBakedFrames / spec.count)
+        throw std::invalid_argument("instantiateCloner: requested clone tracks exceed the offline key budget");
+
+    const auto shiftTimes = [&](auto& track, float shift) {
+        for (auto& key : track.keys()) key.time += shift;
+    };
+    const auto scaleValue = [&](Vector3& value, const Vector3& factor) {
+        value.x *= factor.x; value.y *= factor.y; value.z *= factor.z;
+    };
+    std::vector<Layer> pending;
+    pending.reserve(spec.count);
+    std::vector<Layer*> result;
+    result.reserve(spec.count);
+    Layer::Id nextId = 1;
+    for (unsigned index = 0; index < spec.count; ++index) {
+        const float i = static_cast<float>(index);
+        Vector3 offset{};
+        float angle = spec.rotationStepRad * i;
+        switch (spec.pattern) {
+            case ClonerSpec::Pattern::Linear:
+                offset = spec.offsetStep * i;
+                break;
+            case ClonerSpec::Pattern::Radial:
+                angle = spec.rotationStepRad * i;
+                offset.set(spec.offsetStep.x * std::cos(angle), spec.offsetStep.x * std::sin(angle),
+                           spec.offsetStep.z * i);
+                break;
+            case ClonerSpec::Pattern::Grid: {
+                const unsigned cols = static_cast<unsigned>(spec.gridCols);
+                offset.set(static_cast<float>(index % cols) * spec.offsetStep.x,
+                           static_cast<float>(index / cols) * spec.offsetStep.y,
+                           static_cast<float>(index / cols) * spec.offsetStep.z);
+                angle = spec.rotationStepRad * i;
+                break;
+            }
+            case ClonerSpec::Pattern::Spiral: {
+                const float spiralAngle = spec.spiralAngleStepRad * i;
+                const float radius = spec.spiralRadiusStep * i;
+                offset.set(radius * std::cos(spiralAngle), radius * std::sin(spiralAngle),
+                           spec.offsetStep.z * i);
+                angle = spiralAngle;
+                break;
+            }
+        }
+        const Vector3 scaleFactor(std::pow(spec.scaleStep.x, i), std::pow(spec.scaleStep.y, i),
+                                  std::pow(spec.scaleStep.z, i));
+        if (!finite(offset) || !finite(scaleFactor) || !std::isfinite(angle))
+            throw std::invalid_argument("instantiateCloner: clone transform overflowed");
+        Layer clone(prototype);
+        for (auto& constraint : clone.constraints) {
+            if (constraint.amountTrack)
+                constraint.amountTrack = std::make_shared<Track<float>>(*constraint.amountTrack);
+        }
+        while (scene.hasLayer(nextId)) {
+            if (nextId == std::numeric_limits<Layer::Id>::max())
+                throw std::invalid_argument("instantiateCloner: no positive layer IDs remain");
+            ++nextId;
+        }
+        clone.id = nextId++;
+        clone.name = std::string(idPrefix) + std::to_string(index);
+        clone.transform.position.add(offset);
+        scaleValue(clone.transform.scale, scaleFactor);
+        clone.transform.rotation.z += angle;
+        Quaternion rotation;
+        rotation.setFromAxisAngle(Vector3(0.f, 0.f, 1.f), angle);
+        clone.transform.orientation.multiplyQuaternions(rotation, clone.transform.orientation);
+        for (auto& key : clone.tracks.position.keys()) key.value.add(offset);
+        for (auto& key : clone.tracks.scale.keys()) scaleValue(key.value, scaleFactor);
+        for (auto& key : clone.tracks.rotation.keys()) key.value.z += angle;
+        for (auto& key : clone.tracks.orientation.keys())
+            key.value.multiplyQuaternions(rotation, key.value);
+        const float timeShift = spec.timeOffsetSeconds * i;
+        shiftTimes(clone.tracks.position, timeShift);
+        shiftTimes(clone.tracks.anchor, timeShift);
+        shiftTimes(clone.tracks.scale, timeShift);
+        shiftTimes(clone.tracks.rotation, timeShift);
+        shiftTimes(clone.tracks.orientation, timeShift);
+        shiftTimes(clone.tracks.opacity, timeShift);
+        const auto finiteTrackTimes = [](const auto& track) {
+            for (const auto& key : track.keys()) if (!std::isfinite(key.time)) return false;
+            return true;
+        };
+        const auto finiteVectorTrack = [&](const Track<Vector3>& track) {
+            for (const auto& key : track.keys())
+                if (!finite(key.value)) return false;
+            return finiteTrackTimes(track);
+        };
+        const auto finiteOrientationTrack = [&](const Track<Quaternion>& track) {
+            for (const auto& key : track.keys())
+                if (!std::isfinite(static_cast<float>(key.value.x)) ||
+                    !std::isfinite(static_cast<float>(key.value.y)) ||
+                    !std::isfinite(static_cast<float>(key.value.z)) ||
+                    !std::isfinite(static_cast<float>(key.value.w))) return false;
+            return finiteTrackTimes(track);
+        };
+        const auto finiteOpacityTrack = [&](const Track<float>& track) {
+            for (const auto& key : track.keys())
+                if (!std::isfinite(key.value)) return false;
+            return finiteTrackTimes(track);
+        };
+        if (!finite(clone.transform.position) || !finite(clone.transform.anchor) ||
+            !finite(clone.transform.scale) || !finite(clone.transform.rotation) ||
+            !std::isfinite(clone.transform.opacity) ||
+            !std::isfinite(static_cast<float>(clone.transform.orientation.x)) ||
+            !std::isfinite(static_cast<float>(clone.transform.orientation.y)) ||
+            !std::isfinite(static_cast<float>(clone.transform.orientation.z)) ||
+            !std::isfinite(static_cast<float>(clone.transform.orientation.w)) ||
+            !finiteVectorTrack(clone.tracks.position) || !finiteVectorTrack(clone.tracks.anchor) ||
+            !finiteVectorTrack(clone.tracks.scale) || !finiteVectorTrack(clone.tracks.rotation) ||
+            !finiteOrientationTrack(clone.tracks.orientation) || !finiteOpacityTrack(clone.tracks.opacity))
+            throw std::invalid_argument("instantiateCloner: transformed clone data exceeds finite range");
+        pending.push_back(std::move(clone));
+    }
+    for (Layer& clone : pending) result.push_back(&scene.addLayer(std::move(clone)));
+    return result;
 }
 
 std::vector<BakedPath> expandPathRepeater(const BakedPath& path,

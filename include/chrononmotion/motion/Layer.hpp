@@ -92,6 +92,13 @@ namespace chrononmotion::motion {
         [[nodiscard]] float endTime() const;
     };
 
+    /// A timed handoff into another coordinate space. The first switch starts
+    /// from the layer's authored parentId; each later switch selects a new one.
+    struct SpaceSwitchPoint {
+        float seconds{0.f};
+        std::uint32_t parentId{0};
+    };
+
     /// The renderer-facing half of a mesh layer.
     ///
     /// Chronon still owns the model's bytes; this side carries only the opaque
@@ -140,6 +147,7 @@ namespace chrononmotion::motion {
         LayerTracks tracks{};
         std::vector<ConstraintSpec> constraints{};
         std::vector<DriverSpec> drivers{};
+        std::vector<SpaceSwitchPoint> spaceSwitches{};
 
         Layer() = default;
         Layer(Id id, std::string name);

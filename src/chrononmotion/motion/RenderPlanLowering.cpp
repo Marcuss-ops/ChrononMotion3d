@@ -31,6 +31,25 @@ bool matrixFinite(const Matrix4& matrix) {
                        [](float value) { return std::isfinite(value); });
 }
 
+// Chronon3D reconstructs camera rotation with glm::quat(euler), whose order is
+// qZ * qY * qX. The motion library's Euler extraction uses a different order;
+// serialize the inverse of Chronon3D's actual constructor instead.
+std::array<float, 3> chrononCameraEuler(const Matrix4& rotation) {
+    const auto& m = rotation.elements; // column-major storage
+    const float sinY = std::clamp(-m[2], -1.f, 1.f); // -row 2, column 0
+    const float y = std::asin(sinY);
+    const float cosY = std::cos(y);
+    float x = 0.f;
+    float z = 0.f;
+    if (std::abs(cosY) > 1e-6f) {
+        x = std::atan2(m[6], m[10]); // row 2, column 1 / row 2, column 2
+        z = std::atan2(m[1], m[0]);  // row 1, column 0 / row 0, column 0
+    } else {
+        x = std::atan2(sinY * m[4], m[5]); // deterministic solution with z = 0
+    }
+    return {x, y, z};
+}
+
 bool close(float a, float b) {
     return std::abs(a - b) <= 1e-4f * std::max({1.f, std::abs(a), std::abs(b)});
 }
@@ -313,8 +332,14 @@ RenderPlan lowerSamplesToRenderPlan(
         ensureFinite(camera.near, "camera near plane");
         ensureFinite(camera.far, "camera far plane");
         ensureFinite(camera.zoom, "camera zoom");
+        ensureFinite(camera.dof_focus_distance, "camera depth-of-field focus distance");
+        ensureFinite(camera.dof_aperture, "camera depth-of-field aperture");
+        ensureFinite(camera.dof_max_blur, "camera depth-of-field maximum blur");
         if (camera.fov_deg < 10.f || camera.fov_deg > 120.f || camera.near <= 0.f ||
-            camera.far <= camera.near || camera.zoom <= 0.f || camera.type != "perspective")
+            camera.far <= camera.near || camera.zoom <= 0.f || camera.type != "perspective" ||
+            camera.dof_focus_distance <= 0.f || camera.dof_focus_distance > 10'000'000.f ||
+            camera.dof_aperture < 0.f || camera.dof_aperture > 1.f ||
+            camera.dof_max_blur < 0.f || camera.dof_max_blur > 256.f)
             throw std::invalid_argument("lowerToRenderPlan: camera projection values are invalid");
     }
 
@@ -648,6 +673,13 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             pose.hasTarget = false;
             pose.roll = 0.f;
             const auto camera = lowerCameraPose(pose, resolvedOptions.camera->near, resolvedOptions.camera->far);
+            const auto& baseCamera = *resolvedOptions.camera;
+            if (camera.dof_enabled != baseCamera.dof_enabled ||
+                !close(camera.dof_focus_distance, baseCamera.dof_focus_distance) ||
+                !close(camera.dof_aperture, baseCamera.dof_aperture) ||
+                !close(camera.dof_max_blur, baseCamera.dof_max_blur))
+                throw std::invalid_argument(
+                    "lowerToRenderPlan: animated camera depth of field is not representable by the RenderPlan camera animation contract");
             const chronon3d::Frame keyFrame{static_cast<std::int64_t>(frame)};
             positionX.push_back(makePlanKeyframe(keyFrame, {camera.position[0]}));
             positionY.push_back(makePlanKeyframe(keyFrame, {camera.position[1]}));
@@ -697,10 +729,18 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     if (pose.hasTarget || pose.roll != 0.f)
         throw std::invalid_argument(
             "lowerCameraPose: resolve look-at and roll into orientation before lowering; RenderPlan has no target/roll metadata channels");
-    if (pose.focalLength != 0.f || pose.aperture != 0.f ||
-        pose.focusDistance != 0.f || pose.fStop != 0.f)
+    if (pose.focalLength != 0.f || pose.fStop != 0.f)
         throw std::invalid_argument(
-            "lowerCameraPose: Chronon3D RenderPlan does not represent authored focal length or depth-of-field lens values");
+            "lowerCameraPose: Chronon3D RenderPlan does not represent authored focal length or f-stop lens values");
+    if (!std::isfinite(pose.aperture) || pose.aperture < 0.f || pose.aperture > 1.f ||
+        !std::isfinite(pose.focusDistance) || pose.focusDistance < 0.f || pose.focusDistance > 10'000'000.f)
+        throw std::invalid_argument(
+            "lowerCameraPose: depth-of-field aperture and focus distance are outside the RenderPlan contract");
+    const bool depthOfFieldAuthored = pose.aperture != 0.f || pose.focusDistance != 0.f;
+    const bool depthOfFieldEnabled = pose.aperture > 0.f;
+    if (depthOfFieldEnabled && pose.focusDistance <= 0.f)
+        throw std::invalid_argument(
+            "lowerCameraPose: depth of field with an aperture requires a positive focus distance");
     // CameraRig sampling resolves look-at and roll into orientation. The public
     // pose helper rejects unresolved authoring metadata so direct calls cannot
     // silently drop those fields.
@@ -712,14 +752,19 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     orientation.normalize();
     Matrix4 rotation;
     rotation.makeRotationFromQuaternion(orientation);
-    Euler euler;
-    euler.setFromRotationMatrix(rotation);
+    const auto euler = chrononCameraEuler(rotation);
     CameraPlan camera;
     camera.position = {pose.position.x, pose.position.y, pose.position.z};
-    camera.rotation_deg = {math::radToDeg(euler.x), math::radToDeg(euler.y), math::radToDeg(euler.z)};
+    camera.rotation_deg = {math::radToDeg(euler[0]), math::radToDeg(euler[1]),
+                           math::radToDeg(euler[2])};
     camera.fov_deg = pose.fov;
     camera.near = nearPlane;
     camera.far = farPlane;
+    if (depthOfFieldAuthored) {
+        camera.dof_enabled = depthOfFieldEnabled;
+        camera.dof_aperture = pose.aperture;
+        if (pose.focusDistance > 0.f) camera.dof_focus_distance = pose.focusDistance;
+    }
     return camera;
 }
 

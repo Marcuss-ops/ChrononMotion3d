@@ -51,7 +51,8 @@ namespace chrononmotion::motion {
     /// Lower a sampled camera pose to Chronon3D's camera contract. The pose's
     /// orientation must already include target aiming and roll (as CameraRig::sample
     /// provides); target/roll metadata is not a separate RenderPlan channel.
-    /// Chronon3D has no focal-length/DoF fields, so authored lens values fail closed.
+    /// RenderPlan V2 carries the legacy DoF focus-distance/aperture/max-blur
+    /// contract; physical focal-length/f-stop lens optics remain unrepresentable.
     [[nodiscard]] chronon3d::render_plan::CameraPlan lowerCameraPose(
         const CameraPose& pose, float nearPlane = 1.f, float farPlane = 10000.f);
 

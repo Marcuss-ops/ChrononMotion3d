@@ -557,11 +557,14 @@ provides Chronon3d headers. It evaluates Motion at integer output frames and
 lowers representable world transforms to typed RenderPlan v2/v3 data, explicitly
 opting emitted three-component transforms into the plan's 3D projection contract.
 Content, shape styling and opaque assets remain caller-supplied. Unsupported
-anchors, shear, reflections, singular transforms, camera lens/DoF data not
-represented by the plan, and unsupported scene content fail closed. Camera rig
-poses and V3 static Merge/Morph path operators have dedicated adapter coverage;
-the sibling adapter tests send projected JSON through both canonical schema
-validation and typed decoding, including semantic Morph topology rejection.
+anchors, shear, reflections, singular transforms, physical focal-length/f-stop
+optics, animated camera DoF, and unsupported scene content fail closed. Static
+camera DoF uses the schema-defined focus-distance/aperture/max-blur fields and
+survives JSON emission, canonical decoding, and camera descriptor evaluation.
+Camera rig poses and V3 static Merge/Morph path operators have dedicated adapter
+coverage; the sibling adapter tests send projected JSON through canonical schema
+validation and typed decoding, including semantic Morph topology rejection and
+static DoF camera descriptor preservation.
 Chronon3d consumes RenderPlan data; it does not run Motion solvers or analyze PCM
 in its frame path.
 

@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <string>
 #include <stdexcept>
 #include <vector>
 
@@ -615,6 +616,63 @@ void testTypedChronon3dLowering() {
     const auto parsedSlowedJson = nlohmann::json::parse(slowedJson);
     check(parsedSlowedJson.at("layers").at(0).at("time_remap").at("speed") == 0.5f,
           "V3 emitter writes static video time-remap speed");
+    auto safeAreaPlan = slowedVideo;
+    safeAreaPlan.layers[0].safe_insets = std::array<float, 4>{80.f, 60.f, 220.f, 60.f};
+    check(renderPlanEmissionProblem(safeAreaPlan).empty(),
+          "V3 safe-area insets are a supported typed adapter field");
+    const auto safeAreaJson = nlohmann::json::parse(renderPlanToJson(safeAreaPlan));
+    check(safeAreaJson.at("layers").at(0).at("safe_insets") ==
+              nlohmann::json{{"top", 80.f}, {"right", 60.f}, {"bottom", 220.f}, {"left", 60.f}},
+          "V3 emitter preserves all four safe-area insets by name");
+    auto invalidSafeAreaPlan = safeAreaPlan;
+    invalidSafeAreaPlan.layers[0].safe_insets->at(0) = -1.f;
+    check(!renderPlanEmissionProblem(invalidSafeAreaPlan).empty(),
+          "negative safe-area insets fail closed at the emission boundary");
+    auto legacySafeAreaPlan = safeAreaPlan;
+    legacySafeAreaPlan.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
+    check(!renderPlanEmissionProblem(legacySafeAreaPlan).empty(),
+          "safe-area insets fail closed when attached to the V2 schema");
+
+    chronon3d::render_plan::LayerPlan semanticText;
+    semanticText.id = "semantic";
+    semanticText.type = chronon3d::render_plan::LayerType::Text;
+    semanticText.text = "Hi future";
+    semanticText.style = chronon3d::render_plan::LayerStylePlan{};
+    semanticText.style->font = "fonts/roboto"; // content identity only; no extension to load
+    semanticText.style->font_size = 32.f;
+    semanticText.style->fill = "#FFFFFF";
+    chronon3d::render_plan::TextSelectorPlan selector;
+    selector.unit = "word";
+    selector.shape = "square";
+    selector.amount.keyframes = {{chronon3d::Frame{0}, {0.f}},
+                                 {chronon3d::Frame{8}, {100.f}}};
+    chronon3d::render_plan::TextAnimatorPlan animator;
+    animator.id = "word-highlight";
+    animator.selectors.push_back(selector);
+    chronon3d::render_plan::AnimationTrackPlan textOpacity;
+    textOpacity.property = "opacity";
+    textOpacity.keyframes = {{chronon3d::Frame{0}, {0.f}},
+                             {chronon3d::Frame{8}, {1.f}}};
+    chronon3d::render_plan::AnimationTrackPlan textColor;
+    textColor.property = "fill_color";
+    textColor.keyframes = {{chronon3d::Frame{0}, {1.f, .7f, 0.f, 1.f}}};
+    animator.properties = {textOpacity, textColor};
+    semanticText.text_animators.push_back(animator);
+    auto semanticPlan = slowedVideo;
+    semanticPlan.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
+    semanticPlan.layers = {semanticText};
+    check(renderPlanEmissionProblem(semanticPlan).empty(),
+          "V3 semantic text selectors and property tracks are emit-able");
+    const auto semanticJson = nlohmann::json::parse(renderPlanToJson(semanticPlan));
+    check(semanticJson.at("layers").at(0).at("text_animators").at(0)
+              .at("selectors").at(0).at("unit") == "word" &&
+          semanticJson.at("layers").at(0).at("text_animators").at(0)
+              .at("properties").at(1).at("property") == "fill_color",
+          "V3 emitter preserves text unit selection and authored property order");
+    auto v2TextAnimatorPlan = semanticPlan;
+    v2TextAnimatorPlan.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
+    check(!renderPlanEmissionProblem(v2TextAnimatorPlan).empty(),
+          "text animators fail closed under the frozen V2 contract");
     check(renderPlanToJson(slowedVideo) == slowedJson,
           "time-remap JSON emission is byte-for-byte deterministic");
 
@@ -638,6 +696,36 @@ void testTypedChronon3dLowering() {
     check(parsedAnimatedRemap.at("layers").at(0).at("time_remap").at("animation")
               .at("keyframes").at(15).at("value") == 10.f,
           "V3 emitter preserves scalar time-remap keyframes");
+
+    auto cameraDofPlan = slowedVideo;
+    cameraDofPlan.camera = chronon3d::render_plan::CameraPlan{};
+    cameraDofPlan.camera->dof_enabled = true;
+    cameraDofPlan.camera->dof_focus_distance = 425.f;
+    cameraDofPlan.camera->dof_aperture = 0.035f;
+    cameraDofPlan.camera->dof_max_blur = 18.f;
+    check(renderPlanEmissionProblem(cameraDofPlan).empty(),
+          "camera depth-of-field fields are part of the typed RenderPlan wire contract");
+    const auto cameraDofJson = nlohmann::json::parse(renderPlanToJson(cameraDofPlan));
+    check(cameraDofJson.at("camera").at("dof").at("enabled") == true,
+          "V2/V3 camera emission preserves the DoF enabled flag");
+    checkNear(cameraDofJson.at("camera").at("dof").at("focus_distance").get<float>(),
+              425.f, 1e-6f, "V2/V3 camera emission preserves the DoF focus distance");
+    checkNear(cameraDofJson.at("camera").at("dof").at("aperture").get<float>(),
+              0.035f, 1e-6f, "V2/V3 camera emission preserves the DoF aperture");
+    checkNear(cameraDofJson.at("camera").at("dof").at("max_blur").get<float>(),
+              18.f, 1e-6f, "V2/V3 camera emission preserves the DoF maximum blur");
+    const std::string cameraDofText = renderPlanToJson(cameraDofPlan);
+    check(renderPlanToJson(cameraDofPlan) == cameraDofText,
+          "camera depth-of-field JSON emission is byte-for-byte deterministic");
+    auto invalidCameraDofPlan = cameraDofPlan;
+    invalidCameraDofPlan.camera->dof_aperture = 2.8f;
+    check(!renderPlanEmissionProblem(invalidCameraDofPlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidCameraDofPlan); }),
+          "camera depth-of-field values outside Chronon3D's contract fail closed");
+    auto defaultCameraPlan = slowedVideo;
+    defaultCameraPlan.camera = chronon3d::render_plan::CameraPlan{};
+    check(!nlohmann::json::parse(renderPlanToJson(defaultCameraPlan)).at("camera").contains("dof"),
+          "default camera optics remain omitted to preserve canonical compact JSON");
 
     auto legacyVideoOptions = videoOptions;
     legacyVideoOptions.contentLayers.clear();
@@ -686,6 +774,21 @@ void testTypedChronon3dLowering() {
           "camera rig lowers to a typed base projection and dense camera tracks");
     check(cameraPlan.camera_animation->front().keyframes.back().value.front() == 3.f,
           "camera position animation samples the final authored rig pose");
+    CameraRig dofRig(24, 50.f, 16.f / 9.f, 0.1f, 2000.f);
+    dofRig.setPosition({1.f, 2.f, -8.f}).setAperture(0.035f).setFocusDistance(425.f);
+    auto dofCameraOptions = cameraOptions;
+    dofCameraOptions.cameraRig = &dofRig;
+    const auto loweredDofCamera = lowerToRenderPlan(cameraScene, dofCameraOptions);
+    check(loweredDofCamera.camera && loweredDofCamera.camera->dof_enabled &&
+          loweredDofCamera.camera->dof_aperture == 0.035f &&
+          loweredDofCamera.camera->dof_focus_distance == 425.f,
+          "CameraRig camera lowering transfers supported static depth-of-field optics");
+    CameraRig invalidDofRig(25, 50.f, 16.f / 9.f, 0.1f, 2000.f);
+    invalidDofRig.setAperture(2.8f).setFocusDistance(425.f);
+    auto invalidDofCameraOptions = cameraOptions;
+    invalidDofCameraOptions.cameraRig = &invalidDofRig;
+    check(throwsInvalid([&] { (void)lowerToRenderPlan(cameraScene, invalidDofCameraOptions); }),
+          "CameraRig camera lowering rejects aperture values outside Chronon3D RenderPlan bounds");
     check(cameraPlan.canvas.duration.integral() == 4,
           "camera animation extends the composition duration when its keys outlive scene content");
 
@@ -732,9 +835,38 @@ void testTypedChronon3dLowering() {
     checkNear(camera.fov_deg, 50.f, 1e-6f, "camera pose lowering maps typed projection parameters");
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 2.f, 1.f); }),
           "camera lowering rejects an invalid clipping interval");
+    cameraPose.aperture = 0.04f;
+    cameraPose.focusDistance = 480.f;
+    const auto dofCamera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
+    check(dofCamera.dof_enabled && dofCamera.dof_aperture == 0.04f &&
+          dofCamera.dof_focus_distance == 480.f,
+          "camera pose lowering preserves the RenderPlan V2 depth-of-field contract");
+    cameraPose.focalLength = 50.f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "camera lowering rejects authored focal-length metadata without an equivalent RenderPlan lens contract");
+    cameraPose.focalLength = 0.f;
+    cameraPose.fStop = 2.8f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "camera lowering rejects authored physical f-stop metadata without an equivalent RenderPlan lens contract");
+    cameraPose.fStop = 0.f;
     cameraPose.aperture = 2.8f;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
-          "camera lowering rejects unsupported authored depth-of-field lens data");
+          "camera lowering rejects depth-of-field values outside the RenderPlan schema bounds");
+    cameraPose.aperture = 0.04f;
+    cameraPose.focusDistance = 480.f;
+    cameraPose.focalLength = 0.f;
+    cameraPose.fStop = 0.f;
+    const auto loweredCameraPoseDof = lowerCameraPose(cameraPose, 0.1f, 2000.f);
+    auto cameraOnlyScene = MotionScene("camera DoF parity", 30.f);
+    cameraOnlyScene.evaluate(0);
+    CameraRig animatedDofRig(26, 50.f, 16.f / 9.f, 0.1f, 2000.f);
+    animatedDofRig.setPosition({0.f, 0.f, -8.f}).setAperture(0.04f).setFocusDistance(480.f);
+    animatedDofRig.apertureTrack().add(0.f, 0.04f).add(1.f, 0.06f);
+    RenderPlanLoweringOptions animatedDofOptions;
+    animatedDofOptions.cameraRig = &animatedDofRig;
+    check(throwsInvalid([&] { (void)lowerToRenderPlan(cameraOnlyScene, animatedDofOptions); }),
+          "camera lowering rejects animated depth-of-field rather than silently freezing it at frame zero");
+    (void)loweredCameraPoseDof;
     check(throwsInvalid([&] {
         const std::array<BakedPath, 2> missingIdentity{
             parseSvgPath("M8 0 L13 0"), parseSvgPath("M16 0 L21 0")};

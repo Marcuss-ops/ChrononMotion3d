@@ -6,12 +6,15 @@
 #define CHRONONMOTION_MOTION_OFFLINE_BAKING_HPP
 
 #include "chrononmotion/math/Box2.hpp"
+#include "chrononmotion/math/Matrix4.hpp"
 #include "chrononmotion/math/Vector2.hpp"
+#include "chrononmotion/motion/Falloff.hpp"
 #include "chrononmotion/motion/Content.hpp"
 #include "chrononmotion/motion/Track.hpp"
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -28,6 +31,11 @@ namespace chrononmotion::motion {
         float damping{0.02f};
         unsigned iterations{8};
         float fps{60.f};
+        float stiffness{0.f}; // Restoring force coefficient toward authored rest points.
+        float mass{1.f}; // Uniform point mass; gravity is acceleration, force/mass is not.
+        Vector2 force{};
+        float drag{0.f}; // Velocity attenuation rate per second, exp(-drag/fps).
+        float maxAngle{3.14159265358979323846f}; // Absolute segment deviation from rest, radians.
     };
 
     struct BakedVerletChain {
@@ -225,6 +233,101 @@ namespace chrononmotion::motion {
                                                    float amount);
     [[nodiscard]] std::vector<BakedPath> bakeSvgPathMorph(
         std::string_view from, std::string_view to, int firstFrame, int lastFrame);
+
+    enum class WaveAxis { X, Y };
+    struct WaveDeformerSpec {
+        WaveAxis axis{WaveAxis::Y};
+        float amplitude{0.1f};
+        float wavelength{1.f};
+        float speed{1.f};
+        float phase{0.f};
+        FalloffField falloff{};
+    };
+    [[nodiscard]] std::vector<BakedPath> bakeWaveDeform(
+        const BakedPath& rest, const WaveDeformerSpec& spec, int firstFrame, int lastFrame,
+        float fps = 30.f);
+
+    struct FieldEffectorSpec {
+        enum class Kind { Attractor, Repulsor, Vortex };
+        Kind kind{Kind::Attractor};
+        Vector2 origin{};
+        float strength{1.f};
+        float falloffRadius{5.f};
+        float coreRadius{0.5f};
+        FalloffField::Kind falloffKind{FalloffField::Kind::Linear};
+        float innerFalloffRadius{0.f};
+    };
+    [[nodiscard]] std::vector<std::vector<Vector2>> bakeFieldSimulation(
+        std::span<const Vector2> restPositions, const FieldEffectorSpec& spec,
+        int firstFrame, int lastFrame, float fps = 30.f);
+    [[nodiscard]] std::vector<std::vector<Vector2>> bakeFieldSimulation(
+        std::span<const Vector2> restPositions, std::span<const FieldEffectorSpec> effectors,
+        int firstFrame, int lastFrame, float fps = 30.f);
+
+    struct SvgBone {
+        Vector2 head{};
+        Vector2 tail{};
+        int parentIndex{-1};
+    };
+    struct SvgSkinBinding {
+        int boneIndex{0};
+        float weight{1.f};
+    };
+    [[nodiscard]] std::vector<std::vector<BakedPath>> bakeSvgSkinDeform(
+        const BakedPath& rest, std::span<const SvgBone> bones,
+        std::span<const std::vector<SvgSkinBinding>> bindings,
+        std::span<const std::vector<Matrix4>> boneWorldPerFrame,
+        int firstFrame, int lastFrame);
+
+    struct PathPin {
+        float arcLengthT{0.f};
+        Vector2 target{};
+        float stiffness{1.f};
+        Vector2 oscillation{}; // displacement amplitude, applied as sin(2*pi*t)
+    };
+    [[nodiscard]] std::vector<std::vector<BakedPath>> bakePathPinDeform(
+        const BakedPath& rest, std::span<const PathPin> pins,
+        float stiffnessFalloff, int firstFrame, int lastFrame);
+
+    /// A deterministic query over the authored layer collection. Criteria are
+    /// intersected; an empty includeIds list means all IDs, and excludeIds always
+    /// wins. Results retain MotionScene insertion order. This is authoring data
+    /// only and does not depend on a renderer or a render-time visibility state.
+    struct CollectionSelector {
+        enum class LayerKind { Any, Null, Content, Mesh };
+
+        std::vector<std::uint32_t> includeIds{};
+        std::vector<std::uint32_t> excludeIds{};
+        std::optional<std::uint32_t> parentId{};
+        std::string namePrefix{};
+        std::optional<ContentKind> contentKind{};
+        LayerKind layerKind{LayerKind::Any};
+        std::optional<bool> is3D{};
+        std::optional<int> visibleAtFrame{};
+    };
+
+    /// Select layers matching every populated criterion. Invalid selector data
+    /// (root IDs, duplicate IDs, oversized lists/prefixes, negative frame, or an
+    /// unknown enum value) is rejected instead of producing an ambiguous query.
+    [[nodiscard]] std::vector<const Layer*> selectCollection(
+        const MotionScene& scene, const CollectionSelector& selector);
+
+    struct ClonerSpec {
+        enum class Pattern { Linear, Radial, Grid, Spiral };
+
+        unsigned count{1};
+        Pattern pattern{Pattern::Linear};
+        Vector3 offsetStep{};
+        Vector3 scaleStep{1.f, 1.f, 1.f};
+        float rotationStepRad{0.f};
+        int gridCols{0};
+        float spiralRadiusStep{0.2f};
+        float spiralAngleStepRad{0.4f};
+        float timeOffsetSeconds{0.f};
+    };
+    [[nodiscard]] std::vector<Layer*> instantiateCloner(
+        MotionScene& scene, const Layer& prototype, const ClonerSpec& spec,
+        std::string_view idPrefix);
 
     struct RepeaterSpec {
         std::uint32_t copies{1};

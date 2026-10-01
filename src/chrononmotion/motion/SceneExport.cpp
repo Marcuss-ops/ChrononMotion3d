@@ -365,6 +365,16 @@ namespace chrononmotion::motion {
                 case ConstraintKind::CopyPosition: return "\"copyPosition\"";
                 case ConstraintKind::CopyRotation: return "\"copyRotation\"";
                 case ConstraintKind::CopyScale: return "\"copyScale\"";
+                case ConstraintKind::Parent: return "\"parent\"";
+                case ConstraintKind::Orient: return "\"orient\"";
+                case ConstraintKind::Point: return "\"point\"";
+                case ConstraintKind::StretchTo: return "\"stretchTo\"";
+                case ConstraintKind::LimitPosition: return "\"limitPosition\"";
+                case ConstraintKind::LimitRotation: return "\"limitRotation\"";
+                case ConstraintKind::LimitScale: return "\"limitScale\"";
+                case ConstraintKind::DampedAim: return "\"dampedAim\"";
+                case ConstraintKind::SurfaceAttach: return "\"surfaceAttach\"";
+                case ConstraintKind::LookAtWithRoll: return "\"lookAtWithRoll\"";
             }
             return "\"aim\"";
         }
@@ -407,10 +417,28 @@ namespace chrononmotion::motion {
             writer.number(constraint.distance);
             writer.key("amount");
             writer.number(constraint.amount);
+            if (constraint.amountTrack) {
+                writer.key("amountTrack");
+                writeTrackBody(writer, *constraint.amountTrack);
+            }
             writer.key("progress");
             writer.number(constraint.progress);
             writer.key("orientToPath");
             writer.boolean(constraint.orientToPath);
+            if (constraint.kind == ConstraintKind::DampedAim) { writer.key("damping"); writer.number(constraint.damping); }
+            if (constraint.kind == ConstraintKind::LookAtWithRoll) { writer.key("roll"); writer.number(constraint.roll); }
+            if (constraint.kind == ConstraintKind::SurfaceAttach) {
+                writer.key("surfaceNormal"); writeVector3(writer, constraint.surfaceNormal);
+                writer.key("surfaceOffset"); writeVector3(writer, constraint.surfaceOffset);
+            }
+            if (constraint.kind == ConstraintKind::StretchTo) {
+                writer.key("restLength"); writer.number(constraint.restLength);
+            }
+            if (constraint.kind == ConstraintKind::LimitPosition || constraint.kind == ConstraintKind::LimitRotation ||
+                constraint.kind == ConstraintKind::LimitScale) {
+                writer.key("minimum"); writeVector3(writer, constraint.minimum);
+                writer.key("maximum"); writeVector3(writer, constraint.maximum);
+            }
 
             // A path is exported as its polyline, not as curve authoring data:
             // this is a record of where the motion went, and the exact control
@@ -562,6 +590,19 @@ namespace chrononmotion::motion {
                 writeConstraint(writer, constraint);
             }
             writer.endArray();
+
+            if (!layer.spaceSwitches.empty()) {
+                writer.key("spaceSwitches");
+                writer.beginArray();
+                for (const auto& point : layer.spaceSwitches) {
+                    writer.item();
+                    writer.beginObject();
+                    writer.key("seconds"); writer.number(point.seconds);
+                    writer.key("parentId"); writer.integer(static_cast<long long>(point.parentId));
+                    writer.endObject();
+                }
+                writer.endArray();
+            }
 
             writer.key("drivers");
             writer.beginArray();

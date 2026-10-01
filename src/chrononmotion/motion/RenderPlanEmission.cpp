@@ -15,8 +15,13 @@
 
 #include "JsonWriter.hpp"
 
+#include <chronon3d/render_plan/color_utils.hpp>
+
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
+#include <initializer_list>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -216,6 +221,237 @@ namespace chrononmotion::motion {
             return {};
         }
 
+        [[nodiscard]] bool oneOf(const std::string& value,
+                                 std::initializer_list<std::string_view> choices) {
+            return std::find(choices.begin(), choices.end(), value) != choices.end();
+        }
+
+        [[nodiscard]] std::optional<std::string> textSpanColorHex(const chronon3d::Color& color);
+
+        [[nodiscard]] bool textTrackValueShape(const AnimationTrackPlan& track,
+                                               std::initializer_list<std::size_t> arities) {
+            if (track.keyframes.empty() || track.keyframes.size() > 65'536) return false;
+            std::vector<std::int64_t> frames;
+            frames.reserve(track.keyframes.size());
+            for (const auto& key : track.keyframes) {
+                if (key.frame.integral() < 0 || key.frame.integral() > 1'000'000 ||
+                    !std::all_of(key.value.begin(), key.value.end(),
+                                 [](float value) { return std::isfinite(value); }) ||
+                    std::find(arities.begin(), arities.end(), key.value.size()) == arities.end())
+                    return false;
+                frames.push_back(key.frame.integral());
+            }
+            std::sort(frames.begin(), frames.end());
+            return std::adjacent_find(frames.begin(), frames.end()) == frames.end();
+        }
+
+        [[nodiscard]] bool textTrackValueShape(const AnimationTrackPlan& track,
+                                               std::size_t arity) {
+            return textTrackValueShape(track,
+                std::initializer_list<std::size_t>{arity});
+        }
+
+        [[nodiscard]] std::string textTrackValueProblem(const AnimationTrackPlan& track) {
+            const std::string& property = track.property;
+            const auto validArity = [&](std::size_t size) {
+                if (property == "position") return size == 2 || size == 3;
+                if (property == "scale") return size >= 1 && size <= 3;
+                if (property == "rotation") return size == 1 || size == 3;
+                if (property == "anchor") return size >= 1 && size <= 3;
+                if (property == "fill_color" || property == "background_color" ||
+                    property == "stroke_color") return size == 4;
+                return size == 1;
+            };
+            if (track.keyframes.empty() || track.keyframes.size() > 65'536)
+                return " has an empty or oversized keyframe list";
+            std::vector<std::int64_t> frames;
+            frames.reserve(track.keyframes.size());
+            for (const auto& key : track.keyframes) {
+                if (key.frame.integral() < 0 || key.frame.integral() > 1'000'000 ||
+                    !validArity(key.value.size()) ||
+                    !std::all_of(key.value.begin(), key.value.end(),
+                                 [](float value) { return std::isfinite(value); }))
+                    return " has keyframes with an invalid frame, non-finite component, or value arity";
+                frames.push_back(key.frame.integral());
+            }
+            std::sort(frames.begin(), frames.end());
+            if (std::adjacent_find(frames.begin(), frames.end()) != frames.end())
+                return " has duplicate keyframe frames";
+            if (property == "character_offset" &&
+                (track.keyframes.size() != 1 || track.keyframes.front().frame.integral() != 0))
+                return " must use exactly one static character_offset keyframe at frame 0";
+            const bool colorProperty = property == "fill_color" || property == "background_color" ||
+                                       property == "stroke_color";
+            for (const auto& key : track.keyframes) {
+                if (key.value.size() == 1) {
+                    const float value = key.value.front();
+                    if ((property == "opacity" && (value < 0.f || value > 1.f)) ||
+                        (property == "baseline_shift" && (value < -1000.f || value > 1000.f)) ||
+                        (property == "skew" && (value < -80.f || value > 80.f)) ||
+                        (property == "skew_axis" && (value < -1'000'000.f || value > 1'000'000.f)) ||
+                        ((property == "background_padding_em" || property == "background_radius_em") &&
+                         (value < 0.f || value > 128.f)) ||
+                        (property == "stroke_width" && (value < 0.f || value > 256.f)) ||
+                        (property == "character_offset" &&
+                         (value < -10'000.f || value > 10'000.f || std::floor(value) != value)))
+                        return " has a property value outside the RenderPlan v3 bounds";
+                }
+                if (colorProperty &&
+                    std::any_of(key.value.begin(), key.value.end(),
+                        [](float component) { return component < 0.f || component > 1.f; }))
+                    return " has a color component outside [0, 1]";
+            }
+            if (property == "opacity" || property == "blur" || property == "tracking") {
+                for (const auto& key : track.keyframes)
+                    if (key.value.front() < 0.f ||
+                        (property == "opacity" && key.value.front() > 1.f))
+                        return " has a property value outside the RenderPlan v3 bounds";
+            }
+            if ((property == "position" || property == "position_x" || property == "position_y" ||
+                 property == "scale" || property == "scale_x" || property == "scale_y" ||
+                 property == "rotation" || property == "anchor") &&
+                std::any_of(track.keyframes.begin(), track.keyframes.end(),
+                    [](const AnimationKeyframePlan& key) {
+                        return std::any_of(key.value.begin(), key.value.end(),
+                            [](float component) { return std::abs(component) > 1'000'000.f; });
+                    }))
+                return " has a component outside the RenderPlan v3 bounds [-1000000, 1000000]";
+            if (property == "rotation" &&
+                std::any_of(track.keyframes.begin(), track.keyframes.end(),
+                    [](const AnimationKeyframePlan& key) { return key.value.size() == 3; }))
+                return " uses a 3-component rotation track, which the text animator compiler does not lower";
+            if (property == "anchor" && track.keyframes.size() > 1)
+                return " uses an animated anchor track, which the text animator compiler does not lower";
+            return {};
+        }
+
+        [[nodiscard]] std::string textAnimatorProblem(const LayerPlan& layer,
+                                                      const std::string& schema) {
+            if (layer.text_animators.empty()) return {};
+            const std::string owner = layerOwner(layer);
+            if (layer.text_animators.size() > 65'536)
+                return owner + " exceeds the RenderPlan v3 text animator count limit";
+            if (layer.type != LayerType::Text)
+                return owner + " carries text animators but is not a text layer";
+            if (schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                return owner + " carries text animators, which require RenderPlan v3";
+            const auto trackIsEmpty = [](const AnimationTrackPlan& track) {
+                return track.keyframes.empty() && track.property.empty() && track.easing == "linear" &&
+                       !track.bezier_curve && !track.spring && track.loop_mode == "none" &&
+                       !track.wiggle && !track.oscillate && !track.random_hold && !track.posterize_time &&
+                       !track.data_feed && !track.audio_react;
+            };
+            std::vector<std::string> animatorIds;
+            for (const auto& animator : layer.text_animators) {
+                if (animator.selectors.empty() || animator.properties.empty())
+                    return owner + " has a text animator without selectors or property tracks";
+                if (!animator.id.empty()) {
+                    if (animator.id.size() > 256 ||
+                        std::find(animatorIds.begin(), animatorIds.end(), animator.id) != animatorIds.end())
+                        return owner + " has a duplicate or oversized text animator id";
+                    animatorIds.push_back(animator.id);
+                }
+                if (animator.selectors.size() > 65'536 || animator.properties.size() > 65'536)
+                    return owner + " exceeds the RenderPlan v3 selector or property count limit";
+                std::vector<std::string> selectorIds;
+                for (const auto& selector : animator.selectors) {
+                    if (!selector.id.empty()) {
+                        if (selector.id.size() > 256 ||
+                            std::find(selectorIds.begin(), selectorIds.end(), selector.id) != selectorIds.end())
+                            return owner + " has a duplicate or oversized text selector id";
+                        selectorIds.push_back(selector.id);
+                    }
+                    if (selector.semantic_id && std::none_of(layer.text_spans.begin(), layer.text_spans.end(),
+                            [&](const auto& span) { return span.semantic_id == selector.semantic_id; }))
+                        return owner + " has a text selector referencing an unknown semantic_id '" +
+                               *selector.semantic_id + "'";
+                    if (selector.semantic_id &&
+                        (selector.semantic_id->empty() || selector.semantic_id->size() > 256))
+                        return owner + " has a text selector semantic_id outside the V3 bounds";
+                    // The closed selector vocabulary is a plan *identity* the emitter
+                    // validates, not shaping: Chronon owns the units (its
+                    // TextSelectorPlan declares the default), and this side only refuses
+                    // a plan that invents one. The glyph unit is spelled through the
+                    // contract's own default rather than re-litigated here.
+                    const std::string contractDefaultUnit = chronon3d::render_plan::TextSelectorPlan{}.unit;
+                    if (!oneOf(selector.unit, {contractDefaultUnit, "grapheme", "character", "word", "line"}) ||
+                        !oneOf(selector.shape, {"square", "ramp_up", "ramp_down", "triangle", "round", "smooth", "wiggly", "noise"}) ||
+                        !oneOf(selector.order, {"forward", "reverse", "from_center", "to_center", "random", "index"}) ||
+                        !oneOf(selector.combine, {"replace", "add", "subtract", "intersect", "min", "max"}))
+                        return owner + " has a text selector with an unsupported unit, shape, order, or combine mode";
+                    if (selector.order == "index" && selector.randomize_order)
+                        return owner + " combines index order with randomize_order";
+                    if ((selector.shape == "wiggly" &&
+                         (!std::isfinite(selector.wiggly_frequency) || selector.wiggly_frequency <= 0.f ||
+                          selector.wiggly_frequency > 1000.f || !std::isfinite(selector.wiggly_amplitude) ||
+                          selector.wiggly_amplitude < 0.f || selector.wiggly_amplitude > 1.f)) ||
+                        (selector.shape != "wiggly" &&
+                         (selector.wiggly_frequency != 1.f || selector.wiggly_amplitude != 0.25f ||
+                          selector.wiggly_seed != 0)) ||
+                        (selector.shape == "noise" &&
+                         (!std::isfinite(selector.noise_frequency) || selector.noise_frequency <= 0.f ||
+                          selector.noise_frequency > 1000.f || !std::isfinite(selector.noise_amplitude) ||
+                          selector.noise_amplitude < 0.f || selector.noise_amplitude > 1.f)) ||
+                        (selector.shape != "noise" &&
+                         (selector.noise_frequency != 1.f || selector.noise_amplitude != 0.25f ||
+                          selector.noise_seed != 0)) ||
+                        (selector.order == "index" && (selector.index_step == 0 || selector.index_step > 1'000'000)))
+                        return owner + " has a text selector outside the RenderPlan v3 bounds";
+                    if ((!selector.start.keyframes.empty() && !textTrackValueShape(selector.start, 1)) ||
+                        (!selector.end.keyframes.empty() && !textTrackValueShape(selector.end, 1)) ||
+                        (!selector.offset.keyframes.empty() && !textTrackValueShape(selector.offset, 1)) ||
+                        (!selector.amount.keyframes.empty() && !textTrackValueShape(selector.amount, 1)))
+                        return owner + " has a malformed text selector track without keyframes";
+                    for (const AnimationTrackPlan* track : {&selector.start, &selector.end,
+                                                             &selector.offset, &selector.amount}) {
+                        if (trackIsEmpty(*track)) continue;
+                        if (!track->property.empty())
+                            return owner + " carries a text selector track property that is ignored by selector position";
+                        if (track->keyframes.size() > 65'536)
+                            return owner + " has an oversized text selector keyframe list";
+                        if (track->loop_mode != "none" || track->spring || track->bezier_curve ||
+                            track->easing != "linear")
+                            return owner + " text selector tracks require baked linear keyframes";
+                        const std::string problem = trackProblem(owner + " text selector track", *track);
+                        if (!problem.empty()) return problem;
+                        if (track->keyframes.empty())
+                            return owner + " has a non-empty text selector track without keyframes";
+                        if (!textTrackValueShape(*track, 1))
+                            return owner + " has a selector track with invalid frames or non-scalar values";
+                    }
+                }
+                std::vector<std::string> seenProperties;
+                for (const AnimationTrackPlan& track : animator.properties) {
+                    if (track.property.empty() || track.keyframes.empty())
+                        return owner + " has an empty text animator property track";
+                    if (!oneOf(track.property, {"position", "position_x", "position_y", "scale",
+                            "scale_x", "scale_y", "opacity", "blur", "tracking", "rotation",
+                            "fill_color", "skew", "skew_axis", "anchor", "baseline_shift",
+                            "background_color", "background_padding_em", "background_radius_em",
+                            "stroke_color", "stroke_width", "character_offset"}))
+                        return owner + " has an unsupported text animator property '" + track.property + "'";
+                    if (track.property == "position_z" || track.property == "scale_z" ||
+                        track.property == "rotation_x" || track.property == "rotation_y" ||
+                        track.property == "rotation_z")
+                        return owner + " has a text animator property that requires 3D semantics not expressible in a text run";
+                    if (std::find(seenProperties.begin(), seenProperties.end(), track.property) != seenProperties.end())
+                        return owner + " has a duplicate text animator property '" + track.property + "'";
+                    seenProperties.push_back(track.property);
+                    if (track.loop_mode != "none" || track.spring || track.bezier_curve || track.wiggle ||
+                        track.oscillate || track.random_hold || track.posterize_time || track.data_feed ||
+                        track.audio_react || track.easing != "linear")
+                        return owner + " text animator properties require baked linear keyframes without track drivers";
+                    const std::string problem = trackProblem(owner + " text animator property '" +
+                                                             track.property + "'", track);
+                    if (!problem.empty()) return problem;
+                    const std::string valueProblem = textTrackValueProblem(track);
+                    if (!valueProblem.empty())
+                        return owner + " text animator property '" + track.property + "'" + valueProblem;
+                }
+            }
+            return {};
+        }
+
         [[nodiscard]] std::string layerProblem(const LayerPlan& layer, const std::string& schema) {
 
             if (layer.id.empty()) return "a layer has no id";
@@ -232,6 +468,9 @@ namespace chrononmotion::motion {
                     return owner + " is a '" + layerTypeName(layer.type) +
                            "' layer, which this emitter does not write";
             }
+
+            if (layer.text_spans.size() > 65'536 || layer.text_animators.size() > 65'536)
+                return owner + " exceeds the RenderPlan v3 text span or animator count limit";
 
             if (layer.type == LayerType::Image && layer.asset.empty()) {
                 return owner + " is an image layer with no asset";
@@ -271,7 +510,70 @@ namespace chrononmotion::motion {
                     }
                 }
             }
-            if (!layer.text_spans.empty()) return owner + " carries text span overrides";
+            if (!layer.text_spans.empty() && schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                return owner + " carries text spans, which require RenderPlan v3";
+            std::size_t previousTextSpanEnd = 0;
+            std::vector<std::string> semanticIds;
+            const auto isUtf8Boundary = [&](std::size_t offset) {
+                return offset == 0 || offset == layer.text.size() ||
+                    (offset < layer.text.size() &&
+                     (static_cast<unsigned char>(layer.text[offset]) & 0xc0U) != 0x80U);
+            };
+            for (const auto& span : layer.text_spans) {
+                if (layer.type != LayerType::Text)
+                    return owner + " carries text spans but is not a text layer";
+                if (span.byte_start < previousTextSpanEnd || span.byte_start >= span.byte_end ||
+                    span.byte_end > layer.text.size() || !isUtf8Boundary(span.byte_start) ||
+                    !isUtf8Boundary(span.byte_end))
+                    return owner + " carries overlapping, unsorted, or out-of-range UTF-8 text spans";
+                previousTextSpanEnd = span.byte_end;
+                if (span.font || span.font_size || span.baseline_shift)
+                    return owner + " carries a text span font, absolute size, or baseline override that V3 does not serialize";
+                if (span.tracking && (!std::isfinite(*span.tracking) ||
+                                      *span.tracking < -1000.f || *span.tracking > 1000.f))
+                    return owner + " carries text span tracking outside [-1000, 1000]";
+            if (span.highlight && !span.highlight->background &&
+                !span.highlight->padding_em && !span.highlight->radius_em)
+                return owner + " carries an empty text highlight style";
+            if (span.font_size_multiplier && (!std::isfinite(*span.font_size_multiplier) ||
+                    *span.font_size_multiplier <= 0.f || *span.font_size_multiplier > 100.f))
+                    return owner + " carries a text span font-size multiplier outside (0, 100]";
+                if (span.semantic_id && (span.semantic_id->empty() || span.semantic_id->size() > 256))
+                    return owner + " carries a text span semantic_id outside the V3 bounds";
+                if (span.semantic_id) {
+                    if (std::find(semanticIds.begin(), semanticIds.end(), *span.semantic_id) != semanticIds.end())
+                        return owner + " carries duplicate text span semantic_id '" + *span.semantic_id + "'";
+                    semanticIds.push_back(*span.semantic_id);
+                }
+                const auto validColor = [](const std::optional<chronon3d::Color>& color) {
+                    return !color || (std::isfinite(color->r) && std::isfinite(color->g) &&
+                        std::isfinite(color->b) && std::isfinite(color->a) &&
+                        color->r >= 0.f && color->r <= 1.f && color->g >= 0.f && color->g <= 1.f &&
+                        color->b >= 0.f && color->b <= 1.f && color->a >= 0.f && color->a <= 1.f);
+                };
+                const auto representableColor = [](const std::optional<chronon3d::Color>& color) {
+                    return !color || textSpanColorHex(*color).has_value();
+                };
+                if (!validColor(span.color) || !representableColor(span.color))
+                    return owner + " carries a non-finite, out-of-range, or non-serializable text span color";
+                if (span.stroke) {
+                    if (!validColor(span.stroke->color) || !representableColor(span.stroke->color))
+                        return owner + " carries an invalid or non-serializable text span stroke color";
+                    if (!std::isfinite(span.stroke->width_em) || span.stroke->width_em < 0.f || span.stroke->width_em > 100.f)
+                        return owner + " carries a text span stroke width outside [0, 100]";
+                    if (span.stroke->dash_period_em && *span.stroke->dash_period_em != 0.f)
+                        return owner + " carries a text span dash pattern that V3 does not serialize";
+                }
+                if (span.highlight) {
+                    if (!span.highlight->background && !span.highlight->padding_em && !span.highlight->radius_em)
+                        return owner + " carries an empty text highlight style";
+                    if (!validColor(span.highlight->background) || !representableColor(span.highlight->background))
+                        return owner + " carries an invalid or non-serializable text highlight color";
+                    for (const auto value : {span.highlight->padding_em, span.highlight->radius_em})
+                        if (value && (!std::isfinite(*value) || *value < 0.f || *value > 100.f))
+                            return owner + " carries text highlight geometry outside [0, 100] em";
+                }
+            }
             if (!layer.font.empty()) {
                 return owner + " carries a normalized font path, which the plan derives from style.font";
             }
@@ -293,8 +595,15 @@ namespace chrononmotion::motion {
             if (layer.skew_angle_deg != 0.f || layer.skew_axis_deg != 0.f) return owner + " carries a skew";
             if (layer.transition_in || layer.transition_out) return owner + " carries a transition";
             if (layer.fill_gradient_animation) return owner + " carries a gradient animation";
-            if (!layer.text_animators.empty()) return owner + " carries text animators";
-            if (layer.safe_insets) return owner + " carries safe insets";
+            const std::string textAnimators = textAnimatorProblem(layer, schema);
+            if (!textAnimators.empty()) return textAnimators;
+            if (layer.safe_insets) {
+                if (schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                    return owner + " carries safe insets, which require RenderPlan v3";
+                for (const float inset : *layer.safe_insets)
+                    if (!std::isfinite(inset) || inset < 0.f || inset > 1'000'000.f)
+                        return owner + " carries safe insets outside the RenderPlan v3 bounds";
+            }
             if (layer.size_dimensions == 3) {
                 return owner + " has a three-component size, which the plan contract cannot express";
             }
@@ -318,6 +627,29 @@ namespace chrononmotion::motion {
         /// The budget fields a plan can carry. `max_temporal_pixels` has a schema
         /// field; the rest are resolution ceilings with no plan representation, so
         /// a caller that lowered them has nowhere to put them.
+        [[nodiscard]] std::string cameraProblem(const CameraPlan& camera) {
+
+            const auto finite = [](float value) { return std::isfinite(value); };
+            for (const float value : camera.position)
+                if (!finite(value)) return "the camera has a non-finite position";
+            for (const float value : camera.rotation_deg)
+                if (!finite(value)) return "the camera has a non-finite rotation";
+            if (camera.type != "perspective" && camera.type != "orthographic")
+                return "the camera has unsupported type '" + camera.type + "'";
+            if (!finite(camera.fov_deg) || camera.fov_deg < 10.f || camera.fov_deg > 120.f)
+                return "the camera has an FOV outside [10, 120] degrees";
+            if (!finite(camera.near) || camera.near <= 0.f || !finite(camera.far) || camera.far <= camera.near)
+                return "the camera has an invalid clipping interval";
+            if (!finite(camera.zoom) || camera.zoom <= 0.f)
+                return "the camera has a non-positive or non-finite zoom";
+            if (!finite(camera.dof_focus_distance) || camera.dof_focus_distance <= 0.f ||
+                camera.dof_focus_distance > 10'000'000.f || !finite(camera.dof_aperture) ||
+                camera.dof_aperture < 0.f || camera.dof_aperture > 1.f ||
+                !finite(camera.dof_max_blur) || camera.dof_max_blur < 0.f || camera.dof_max_blur > 256.f)
+                return "the camera has depth-of-field values outside the RenderPlan contract";
+            return {};
+        }
+
         [[nodiscard]] std::string budgetProblem(const RenderPlan& plan) {
 
             const RenderBudget defaults{};
@@ -355,6 +687,10 @@ namespace chrononmotion::motion {
                 return "the plan carries warnings, which the plan contract cannot express";
             }
             if (plan.temporal_motion_blur) return "the plan carries scene motion blur";
+            if (plan.camera) {
+                const std::string camera = cameraProblem(*plan.camera);
+                if (!camera.empty()) return camera;
+            }
             if (plan.camera_shake) return "the plan carries camera shake";
             if (plan.lighting_rig) return "the plan carries a lighting rig";
             if (plan.audio) return "the plan carries an audio mix";
@@ -431,6 +767,162 @@ namespace chrononmotion::motion {
                 } else {
                     writeFloats(writer, key.value.data(), key.value.size());
                 }
+                writer.endObject();
+            }
+            writer.endArray();
+        }
+
+        [[nodiscard]] std::optional<std::string> textSpanColorHex(const chronon3d::Color& color) {
+            if (!std::isfinite(color.r) || !std::isfinite(color.g) || !std::isfinite(color.b) ||
+                !std::isfinite(color.a) || color.r < 0.f || color.r > 1.f ||
+                color.g < 0.f || color.g > 1.f || color.b < 0.f || color.b > 1.f ||
+                color.a < 0.f || color.a > 1.f)
+                return std::nullopt;
+            const auto quantize = [](float linear) {
+                return static_cast<unsigned int>(std::lround(
+                    chronon3d::render_plan::linear_to_srgb(linear) * 255.f));
+            };
+            const unsigned int channels[] = {quantize(color.r), quantize(color.g),
+                quantize(color.b), static_cast<unsigned int>(std::lround(color.a * 255.f))};
+            constexpr char digits[] = "0123456789ABCDEF";
+            std::string result{"#"};
+            for (const unsigned int channel : channels) {
+                result.push_back(digits[(channel >> 4U) & 0x0fU]);
+                result.push_back(digits[channel & 0x0fU]);
+            }
+            const auto parseChannel = [](char high, char low) {
+                const auto nibble = [](char value) -> unsigned int {
+                    if (value >= '0' && value <= '9') return static_cast<unsigned int>(value - '0');
+                    if (value >= 'A' && value <= 'F') return static_cast<unsigned int>(value - 'A' + 10);
+                    return static_cast<unsigned int>(value - 'a' + 10);
+                };
+                return static_cast<float>((nibble(high) * 16U + nibble(low)) / 255.0);
+            };
+            const float decoded[] = {
+                chronon3d::render_plan::srgb_to_linear(parseChannel(result[1], result[2])),
+                chronon3d::render_plan::srgb_to_linear(parseChannel(result[3], result[4])),
+                chronon3d::render_plan::srgb_to_linear(parseChannel(result[5], result[6])),
+                parseChannel(result[7], result[8])};
+            if (std::abs(decoded[0] - color.r) > 1.0e-6f ||
+                std::abs(decoded[1] - color.g) > 1.0e-6f ||
+                std::abs(decoded[2] - color.b) > 1.0e-6f ||
+                std::abs(decoded[3] - color.a) > 1.0e-6f)
+                return std::nullopt;
+            return result;
+        }
+
+        void writeTextSpans(detail::Writer& writer,
+                            const std::vector<chronon3d::TextSpanOverride>& spans) {
+            writer.beginArray();
+            for (const auto& span : spans) {
+                writer.item();
+                writer.beginObject();
+                writer.key("start"); writer.unsignedInteger(span.byte_start);
+                writer.key("end"); writer.unsignedInteger(span.byte_end);
+                if (span.semantic_id) { writer.key("semantic_id"); writer.text(*span.semantic_id); }
+                const bool hasStyle = span.color || span.font_size_multiplier || span.tracking ||
+                                      span.stroke || span.highlight;
+                if (hasStyle) { writer.key("style"); writer.beginObject(); }
+                if (span.color) {
+                    writer.key("color");
+                    writer.text(*textSpanColorHex(*span.color));
+                }
+                if (span.font_size_multiplier) { writer.key("font_size_mult"); writer.number(*span.font_size_multiplier); }
+                if (span.tracking) { writer.key("tracking"); writer.number(*span.tracking); }
+                if (span.stroke) {
+                    writer.key("stroke"); writer.beginObject();
+                    if (span.stroke->color) {
+                        writer.key("color"); writer.text(*textSpanColorHex(*span.stroke->color));
+                    }
+                    writer.key("width_em"); writer.number(span.stroke->width_em);
+                    writer.endObject();
+                }
+                if (span.highlight) {
+                    writer.key("highlight"); writer.beginObject();
+                    if (span.highlight->background) {
+                        writer.key("background"); writer.text(*textSpanColorHex(*span.highlight->background));
+                    }
+                    if (span.highlight->padding_em) { writer.key("padding_em"); writer.number(*span.highlight->padding_em); }
+                    if (span.highlight->radius_em) { writer.key("radius_em"); writer.number(*span.highlight->radius_em); }
+                    writer.endObject();
+                }
+                if (hasStyle) writer.endObject();
+                writer.endObject();
+            }
+            writer.endArray();
+        }
+
+        void writeTextSelectorTrack(detail::Writer& writer, const AnimationTrackPlan& track) {
+            writer.beginObject();
+            writer.key("easing");
+            writer.text(track.easing);
+            writer.key("keyframes");
+            writeKeyframes(writer, track.keyframes, true);
+            writer.endObject();
+        }
+
+        void writeTextAnimators(detail::Writer& writer,
+                                const std::vector<chronon3d::render_plan::TextAnimatorPlan>& animators) {
+            writer.beginArray();
+            for (const auto& animator : animators) {
+                writer.item();
+                writer.beginObject();
+                if (!animator.id.empty()) {
+                    writer.key("id");
+                    writer.text(animator.id);
+                }
+                writer.key("selectors");
+                writer.beginArray();
+                for (const auto& selector : animator.selectors) {
+                    writer.item();
+                    writer.beginObject();
+                    if (!selector.id.empty()) { writer.key("id"); writer.text(selector.id); }
+                    if (selector.semantic_id) { writer.key("semantic_id"); writer.text(*selector.semantic_id); }
+                    writer.key("unit"); writer.text(selector.unit);
+                    writer.key("shape"); writer.text(selector.shape);
+                    writer.key("order"); writer.text(selector.order);
+                    writer.key("combine"); writer.text(selector.combine);
+                    if (!selector.start.keyframes.empty()) {
+                        writer.key("start"); writeTextSelectorTrack(writer, selector.start);
+                    }
+                    if (!selector.end.keyframes.empty()) {
+                        writer.key("end"); writeTextSelectorTrack(writer, selector.end);
+                    }
+                    if (!selector.offset.keyframes.empty()) {
+                        writer.key("offset"); writeTextSelectorTrack(writer, selector.offset);
+                    }
+                    if (!selector.amount.keyframes.empty()) {
+                        writer.key("amount"); writeTextSelectorTrack(writer, selector.amount);
+                    }
+                    writer.key("exclude_spaces"); writer.boolean(selector.exclude_spaces);
+                    writer.key("randomize_order"); writer.boolean(selector.randomize_order);
+                    if (selector.random_seed != 0) { writer.key("random_seed"); writer.unsignedInteger(selector.random_seed); }
+                    if (selector.shape == "wiggly") {
+                        writer.key("wiggly_frequency"); writer.number(selector.wiggly_frequency);
+                        writer.key("wiggly_amplitude"); writer.number(selector.wiggly_amplitude);
+                        if (selector.wiggly_seed != 0) { writer.key("wiggly_seed"); writer.unsignedInteger(selector.wiggly_seed); }
+                    }
+                    if (selector.shape == "noise") {
+                        writer.key("noise_frequency"); writer.number(selector.noise_frequency);
+                        writer.key("noise_amplitude"); writer.number(selector.noise_amplitude);
+                        if (selector.noise_seed != 0) { writer.key("noise_seed"); writer.unsignedInteger(selector.noise_seed); }
+                    }
+                    if (selector.order == "index") { writer.key("index_step"); writer.unsignedInteger(selector.index_step); }
+                    writer.endObject();
+                }
+                writer.endArray();
+                writer.key("properties");
+                writer.beginArray();
+                for (const auto& track : animator.properties) {
+                    writer.item();
+                    writer.beginObject();
+                    writer.key("property"); writer.text(track.property);
+                    writer.key("easing"); writer.text(track.easing);
+                    writer.key("keyframes");
+                    writeKeyframes(writer, track.keyframes, false);
+                    writer.endObject();
+                }
+                writer.endArray();
                 writer.endObject();
             }
             writer.endArray();
@@ -550,6 +1042,19 @@ namespace chrononmotion::motion {
                 writer.key("depth_offset");
                 writer.number(layer.depth_offset);
             }
+            if (layer.safe_insets) {
+                writer.key("safe_insets");
+                writer.beginObject();
+                writer.key("top");
+                writer.number((*layer.safe_insets)[0]);
+                writer.key("right");
+                writer.number((*layer.safe_insets)[1]);
+                writer.key("bottom");
+                writer.number((*layer.safe_insets)[2]);
+                writer.key("left");
+                writer.number((*layer.safe_insets)[3]);
+                writer.endObject();
+            }
             if (layer.radius) {
                 writer.key("radius");
                 writer.number(*layer.radius);
@@ -564,6 +1069,14 @@ namespace chrononmotion::motion {
                 writer.text(layer.text);
                 writer.key("style");
                 writeStyle(writer, *layer.style);
+            }
+            if (!layer.text_spans.empty()) {
+                writer.key("spans");
+                writeTextSpans(writer, layer.text_spans);
+            }
+            if (!layer.text_animators.empty()) {
+                writer.key("text_animators");
+                writeTextAnimators(writer, layer.text_animators);
             }
             if (layer.animation) {
                 writer.key("animation");
@@ -617,6 +1130,21 @@ namespace chrononmotion::motion {
             writer.number(camera.far);
             writer.key("zoom");
             writer.number(camera.zoom);
+            const CameraPlan defaults{};
+            if (camera.dof_enabled || camera.dof_focus_distance != defaults.dof_focus_distance ||
+                camera.dof_aperture != defaults.dof_aperture || camera.dof_max_blur != defaults.dof_max_blur) {
+                writer.key("dof");
+                writer.beginObject();
+                writer.key("enabled");
+                writer.boolean(camera.dof_enabled);
+                writer.key("focus_distance");
+                writer.number(camera.dof_focus_distance);
+                writer.key("aperture");
+                writer.number(camera.dof_aperture);
+                writer.key("max_blur");
+                writer.number(camera.dof_max_blur);
+                writer.endObject();
+            }
             writer.endObject();
         }
 

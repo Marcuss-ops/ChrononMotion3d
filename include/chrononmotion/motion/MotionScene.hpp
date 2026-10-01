@@ -126,6 +126,8 @@ namespace chrononmotion::motion {
         /// content side; only the asset id and the data-only handles travel.
         Layer& addMesh(Layer::Id id, std::string name, MeshAttachment mesh,
                        Layer::Id parentId = Layer::kRoot);
+        /// Allocate the smallest currently unused positive layer id.
+        [[nodiscard]] Layer::Id allocateLayerId();
 
         Light& addLight(std::unique_ptr<Light> light);
         AmbientLight& addAmbientLight(Layer::Id id, std::string name = "AmbientLight",
@@ -226,10 +228,10 @@ namespace chrononmotion::motion {
         [[nodiscard]] LinkResolver linkResolver(
                 std::vector<std::pair<Layer::Id, TrackChannel>>& visiting, bool rate) const;
 
-        /// Reconcile the `Object3D` parent/child graph with the authored
-        /// `parentId` links. The graph is the one hierarchy; `parentId` is its
-        /// id-addressed authoring form, kept in sync at every order rebuild so
-        /// `parent`/`children`/`traverse`/`matrixWorld` are never a second truth.
+        /// Reconcile unevaluated nodes in the `Object3D` graph with authored
+        /// `parentId` links. A switched node's graph parent is time-dependent and
+        /// remains at its last evaluated space until evaluate() writes the next
+        /// one; graph consumers therefore observe the latest evaluated hierarchy.
         void syncGraph();
 
         /// True when the cached evaluation order no longer matches the layers:
@@ -264,6 +266,7 @@ namespace chrononmotion::motion {
         mutable std::vector<std::size_t> order_{};
         mutable std::vector<std::size_t> orderParents_{};
         mutable std::vector<Layer::Id> orderParentIds_{};
+        mutable std::vector<std::vector<Layer::Id>> orderSwitchParentIds_{};
         mutable bool orderDirty_{true};
         mutable bool orderValid_{false};
     };
