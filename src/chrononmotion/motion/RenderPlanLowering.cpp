@@ -8,9 +8,11 @@
 #include <chronon3d/core/types/time.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -73,6 +75,13 @@ struct ResolvedPose {
     Vector3 rotation{};
     float opacity{1.f};
 };
+
+bool samePose(const ResolvedPose& a, const ResolvedPose& b) {
+    return a.position.x == b.position.x && a.position.y == b.position.y && a.position.z == b.position.z &&
+           a.scale.x == b.scale.x && a.scale.y == b.scale.y && a.scale.z == b.scale.z &&
+           a.rotation.x == b.rotation.x && a.rotation.y == b.rotation.y && a.rotation.z == b.rotation.z &&
+           a.opacity == b.opacity;
+}
 
 ResolvedPose resolvePose(const Matrix4& matrix, float opacity, bool visible,
                          const Vector3& anchor, bool needsOriginPivot) {
@@ -378,6 +387,9 @@ RenderPlan lowerSamplesToRenderPlan(
                     throw std::invalid_argument("lowerToRenderPlan: inline mesh normal attribute must be unnormalized float VEC3 matching position count");
                 if (uvs && (uvs->itemSize() != 2 || uvs->normalized() || uvs->count() != positions->count()))
                     throw std::invalid_argument("lowerToRenderPlan: inline mesh uv attribute must be unnormalized float VEC2 matching position count");
+                const auto suppliedMaterial = output.inline_mesh
+                    ? output.inline_mesh->material
+                    : std::optional<chronon3d::render_plan::InlineMeshMaterialPlan>{};
                 chronon3d::render_plan::InlineMeshPlan inline_mesh;
                 inline_mesh.vertices.reserve(static_cast<std::size_t>(positions->count()));
                 for (int vertex_index = 0; vertex_index < positions->count(); ++vertex_index) {
@@ -419,6 +431,40 @@ RenderPlan lowerSamplesToRenderPlan(
                 for (const auto index : inline_mesh.indices)
                     if (index >= inline_mesh.vertices.size())
                         throw std::invalid_argument("lowerToRenderPlan: inline mesh index exceeds its position vertex count");
+                const auto& descriptor = layer.mesh.material;
+                descriptor.validate();
+                for (const float component : {descriptor.baseColor.r, descriptor.baseColor.g,
+                                              descriptor.baseColor.b})
+                    if (!std::isfinite(component) || component < 0.f || component > 1.f)
+                        throw std::invalid_argument("lowerToRenderPlan: mesh material color must be finite and in [0, 1]");
+                Color renderPlanColor = descriptor.baseColor;
+                renderPlanColor.convertLinearToSRGB();
+                if (suppliedMaterial) {
+                    // A caller-supplied RenderPlan material is already expressed
+                    // in the consumer's ABI and takes precedence over the native
+                    // convenience descriptor on MeshAttachment.
+                    inline_mesh.material = suppliedMaterial;
+                } else if (descriptor.kind == MaterialKind::Unlit) {
+                    // Omitting inline_mesh.material selects Chronon3D's flat
+                    // software mesh path; preserve the authored native tint there.
+                    output.color = {renderPlanColor.r, renderPlanColor.g,
+                                    renderPlanColor.b, descriptor.opacity};
+                } else if (descriptor.kind == MaterialKind::Lambert) {
+                    // RenderPlan has a compact Phong-like contract rather than
+                    // ChrononMotion's material zoo. Map the shared fields and
+                    // reject emissive below instead of dropping its contribution.
+                    chronon3d::render_plan::InlineMeshMaterialPlan material;
+                    material.diffuse = 1.f;
+                    material.specular = descriptor.metalness;
+                    material.shininess = 1.f + (1.f - descriptor.roughness) * 1023.f;
+                    material.rim_intensity = 0.f;
+                    material.base_color = std::array<float, 4>{renderPlanColor.r,
+                        renderPlanColor.g, renderPlanColor.b, descriptor.opacity};
+                    output.color = {1.f, 1.f, 1.f, 1.f};
+                    inline_mesh.material = material;
+                } else {
+                    throw std::invalid_argument("lowerToRenderPlan: emissive mesh materials are not expressible by the inline mesh RenderPlan material contract");
+                }
                 output.inline_mesh = std::move(inline_mesh);
                 output.asset.clear();
             } else {
@@ -518,8 +564,16 @@ RenderPlan lowerSamplesToRenderPlan(
         lowerTimeRemap(layer, output, options.schema, fps, frameCount);
 
         AnimationPlan baked;
-        preserveNonTransformTracks(output, baked);
-        if (frameCount > 1) {
+        if (output.type == LayerType::Mesh) {
+            if (output.animation && !output.animation->tracks.empty())
+                throw std::invalid_argument("lowerToRenderPlan: inline mesh layers cannot carry RenderPlan animation tracks");
+            for (std::size_t frame = 1; frame < poses.size(); ++frame)
+                if (!samePose(poses.front(), poses[frame]))
+                    throw std::invalid_argument("lowerToRenderPlan: animated inline mesh transforms are not expressible by the RenderPlan contract");
+        } else {
+            preserveNonTransformTracks(output, baked);
+        }
+        if (frameCount > 1 && output.type != LayerType::Mesh) {
             std::vector<AnimationKeyframePlan> positions, scales, rotations, opacities;
             positions.reserve(frameCount); scales.reserve(frameCount);
             rotations.reserve(frameCount); opacities.reserve(frameCount);

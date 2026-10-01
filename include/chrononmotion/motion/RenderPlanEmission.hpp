@@ -19,7 +19,8 @@
 //            expressed one), camera, camera_animation, layers, output
 //   layer    id, type, asset, source, color, size, position, scale, rotation,
 //            enable_3d, blend_mode, opacity, start_frame, duration_frames, text,
-//            style, animation, and V3 video time_remap
+//            style, animation, V3 video time_remap, static indexed inline_mesh,
+//            path/procedural shapes, particle emitters, and per-layer lights
 //   camera   type, position, rotation_deg, fov_deg, near, far, zoom, optional dof
 //   style    font, font_size, fill, glow
 //   track    property, easing, keyframes (frame + value)
@@ -30,8 +31,10 @@
 // as a different composition, which is worse than no file. The unsupported
 // families are the ones with no producer side here yet: hierarchy that is not
 // already flattened, track mattes, masks, transitions, effects and
-// their parameter tracks, shapes and inline meshes, particles, lights, text
-// animators and spans, gradient animation, a layer-level `auto_orient` (the plan
+// their parameter tracks, shape gradients/fields/imported subpaths, path
+// operators other than trim, non-schema shape fields, emissive mesh materials,
+// global lighting rigs,
+// audio mixes, prepared overlay packages, fill-gradient animation, and a layer-level `auto_orient` (the plan
 // expresses it only inside a follow-path driver, which is itself unsupported
 // here), and every animation driver (wiggle, spring, oscillate, random hold,
 // posterize, data feed, audio react) plus per-key easing, because the lowering

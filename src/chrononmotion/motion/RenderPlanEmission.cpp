@@ -39,12 +39,18 @@ namespace chrononmotion::motion {
         using chronon3d::render_plan::CameraPropertyPlan;
         using chronon3d::render_plan::CameraTrackPlan;
         using chronon3d::render_plan::FitMode;
+        using chronon3d::render_plan::InlineMeshPlan;
         using chronon3d::render_plan::LayerPlan;
         using chronon3d::render_plan::LayerStylePlan;
         using chronon3d::render_plan::LayerType;
         using chronon3d::render_plan::OutputFormat;
+        using chronon3d::render_plan::PathOperatorKindPlan;
         using chronon3d::render_plan::RenderBudget;
         using chronon3d::render_plan::RenderPlan;
+        using chronon3d::render_plan::ShapeContentPlan;
+        using chronon3d::render_plan::ShapeContentTypePlan;
+        using chronon3d::render_plan::ShapePathCommandPlan;
+        using chronon3d::render_plan::ShapePathCommandTypePlan;
 
         // ---------------------------------------------------------------- names
 
@@ -80,6 +86,24 @@ namespace chrononmotion::motion {
                 case LayerType::Light: return "light";
                 case LayerType::Adjustment: return "adjustment";
                 case LayerType::Mesh: return "mesh";
+            }
+            return "unknown";
+        }
+
+        [[nodiscard]] const char* shapeTypeName(ShapeContentTypePlan type) {
+            switch (type) {
+                case ShapeContentTypePlan::Rect: return "rect";
+                case ShapeContentTypePlan::RoundedRect: return "rounded_rect";
+                case ShapeContentTypePlan::Ellipse: return "ellipse";
+                case ShapeContentTypePlan::Line: return "line";
+                case ShapeContentTypePlan::Path: return "path";
+                case ShapeContentTypePlan::Star: return "star";
+                case ShapeContentTypePlan::Polygon: return "polygon";
+                case ShapeContentTypePlan::Arrow: return "arrow";
+                case ShapeContentTypePlan::Arc: return "arc";
+                case ShapeContentTypePlan::Grid: return "grid";
+                case ShapeContentTypePlan::DotGrid: return "dot_grid";
+                case ShapeContentTypePlan::DeviceFrame: return "device_frame";
             }
             return "unknown";
         }
@@ -463,6 +487,10 @@ namespace chrononmotion::motion {
                 case LayerType::Image:
                 case LayerType::Video:
                 case LayerType::Text:
+                case LayerType::Shape:
+                case LayerType::Particles:
+                case LayerType::Light:
+                case LayerType::Mesh:
                     break;
                 default:
                     return owner + " is a '" + layerTypeName(layer.type) +
@@ -480,6 +508,18 @@ namespace chrononmotion::motion {
             }
             if (layer.type == LayerType::Text && !layer.style) {
                 return owner + " is a text layer with no style, which the plan contract requires";
+            }
+            if (layer.type == LayerType::Shape && !layer.shape)
+                return owner + " is a shape layer with no shape payload";
+            if (layer.type == LayerType::Particles && !layer.particle_emitter)
+                return owner + " is a particles layer with no particle emitter";
+            if (layer.type == LayerType::Light && !layer.light)
+                return owner + " is a light layer with no light payload";
+            if (layer.type == LayerType::Mesh && (!layer.asset.empty() || !layer.source.empty())) {
+                return owner + " is a mesh layer with an asset/source reference; the plan requires inline geometry";
+            }
+            if (layer.type == LayerType::Mesh && layer.animation && !layer.animation->tracks.empty()) {
+                return owner + " carries per-vertex animation tracks, which the inline mesh contract does not support";
             }
 
             if (layer.parent) return owner + " is parented; the plan contract already flattens hierarchy";
@@ -578,10 +618,255 @@ namespace chrononmotion::motion {
                 return owner + " carries a normalized font path, which the plan derives from style.font";
             }
             if (layer.motion_blur) return owner + " carries analytic motion blur";
-            if (layer.shape) return owner + " carries shape content";
-            if (layer.inline_mesh) return owner + " carries an inline mesh";
-            if (layer.particle_emitter) return owner + " carries a particle emitter";
-            if (layer.light) return owner + " carries a light layer";
+            if (layer.shape) {
+                const ShapeContentPlan& shape = *layer.shape;
+                if (layer.type != LayerType::Shape) return owner + " carries shape content but is not a shape layer";
+                if (std::string_view(shapeTypeName(shape.type)) == "unknown")
+                    return owner + " carries an unknown shape kind";
+                if (layer.size_dimensions != 2 || !std::isfinite(layer.size[0]) || !std::isfinite(layer.size[1]) ||
+                    layer.size[0] <= 0.f || layer.size[1] <= 0.f)
+                    return owner + " shape requires a positive two-dimensional size";
+                if (shape.gradient || shape.field || !shape.imported_subpaths.empty())
+                    return owner + " carries a gradient, field, or imported subpaths that the current emitter does not write";
+                if ((shape.svg_asset || shape.lottie_asset) && shape.type != ShapeContentTypePlan::Path)
+                    return owner + " carries an SVG/Lottie source on a non-path shape";
+                if (shape.svg_asset && shape.lottie_asset)
+                    return owner + " carries both SVG and Lottie sources";
+                const bool pathKind = shape.type == ShapeContentTypePlan::Path || shape.type == ShapeContentTypePlan::Line;
+                if (shape.type != ShapeContentTypePlan::Path &&
+                    shape.fill_rule != chronon3d::render_plan::ShapeFillRulePlan::EvenOdd)
+                    return owner + " carries a path fill rule on a non-path shape";
+                if (pathKind && !shape.svg_asset && !shape.lottie_asset &&
+                    (shape.path.empty() || shape.path.size() > 65'536))
+                    return owner + " path command count must be in [1, 65536]";
+                if (!pathKind && !shape.path.empty())
+                    return owner + " carries explicit path commands on a shape generated procedurally by Chronon3D";
+                if (shape.type == ShapeContentTypePlan::Line && !shape.stroke)
+                    return owner + " is a line shape with no stroke";
+                if (shape.type == ShapeContentTypePlan::RoundedRect) {
+                    const float maximum = std::min(layer.size[0], layer.size[1]) * 0.5f;
+                    if (shape.radius < 0.f || !std::isfinite(shape.radius) || shape.radius > maximum)
+                        return owner + " has a rounded-rectangle radius outside its size";
+                    if (shape.corner_radius && (shape.radius != 0.f ||
+                        std::any_of(shape.corner_radius->begin(), shape.corner_radius->end(), [&](float value) {
+                            return !std::isfinite(value) || value < 0.f || value > maximum;
+                        })))
+                        return owner + " has invalid or conflicting per-corner radii";
+                } else if (shape.corner_radius || shape.radius != 0.f) {
+                    return owner + " carries corner radii on a non-rounded-rectangle shape";
+                }
+                const bool pointShape = shape.type == ShapeContentTypePlan::Star ||
+                                        shape.type == ShapeContentTypePlan::Polygon;
+                if (pointShape) {
+                    const int count = shape.points.value_or(shape.type == ShapeContentTypePlan::Star ? 5 : 6);
+                    if (count < 3 || count > 64 || !std::isfinite(shape.inner_radius_ratio) ||
+                        shape.inner_radius_ratio < 0.05f || shape.inner_radius_ratio > 0.95f ||
+                        !std::isfinite(shape.shape_rotation_deg))
+                        return owner + " has invalid star/polygon parameters";
+                } else if (shape.points || shape.shape_rotation_deg != 0.f || shape.inner_radius_ratio != 0.4f) {
+                    return owner + " carries star/polygon parameters on another shape type";
+                }
+                if (shape.type == ShapeContentTypePlan::Arrow) {
+                    if (shape.arrow_head_length || shape.arrow_head_width || shape.arrow_shaft_width != 4.f ||
+                        shape.arrow_direction != "right")
+                        return owner + " carries arrow width/direction values absent from the RenderPlan schema";
+                } else if (shape.arrow_head_length || shape.arrow_head_width || shape.arrow_shaft_width != 4.f ||
+                           shape.arrow_direction != "right") {
+                    return owner + " carries arrow parameters on another shape type";
+                }
+                if (shape.type == ShapeContentTypePlan::Arc) {
+                    if (!std::isfinite(shape.arc_start_deg) || shape.arc_start_deg < 0.f || shape.arc_start_deg >= 360.f ||
+                        !std::isfinite(shape.arc_sweep_deg) || shape.arc_sweep_deg < 1.f || shape.arc_sweep_deg > 359.9f ||
+                        shape.arc_thickness != 8.f || shape.fill_color || !shape.stroke)
+                        return owner + " has arc values not expressible by the current RenderPlan schema";
+                } else if (shape.arc_start_deg != 0.f || shape.arc_sweep_deg != 270.f || shape.arc_thickness != 8.f) {
+                    return owner + " carries arc parameters on another shape type";
+                }
+                if (shape.type == ShapeContentTypePlan::Grid || shape.type == ShapeContentTypePlan::DotGrid) {
+                    if (!std::isfinite(shape.grid_spacing) || shape.grid_spacing < 4.f || shape.grid_spacing > 512.f)
+                        return owner + " has grid spacing outside [4, 512]";
+                    if (shape.type == ShapeContentTypePlan::Grid &&
+                        (shape.grid_line_width != 1.f || shape.fill_color || !shape.stroke))
+                        return owner + " has grid values not expressible by the current RenderPlan schema";
+                    if (shape.type == ShapeContentTypePlan::DotGrid &&
+                        (!std::isfinite(shape.dot_radius) || shape.dot_radius < 0.5f || shape.dot_radius > 64.f || !shape.fill_color))
+                        return owner + " has invalid dot-grid radius or no fill";
+                } else if (shape.grid_spacing != 24.f || shape.grid_line_width != 1.f || shape.dot_radius != 3.f) {
+                    return owner + " carries grid parameters on another shape type";
+                }
+                if (shape.type == ShapeContentTypePlan::DeviceFrame) {
+                    if (!shape.fill_color) return owner + " device frame has no screen fill";
+                    if (shape.device_frame)
+                        return owner + " carries nested device-frame styling absent from the RenderPlan schema";
+                } else if (shape.device_frame || shape.device_frame_chrome != true ||
+                           shape.device_frame_kind != chronon3d::render_plan::DeviceFrameKindPlan::Phone) {
+                    return owner + " carries device-frame options on another shape type";
+                }
+                if ((shape.type == ShapeContentTypePlan::Arc || shape.type == ShapeContentTypePlan::Grid) && !shape.stroke)
+                    return owner + " procedural arc/grid requires a stroke";
+                for (const auto& command : shape.path) {
+                    const auto finite = [](const auto& point) {
+                        return std::isfinite(point[0]) && std::isfinite(point[1]);
+                    };
+                    if ((command.type != ShapePathCommandTypePlan::Close && !finite(command.point)) ||
+                        !finite(command.control1) || !finite(command.control2))
+                        return owner + " has a path command with non-finite coordinates";
+                }
+                if (shape.stroke) {
+                    const auto& stroke = *shape.stroke;
+                    if (stroke.gradient) return owner + " carries a gradient stroke that the current emitter does not write";
+                    if (stroke.color.empty() && !stroke.solid_color)
+                        return owner + " has a stroke with no color";
+                    if (stroke.width && (!std::isfinite(*stroke.width) || *stroke.width < 0.f || *stroke.width > 10'000.f))
+                        return owner + " has a stroke width outside [0, 10000]";
+                    if (stroke.trim_start && (!std::isfinite(*stroke.trim_start) || *stroke.trim_start < 0.f || *stroke.trim_start > 1.f))
+                        return owner + " has stroke trim_start outside [0, 1]";
+                    if (stroke.trim_end && (!std::isfinite(*stroke.trim_end) || *stroke.trim_end < 0.f || *stroke.trim_end > 1.f))
+                        return owner + " has stroke trim_end outside [0, 1]";
+                    if (stroke.cap != "butt" && stroke.cap != "round" && stroke.cap != "square")
+                        return owner + " has an unsupported stroke cap";
+                    if (stroke.join != "miter" && stroke.join != "round" && stroke.join != "bevel")
+                        return owner + " has an unsupported stroke join";
+                    for (const float value : stroke.dash_array)
+                        if (!std::isfinite(value) || value < 0.f)
+                            return owner + " has a negative or non-finite dash entry";
+                    if (!std::isfinite(stroke.dash_offset) || !std::isfinite(stroke.taper_start) ||
+                        stroke.taper_start < 0.f || stroke.taper_start > 1.f ||
+                        !std::isfinite(stroke.taper_end) || stroke.taper_end < 0.f || stroke.taper_end > 1.f)
+                        return owner + " has stroke parameters outside the supported range";
+                    if (stroke.solid_color)
+                        for (const float component : *stroke.solid_color)
+                            if (!std::isfinite(component) || component < 0.f || component > 1.f)
+                                return owner + " has stroke RGBA components outside [0, 1]";
+                }
+                if (shape.fill_color)
+                    for (const float component : *shape.fill_color)
+                        if (!std::isfinite(component) || component < 0.f || component > 1.f)
+                            return owner + " has fill RGBA components outside [0, 1]";
+                for (const auto& op : shape.operators) {
+                    if (shape.type != ShapeContentTypePlan::Path)
+                        return owner + " carries path operators on a non-path shape";
+                    if (op.kind != PathOperatorKindPlan::Trim)
+                        return owner + " carries a path operator the current emitter does not write";
+                    if (!std::isfinite(op.trim_start) || op.trim_start < 0.f || op.trim_start > 1.f ||
+                        !std::isfinite(op.trim_end) || op.trim_end < op.trim_start || op.trim_end > 1.f ||
+                        !std::isfinite(op.trim_offset) || std::abs(op.trim_offset) > 1'000'000.f)
+                        return owner + " has trim-path values outside the RenderPlan contract";
+                    if (op.trim_animation) {
+                        const auto& track = *op.trim_animation;
+                        if (!isKnownEasing(track.easing) || track.keyframes.empty() || track.keyframes.size() > 65'536)
+                            return owner + " has an invalid trim-path animation";
+                        if (track.bezier_curve || track.spring || track.loop_mode != "none" || track.wiggle ||
+                            track.oscillate || track.random_hold || track.posterize_time || track.data_feed ||
+                            track.audio_react)
+                            return owner + " has trim-path timing or drivers that the current emitter cannot preserve";
+                        chronon3d::Frame previousFrame{-1};
+                        for (const auto& key : track.keyframes) {
+                            if (key.frame.integral() < 0 || key.frame.integral() > 1'000'000 ||
+                                key.frame.integral() <= previousFrame.integral() ||
+                                key.value.empty() || key.value.size() > 3)
+                                return owner + " has a trim-path key outside the RenderPlan limits";
+                            previousFrame = key.frame;
+                            if (key.interpolation || key.easing || key.easing_xy || key.bezier_curve || key.spring ||
+                                key.roving || key.temporal_in_dx || key.temporal_in_dy ||
+                                key.temporal_out_dx || key.temporal_out_dy)
+                                return owner + " has per-key trim-path timing the current emitter cannot preserve";
+                            for (std::size_t component = 0; component < key.value.size(); ++component) {
+                                const float value = key.value[component];
+                                if (!std::isfinite(value) || (component < 2 && (value < 0.f || value > 1.f)))
+                                    return owner + " has a non-finite or out-of-range trim-path key";
+                            }
+                        }
+                    }
+                }
+            }
+            if (layer.inline_mesh) {
+                if (layer.type != LayerType::Mesh)
+                    return owner + " carries inline mesh geometry but is not a mesh layer";
+                const auto& mesh = *layer.inline_mesh;
+                if (mesh.vertices.size() < 3 || mesh.vertices.size() > chronon3d::render_plan::kInlineMeshMaxVertices)
+                    return owner + " has an inline mesh vertex count outside [3, 250000]";
+                if (mesh.indices.size() < 3 || mesh.indices.size() > chronon3d::render_plan::kInlineMeshMaxIndices ||
+                    mesh.indices.size() % 3 != 0)
+                    return owner + " has an inline mesh index count outside the triangle contract";
+                for (const auto& vertex : mesh.vertices) {
+                    for (const float component : vertex.position)
+                        if (!std::isfinite(component) || std::abs(component) > 1'000'000.f)
+                            return owner + " has an inline mesh position outside the finite contract range";
+                    for (const float component : vertex.normal)
+                        if (!std::isfinite(component) || std::abs(component) > 1.f)
+                            return owner + " has an inline mesh normal outside [-1, 1]";
+                    for (const float component : vertex.uv)
+                        if (!std::isfinite(component) || std::abs(component) > 1'000'000.f)
+                            return owner + " has inline mesh UVs outside the finite contract range";
+                }
+                for (const std::uint32_t index : mesh.indices)
+                    if (index >= mesh.vertices.size())
+                        return owner + " has an inline mesh index outside its vertex array";
+                if (mesh.material) {
+                    const auto& material = *mesh.material;
+                    if (!std::isfinite(material.diffuse) || material.diffuse < 0.f || material.diffuse > 1.f ||
+                        !std::isfinite(material.specular) || material.specular < 0.f || material.specular > 1.f ||
+                        !std::isfinite(material.shininess) || material.shininess < 1.f || material.shininess > 1024.f ||
+                        !std::isfinite(material.rim_intensity) || material.rim_intensity < 0.f || material.rim_intensity > 16.f)
+                        return owner + " has inline mesh material values outside their supported ranges";
+                    if (material.base_color)
+                        for (const float component : *material.base_color)
+                            if (!std::isfinite(component) || component < 0.f || component > 1.f)
+                                return owner + " has an inline mesh base color outside [0, 1]";
+                }
+            } else if (layer.type == LayerType::Mesh) {
+                return owner + " is a mesh layer with no inline geometry";
+            }
+            if (layer.particle_emitter) {
+                if (layer.type != LayerType::Particles)
+                    return owner + " carries a particle emitter but is not a particles layer";
+                const auto& particles = *layer.particle_emitter;
+                if (const std::string error = chronon3d::validate_particle_emitter(particles); !error.empty())
+                    return owner + " has an invalid particle emitter: " + error;
+                if (particles.shape != chronon3d::EmitterShape::Path &&
+                    (!particles.path_id.empty() || !particles.path_points.empty()))
+                    return owner + " carries a particle path on a non-path emitter";
+                if (particles.color_ramp.opacity_stops.size() != 0)
+                    return owner + " has separate particle opacity stops that the RenderPlan contract cannot carry";
+                if (!particles.color_ramp.color_stops.empty()) {
+                    if (particles.color_ramp.color_stops.size() < 2 || particles.color_ramp.color_stops.size() > 256)
+                        return owner + " has a particle color ramp outside [2, 256] stops";
+                    for (const auto& stop : particles.color_ramp.color_stops) {
+                        const auto& color = stop.color;
+                        if (!std::isfinite(stop.position) || stop.position < 0.f || stop.position > 1.f ||
+                            !std::isfinite(color.r) || color.r < 0.f || color.r > 1.f ||
+                            !std::isfinite(color.g) || color.g < 0.f || color.g > 1.f ||
+                            !std::isfinite(color.b) || color.b < 0.f || color.b > 1.f ||
+                            !std::isfinite(color.a) || color.a < 0.f || color.a > 1.f)
+                            return owner + " has particle ramp color data outside [0, 1]";
+                    }
+                }
+                if (schema == chronon3d::render_plan::kRenderPlanSchemaV2 &&
+                    (particles.shape != chronon3d::EmitterShape::Box || !particles.path_id.empty() ||
+                     !particles.path_points.empty() || !particles.sprite_asset.empty() ||
+                     particles.sprite_scale_min != 1.f || particles.sprite_scale_max != 1.f ||
+                     particles.rotation_min != 0.f || particles.rotation_max != 0.f ||
+                     particles.angular_velocity_min != 0.f || particles.angular_velocity_max != 0.f))
+                    return owner + " carries particle fields that require RenderPlan v3";
+            }
+            if (layer.light) {
+                if (layer.type != LayerType::Light)
+                    return owner + " carries light data but is not a light layer";
+                const auto& light = *layer.light;
+                if (!std::isfinite(light.radius) || light.radius <= 0.f ||
+                    !std::isfinite(light.intensity) || light.intensity < 0.f || light.intensity > 16.f)
+                    return owner + " has light values outside supported bounds";
+                const chronon3d::Color color{light.color[0], light.color[1], light.color[2], light.color[3]};
+                const auto hex = textSpanColorHex(color);
+                if (!hex) return owner + " has light color components outside [0, 1]";
+                if (std::abs(color.a - 1.f) > 1e-6f)
+                    return owner + " has light alpha that the consumer's RGB color contract cannot represent";
+                const auto decoded = chronon3d::render_plan::parse_hex_color(hex->substr(0, 7));
+                if (!decoded || std::abs(decoded->r - color.r) > 1e-6f ||
+                    std::abs(decoded->g - color.g) > 1e-6f || std::abs(decoded->b - color.b) > 1e-6f)
+                    return owner + " has a light color that cannot be represented without quantization";
+            }
             if (layer.path_mask || !layer.masks.empty()) return owner + " carries a mask";
             if (!layer.effects.empty() || !layer.effect_param_tracks.empty()) return owner + " carries an effect";
             if (layer.flow_layout || layer.grid_layout) return owner + " carries a layout group";
@@ -717,9 +1002,20 @@ namespace chrononmotion::motion {
                 }
             }
 
+            std::uint64_t inlineMeshBytes = 0;
             for (const LayerPlan& layer : plan.layers) {
                 const std::string problem = layerProblem(layer, plan.schema);
                 if (!problem.empty()) return problem;
+                if (layer.inline_mesh) {
+                    constexpr std::uint64_t vertexBytes = sizeof(chronon3d::render_plan::InlineMeshVertex);
+                    constexpr std::uint64_t indexBytes = sizeof(std::uint32_t);
+                    const auto vertexCount = static_cast<std::uint64_t>(layer.inline_mesh->vertices.size());
+                    const auto indexCount = static_cast<std::uint64_t>(layer.inline_mesh->indices.size());
+                    const std::uint64_t meshBytes = vertexCount * vertexBytes + indexCount * indexBytes;
+                    if (meshBytes > chronon3d::render_plan::kInlineMeshMaxAggregateBytes - inlineMeshBytes)
+                        return "the plan's inline mesh payload exceeds the 64 MiB aggregate byte limit";
+                    inlineMeshBytes += meshBytes;
+                }
             }
 
             if (plan.output.codec != chronon3d::render_plan::VideoCodec::Auto ||
@@ -973,7 +1269,272 @@ namespace chrononmotion::motion {
             writer.endObject();
         }
 
-        void writeLayer(detail::Writer& writer, const LayerPlan& layer) {
+        void writeInlineMesh(detail::Writer& writer, const InlineMeshPlan& mesh) {
+
+            writer.beginObject();
+            writer.key("vertices");
+            writer.beginArray();
+            for (const auto& vertex : mesh.vertices) {
+                writer.item();
+                writer.beginObject();
+                writer.key("position");
+                writeFloats(writer, vertex.position, vertex.position.size());
+                writer.key("normal");
+                writeFloats(writer, vertex.normal, vertex.normal.size());
+                writer.key("uv");
+                writeFloats(writer, vertex.uv, vertex.uv.size());
+                writer.endObject();
+            }
+            writer.endArray();
+            writer.key("indices");
+            writer.beginArray();
+            for (const std::uint32_t index : mesh.indices) {
+                writer.item();
+                writer.unsignedInteger(index);
+            }
+            writer.endArray();
+            if (mesh.material) {
+                const auto& material = *mesh.material;
+                writer.key("material");
+                writer.beginObject();
+                writer.key("diffuse");
+                writer.number(material.diffuse);
+                writer.key("specular");
+                writer.number(material.specular);
+                writer.key("shininess");
+                writer.number(material.shininess);
+                writer.key("rim_intensity");
+                writer.number(material.rim_intensity);
+                if (material.base_color) {
+                    writer.key("base_color");
+                    writeFloats(writer, *material.base_color, material.base_color->size());
+                }
+                writer.endObject();
+            }
+            writer.endObject();
+        }
+
+        [[nodiscard]] const char* pathCommandTypeName(ShapePathCommandTypePlan type) {
+            switch (type) {
+                case ShapePathCommandTypePlan::MoveTo: return "move_to";
+                case ShapePathCommandTypePlan::LineTo: return "line_to";
+                case ShapePathCommandTypePlan::QuadraticTo: return "quadratic_to";
+                case ShapePathCommandTypePlan::CubicTo: return "cubic_to";
+                case ShapePathCommandTypePlan::Close: return "close";
+            }
+            return "close";
+        }
+
+        void writePathCommands(detail::Writer& writer, const std::vector<ShapePathCommandPlan>& commands) {
+            writer.beginArray();
+            for (const auto& command : commands) {
+                writer.item();
+                writer.beginObject();
+                writer.key("type");
+                writer.token(pathCommandTypeName(command.type));
+                if (command.type != ShapePathCommandTypePlan::Close) {
+                    writer.key("point");
+                    writeFloats(writer, command.point, command.point.size());
+                }
+                if (command.type == ShapePathCommandTypePlan::QuadraticTo ||
+                    command.type == ShapePathCommandTypePlan::CubicTo) {
+                    writer.key("control1");
+                    writeFloats(writer, command.control1, command.control1.size());
+                }
+                if (command.type == ShapePathCommandTypePlan::CubicTo) {
+                    writer.key("control2");
+                    writeFloats(writer, command.control2, command.control2.size());
+                }
+                writer.endObject();
+            }
+            writer.endArray();
+        }
+
+        void writeStroke(detail::Writer& writer, const chronon3d::render_plan::StrokeStyle& stroke) {
+            writer.beginObject();
+            writer.key("color");
+            if (stroke.solid_color) writeFloats(writer, *stroke.solid_color, stroke.solid_color->size());
+            else writer.text(stroke.color);
+            if (stroke.width) { writer.key("width"); writer.number(*stroke.width); }
+            if (stroke.trim_start) { writer.key("trim_start"); writer.number(*stroke.trim_start); }
+            if (stroke.trim_end) { writer.key("trim_end"); writer.number(*stroke.trim_end); }
+            if (!stroke.dash_array.empty()) {
+                writer.key("dash_array");
+                writeFloats(writer, stroke.dash_array.data(), stroke.dash_array.size());
+            }
+            if (stroke.dash_offset != 0.f) { writer.key("dash_offset"); writer.number(stroke.dash_offset); }
+            if (stroke.cap != "butt") { writer.key("cap"); writer.text(stroke.cap); }
+            if (stroke.join != "miter") { writer.key("join"); writer.text(stroke.join); }
+            if (stroke.taper_start != 1.f) { writer.key("taper_start"); writer.number(stroke.taper_start); }
+            if (stroke.taper_end != 1.f) { writer.key("taper_end"); writer.number(stroke.taper_end); }
+            writer.endObject();
+        }
+
+        void writeTrimOperator(detail::Writer& writer, const chronon3d::render_plan::PathOperatorPlan& op) {
+            writer.beginObject();
+            writer.key("kind");
+            writer.token("trim");
+            writer.key("params");
+            writer.beginObject();
+            writer.key("start"); writer.number(op.trim_start);
+            writer.key("end"); writer.number(op.trim_end);
+            if (op.trim_offset != 0.f) { writer.key("offset"); writer.number(op.trim_offset); }
+            if (op.trim_animation) {
+                writer.key("animation");
+                writer.beginObject();
+                writer.key("easing"); writer.text(op.trim_animation->easing);
+                writer.key("keyframes"); writeKeyframes(writer, op.trim_animation->keyframes, false);
+                writer.endObject();
+            }
+            writer.endObject();
+            writer.endObject();
+        }
+
+        void writeShape(detail::Writer& writer, const ShapeContentPlan& shape) {
+            writer.beginObject();
+            writer.key("type"); writer.token(shapeTypeName(shape.type));
+            if (shape.svg_asset) { writer.key("asset"); writer.text(*shape.svg_asset); }
+            if (shape.lottie_asset) { writer.key("lottie"); writer.text(*shape.lottie_asset); }
+            if (shape.type == ShapeContentTypePlan::Path) {
+                writer.key("fill_rule");
+                writer.token(shape.fill_rule == chronon3d::render_plan::ShapeFillRulePlan::EvenOdd ? "even_odd" : "non_zero");
+            }
+            if (shape.type == ShapeContentTypePlan::RoundedRect) {
+                if (shape.corner_radius) {
+                    writer.key("corner_radius");
+                    writeFloats(writer, *shape.corner_radius, shape.corner_radius->size());
+                } else if (shape.radius != 0.f) {
+                    writer.key("radius"); writer.number(shape.radius);
+                }
+            }
+            if (shape.fill_color) { writer.key("fill"); writeFloats(writer, *shape.fill_color, shape.fill_color->size()); }
+            if (shape.type == ShapeContentTypePlan::Path || shape.type == ShapeContentTypePlan::Line) {
+                if (!shape.path.empty()) { writer.key("path"); writePathCommands(writer, shape.path); }
+            }
+            if (shape.stroke) { writer.key("stroke"); writeStroke(writer, *shape.stroke); }
+            if (shape.type == ShapeContentTypePlan::Star || shape.type == ShapeContentTypePlan::Polygon) {
+                writer.key("points"); writer.integer(shape.points.value_or(shape.type == ShapeContentTypePlan::Star ? 5 : 6));
+                writer.key("inner_radius_ratio"); writer.number(shape.inner_radius_ratio);
+                writer.key("rotation_degrees"); writer.number(shape.shape_rotation_deg);
+            }
+            if (shape.type == ShapeContentTypePlan::Arc) {
+                writer.key("start_degrees"); writer.number(shape.arc_start_deg);
+                writer.key("sweep_degrees"); writer.number(shape.arc_sweep_deg);
+            }
+            if (shape.type == ShapeContentTypePlan::Grid || shape.type == ShapeContentTypePlan::DotGrid) {
+                writer.key("spacing"); writer.number(shape.grid_spacing);
+            }
+            if (shape.type == ShapeContentTypePlan::DotGrid) {
+                writer.key("dot_radius"); writer.number(shape.dot_radius);
+            }
+            if (shape.type == ShapeContentTypePlan::DeviceFrame) {
+                writer.key("device");
+                writer.token(shape.device_frame_kind == chronon3d::render_plan::DeviceFrameKindPlan::Phone ? "phone" : "browser");
+                if (!shape.device_frame_chrome) { writer.key("chrome"); writer.boolean(false); }
+            }
+            if (!shape.operators.empty()) {
+                writer.key("operators");
+                writer.beginArray();
+                for (const auto& op : shape.operators) {
+                    writer.item();
+                    writeTrimOperator(writer, op);
+                }
+                writer.endArray();
+            }
+            writer.endObject();
+        }
+
+        void writeParticleEmitter(detail::Writer& writer,
+                                  const chronon3d::ParticleEmitterParams& particles,
+                                  const std::string& schema) {
+            writer.beginObject();
+            writer.key("count"); writer.unsignedInteger(particles.count);
+            writer.key("seed"); writer.unsignedInteger(particles.seed);
+            writer.key("emitter_size");
+            const std::array<float, 2> emitterSize{particles.emitter_size.x, particles.emitter_size.y};
+            writeFloats(writer, emitterSize, emitterSize.size());
+            writer.key("velocity_min");
+            const std::array<float, 2> velocityMin{particles.velocity_min.x, particles.velocity_min.y};
+            writeFloats(writer, velocityMin, velocityMin.size());
+            writer.key("velocity_max");
+            const std::array<float, 2> velocityMax{particles.velocity_max.x, particles.velocity_max.y};
+            writeFloats(writer, velocityMax, velocityMax.size());
+            writer.key("lifetime");
+            writer.beginArray(); writer.item(); writer.number(particles.lifetime_min);
+            writer.item(); writer.number(particles.lifetime_max); writer.endArray();
+            writer.key("size");
+            writer.beginArray(); writer.item(); writer.number(particles.size_min);
+            writer.item(); writer.number(particles.size_max); writer.endArray();
+            if (particles.gravity != 0.f) { writer.key("gravity"); writer.number(particles.gravity); }
+            if (particles.turbulence != 0.f) { writer.key("turbulence"); writer.number(particles.turbulence); }
+            if (particles.blend_mode != chronon3d::BlendMode::Normal) {
+                writer.key("blend_mode"); writer.token(blendModeName(particles.blend_mode));
+            }
+            if (!particles.color_ramp.color_stops.empty()) {
+                writer.key("color_ramp");
+                writer.beginArray();
+                for (const auto& stop : particles.color_ramp.color_stops) {
+                    writer.item();
+                    writer.beginObject();
+                    writer.key("position"); writer.number(stop.position);
+                    writer.key("color");
+                    const std::array<float, 4> color{stop.color.r, stop.color.g, stop.color.b, stop.color.a};
+                    writeFloats(writer, color, color.size());
+                    writer.endObject();
+                }
+                writer.endArray();
+            }
+            if (schema == chronon3d::render_plan::kRenderPlanSchemaV3) {
+                const char* shape = "box";
+                switch (particles.shape) {
+                    case chronon3d::EmitterShape::Box: shape = "box"; break;
+                    case chronon3d::EmitterShape::Ellipse: shape = "ellipse"; break;
+                    case chronon3d::EmitterShape::Edge: shape = "edge"; break;
+                    case chronon3d::EmitterShape::Path: shape = "path"; break;
+                }
+                if (particles.shape != chronon3d::EmitterShape::Box) { writer.key("shape"); writer.token(shape); }
+                if (!particles.path_id.empty()) { writer.key("path_id"); writer.text(particles.path_id); }
+                if (!particles.path_points.empty()) {
+                    writer.key("path_points");
+                    writer.beginArray();
+                    for (const auto point : particles.path_points) {
+                        writer.item();
+                        const std::array<float, 2> value{point.x, point.y};
+                        writeFloats(writer, value, value.size());
+                    }
+                    writer.endArray();
+                }
+                if (!particles.sprite_asset.empty()) { writer.key("sprite_asset"); writer.text(particles.sprite_asset); }
+                if (particles.sprite_scale_min != 1.f || particles.sprite_scale_max != 1.f) {
+                    writer.key("sprite_scale");
+                    const std::array<float, 2> range{particles.sprite_scale_min, particles.sprite_scale_max};
+                    writeFloats(writer, range, range.size());
+                }
+                if (particles.rotation_min != 0.f || particles.rotation_max != 0.f) {
+                    writer.key("rotation");
+                    const std::array<float, 2> range{particles.rotation_min, particles.rotation_max};
+                    writeFloats(writer, range, range.size());
+                }
+                if (particles.angular_velocity_min != 0.f || particles.angular_velocity_max != 0.f) {
+                    writer.key("angular_velocity");
+                    const std::array<float, 2> range{particles.angular_velocity_min, particles.angular_velocity_max};
+                    writeFloats(writer, range, range.size());
+                }
+            }
+            writer.endObject();
+        }
+
+        void writeLight(detail::Writer& writer, const chronon3d::render_plan::LightLayerPlan& light) {
+            writer.beginObject();
+            writer.key("radius"); writer.number(light.radius);
+            writer.key("intensity"); writer.number(light.intensity);
+            const chronon3d::Color color{light.color[0], light.color[1], light.color[2], light.color[3]};
+            const auto hex = textSpanColorHex(color);
+            writer.key("color"); writer.text(hex ? hex->substr(0, 7) : "#FFFFFF");
+            writer.endObject();
+        }
+
+        void writeLayer(detail::Writer& writer, const LayerPlan& layer, const std::string& schema) {
 
             writer.beginObject();
 
@@ -1070,6 +1631,18 @@ namespace chrononmotion::motion {
                 writer.key("style");
                 writeStyle(writer, *layer.style);
             }
+            if (layer.shape) {
+                writer.key("shape");
+                writeShape(writer, *layer.shape);
+            }
+            if (layer.particle_emitter) {
+                writer.key("particle_emitter");
+                writeParticleEmitter(writer, *layer.particle_emitter, schema);
+            }
+            if (layer.light) {
+                writer.key("light");
+                writeLight(writer, *layer.light);
+            }
             if (!layer.text_spans.empty()) {
                 writer.key("spans");
                 writeTextSpans(writer, layer.text_spans);
@@ -1108,6 +1681,10 @@ namespace chrononmotion::motion {
                     writer.endObject();
                 }
                 writer.endObject();
+            }
+            if (layer.inline_mesh) {
+                writer.key("inline_mesh");
+                writeInlineMesh(writer, *layer.inline_mesh);
             }
 
             writer.endObject();
@@ -1230,7 +1807,7 @@ namespace chrononmotion::motion {
         writer.beginArray();
         for (const LayerPlan& layer : plan.layers) {
             writer.item();
-            writeLayer(writer, layer);
+            writeLayer(writer, layer, plan.schema);
         }
         writer.endArray();
 
