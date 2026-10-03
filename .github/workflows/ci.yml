@@ -9,13 +9,16 @@ on:
 jobs:
   build-and-test:
     name: ${{ matrix.preset }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         preset: [dev, release]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Verify same-SHA checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Configure
         run: cmake --preset ${{ matrix.preset }}

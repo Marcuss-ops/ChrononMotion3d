@@ -346,6 +346,14 @@ if(CHRONONMOTION_BUILD_TESTS)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_motion_boundary.cmake)
 
     if(CHRONON3D_INCLUDE_DIR)
+        add_executable(chrononmotion_renderplan_easing_parity tests/motion_renderplan_easing_parity.cpp)
+        target_link_libraries(chrononmotion_renderplan_easing_parity PRIVATE chrononmotion_chronon3d_adapter)
+        target_compile_options(chrononmotion_renderplan_easing_parity PRIVATE -Wall -Wextra)
+        if(CHRONONMOTION_WERROR)
+            target_compile_options(chrononmotion_renderplan_easing_parity PRIVATE -Werror)
+        endif()
+        add_test(NAME chrononmotion_renderplan_easing_parity COMMAND chrononmotion_renderplan_easing_parity)
+
         get_filename_component(_chronon3d_root "${CHRONON3D_INCLUDE_DIR}" DIRECTORY)
         add_test(NAME chrononmotion_renderplan_camera_parity
                 COMMAND ${CMAKE_COMMAND}
