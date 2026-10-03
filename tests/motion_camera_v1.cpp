@@ -394,6 +394,37 @@ namespace {
             checkNear(p0.position, p40.position, 1e-3f, "OrbitSettle returns precisely to base pose");
             checkNear(p0.orientation.angleTo(p40.orientation), 0.f, 1e-3f, "OrbitSettle orientation settles with zero offset");
         }
+
+        // 30. camera_hero_low_angle_monolith_orbit honors its authored pitch.
+        {
+            CameraRig rig(30);
+            constexpr float pitchDeg = 26.f;
+            cameraHeroLowAngleMonolithOrbit(
+                rig, sA, 0, 30, 7.f, -3.f, 0.f, pitchDeg, kFps);
+            const CameraPose pose = rig.sample(at(0));
+            const float horizontalDistance = std::hypot(
+                pose.target.x - pose.position.x,
+                pose.target.z - pose.position.z);
+            const float actualPitch = math::radToDeg(std::atan2(
+                pose.target.y - pose.position.y, horizontalDistance));
+            checkNear(actualPitch, pitchDeg, 1e-3f,
+                      "MonolithOrbit applies the authored upward camera pitch");
+        }
+
+        // 29. camera_slalom_card_weave honors its authored easing curve.
+        {
+            CameraRig linearRig(29);
+            CameraRig easedRig(29);
+            cameraSlalomCardWeave(
+                linearRig, {sA, sB}, 0, 60, 4.5f, 18.f, kFps,
+                Easing::linear());
+            cameraSlalomCardWeave(
+                easedRig, {sA, sB}, 0, 60, 4.5f, 18.f, kFps,
+                Easing::easeInOut());
+            check(linearRig.sample(at(15)).position.distanceTo(
+                      easedRig.sample(at(15)).position) > 0.1f,
+                  "SlalomCardWeave uses its authored easing curve");
+        }
     }
 
     // ------------------------------------------------------------- 10. Definitive Canary

@@ -92,6 +92,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/RigProgram.cpp
         src/chrononmotion/motion/RigOperators.cpp
         src/chrononmotion/motion/OfflineBaking.cpp
+        src/chrononmotion/motion/SvgPathParser.cpp
         # presets — one translation unit per family, plus the shared vocabulary
         src/chrononmotion/motion/Presets_Common.cpp
         src/chrononmotion/motion/Presets_Place.cpp

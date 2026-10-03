@@ -1435,13 +1435,14 @@ namespace chrononmotion::motion {
 
         for (unsigned int i = 0; i <= steps; ++i) {
             const float progress = static_cast<float>(i) / static_cast<float>(steps);
+            const float eased = easing.ease(progress);
             const float time = t0 + (t1 - t0) * progress;
 
             // Forward travel
-            const float z = math::lerp(p0.z + 8.f, p1.z - 4.f, progress);
+            const float z = math::lerp(p0.z + 8.f, p1.z - 4.f, eased);
             // S-curve lateral wave
-            const float wavePhase = progress * math::PI * 4.f; // 2 full S-turns
-            const float x = math::lerp(p0.x, p1.x, progress) + slalomAmplitude * std::sin(wavePhase);
+            const float wavePhase = eased * math::PI * 4.f; // 2 full S-turns
+            const float x = math::lerp(p0.x, p1.x, eased) + slalomAmplitude * std::sin(wavePhase);
             // Coordinated centrifugal banking roll
             const float currentRoll = -maxRollRad * std::cos(wavePhase);
 
@@ -1466,7 +1467,7 @@ namespace chrononmotion::motion {
         const float t1 = frameToTime(inFrame + duration, fps);
 
         const Vector3 mono = monolith.resolve(scene, t0);
-        const Vector3 aimPoint(mono.x, mono.y + 2.0f, mono.z);
+        const float pitchRad = math::degToRad(upwardPitchDeg);
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 12));
         const float sweepRad = math::degToRad(orbitSweepDeg);
@@ -1483,6 +1484,12 @@ namespace chrononmotion::motion {
                 floorLevelY,
                 mono.z + radius * std::cos(angle)
             );
+            const float horizontalDistance = std::hypot(
+                mono.x - curPos.x, mono.z - curPos.z);
+            const Vector3 aimPoint(
+                mono.x,
+                curPos.y + horizontalDistance * std::tan(pitchRad),
+                mono.z);
 
             rig.positionTrack().add(time, curPos, Easing::linear());
             rig.targetTrack().add(time, aimPoint, Easing::linear());
