@@ -117,7 +117,69 @@ namespace chrononmotion::motion {
                 return owner + " carries a text shadow, which this emitter does not write";
             }
             if (style.backdrop) return owner + " carries a backdrop blur, which this emitter does not write";
-            if (style.background) return owner + " carries a text background, which this emitter does not write";
+            if (style.background) {
+                if (layer.type != LayerType::Image && layer.type != LayerType::Video)
+                    return owner + " carries a background plate on an unsupported layer type";
+                const auto& background = *style.background;
+                if (!chronon3d::render_plan::parse_hex_color(background.color))
+                    return owner + " has a media frame color that is not representable as #RRGGBB";
+                if (background.opacity && (!std::isfinite(*background.opacity) ||
+                    *background.opacity < 0.f || *background.opacity > 1.f))
+                    return owner + " has media frame opacity outside [0, 1]";
+                if (background.radius && (!std::isfinite(*background.radius) ||
+                    *background.radius < 0.f || *background.radius > 512.f))
+                    return owner + " has media frame radius outside [0, 512]";
+                if (background.padding_dimensions != 2)
+                    return owner + " media frame requires two-dimensional padding";
+                for (float padding : background.padding)
+                    if (!std::isfinite(padding) || padding < 0.f || padding > 4096.f)
+                        return owner + " has media frame padding outside [0, 4096]";
+            }
+            return {};
+        }
+
+        [[nodiscard]] std::string effectProblem(const LayerPlan& layer) {
+            const std::string owner = layerOwner(layer);
+            if (layer.effects.size() > 64) return owner + " exceeds the 64-effect layer limit";
+            if (!layer.effect_param_tracks.empty())
+                return owner + " carries effect parameter tracks, which this emitter does not write";
+            for (const auto& effect : layer.effects) {
+                if (effect.posterize_fps || effect.time_curve)
+                    return owner + " carries an effect time control, which this emitter does not write";
+                switch (effect.kind) {
+                    case LayerPlan::EffectKindPlan::Catalog: {
+                        if (effect.canonical_effect_id != "color.saturation" &&
+                            effect.canonical_effect_id != "color.contrast")
+                            return owner + " carries unsupported catalog effect '" + effect.canonical_effect_id + "'";
+                        if (effect.canonical_params.size() != 1 ||
+                            effect.canonical_params.front().param != "value")
+                            return owner + " carries catalog grade parameters other than one 'value'";
+                        const float value = effect.canonical_params.front().value;
+                        if (!std::isfinite(value) || value < 0.f || value > 4.f)
+                            return owner + " carries saturation/contrast outside [0, 4]";
+                        break;
+                    }
+                    case LayerPlan::EffectKindPlan::Noise:
+                        if (!std::isfinite(effect.amount) || effect.amount < 0.f || effect.amount > 1.f ||
+                            !std::isfinite(effect.noise_size) || effect.noise_size <= 0.f || effect.noise_size > 256.f ||
+                            !std::isfinite(effect.grain_shadow_response) || effect.grain_shadow_response < 0.f || effect.grain_shadow_response > 4.f ||
+                            !std::isfinite(effect.grain_midtone_response) || effect.grain_midtone_response < 0.f || effect.grain_midtone_response > 4.f ||
+                            !std::isfinite(effect.grain_highlight_response) || effect.grain_highlight_response < 0.f || effect.grain_highlight_response > 4.f)
+                            return owner + " carries noise/grain values outside supported ranges";
+                        break;
+                    case LayerPlan::EffectKindPlan::Vignette:
+                        if (!std::isfinite(effect.amount) || effect.amount < 0.f || effect.amount > 1.f ||
+                            !std::isfinite(effect.radius) || effect.radius < 0.f || effect.radius > 1.f ||
+                            !std::isfinite(effect.softness) || effect.softness < 0.f || effect.softness > 1.f ||
+                            std::any_of(effect.effect_color.begin(), effect.effect_color.end(), [](float v) {
+                                return !std::isfinite(v) || v < 0.f || v > 1.f;
+                            }))
+                            return owner + " carries vignette values outside [0, 1]";
+                        break;
+                    default:
+                        return owner + " carries an effect type this emitter does not write";
+                }
+            }
             return {};
         }
 
@@ -535,8 +597,37 @@ namespace chrononmotion::motion {
                 if (layer.size_dimensions != 2 || !std::isfinite(layer.size[0]) || !std::isfinite(layer.size[1]) ||
                     layer.size[0] <= 0.f || layer.size[1] <= 0.f)
                     return owner + " shape requires a positive two-dimensional size";
-                if (shape.gradient || shape.field || !shape.imported_subpaths.empty())
-                    return owner + " carries a gradient, field, or imported subpaths that the current emitter does not write";
+                if (shape.field || !shape.imported_subpaths.empty())
+                    return owner + " carries a field or imported subpaths that the current emitter does not write";
+                if (shape.gradient) {
+                    const auto& gradient = *shape.gradient;
+                    if (gradient.color_stops.size() < 2 ||
+                        (gradient.type != chronon3d::graphics::GradientType::Linear &&
+                         gradient.type != chronon3d::graphics::GradientType::Radial &&
+                         gradient.type != chronon3d::graphics::GradientType::Conic) ||
+                        (gradient.spread != chronon3d::graphics::GradientSpread::Pad &&
+                         gradient.spread != chronon3d::graphics::GradientSpread::Repeat &&
+                         gradient.spread != chronon3d::graphics::GradientSpread::Reflect) ||
+                        !std::isfinite(gradient.start.x) || !std::isfinite(gradient.start.y) ||
+                        !std::isfinite(gradient.end.x) || !std::isfinite(gradient.end.y) ||
+                        !std::isfinite(gradient.center.x) || !std::isfinite(gradient.center.y) ||
+                        !std::isfinite(gradient.radius) || gradient.radius <= 0.f ||
+                        !std::isfinite(gradient.angle))
+                        return owner + " carries an invalid gradient definition";
+                    for (const auto& stop : gradient.color_stops) {
+                        const auto unit = [](float value) {
+                            return std::isfinite(value) && value >= 0.f && value <= 1.f;
+                        };
+                        if (!std::isfinite(stop.position) || stop.position < 0.f || stop.position > 1.f ||
+                            !unit(stop.color.r) || !unit(stop.color.g) ||
+                            !unit(stop.color.b) || !unit(stop.color.a))
+                            return owner + " carries an invalid gradient color stop";
+                    }
+                    for (const auto& stop : gradient.opacity_stops)
+                        if (!std::isfinite(stop.position) || stop.position < 0.f || stop.position > 1.f ||
+                            !std::isfinite(stop.opacity) || stop.opacity < 0.f || stop.opacity > 1.f)
+                            return owner + " carries an invalid gradient opacity stop";
+                }
                 if ((shape.svg_asset || shape.lottie_asset) && shape.type != ShapeContentTypePlan::Path)
                     return owner + " carries an SVG/Lottie source on a non-path shape";
                 if (shape.svg_asset && shape.lottie_asset)
@@ -777,7 +868,7 @@ namespace chrononmotion::motion {
                     return owner + " has a light color that cannot be represented without quantization";
             }
             if (layer.path_mask || !layer.masks.empty()) return owner + " carries a mask";
-            if (!layer.effects.empty() || !layer.effect_param_tracks.empty()) return owner + " carries an effect";
+            if (const std::string effect = effectProblem(layer); !effect.empty()) return effect;
             if (layer.flow_layout || layer.grid_layout) return owner + " carries a layout group";
             if (layer.follow_path) return owner + " carries a follow-path driver";
             // The plan contract has no layer-level auto-orient: `auto_orient`
@@ -880,7 +971,14 @@ namespace chrononmotion::motion {
             if (!plan.warnings.empty()) {
                 return "the plan carries warnings, which the plan contract cannot express";
             }
-            if (plan.temporal_motion_blur) return "the plan carries scene motion blur";
+            if (plan.temporal_motion_blur) {
+                if (plan.schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                    return "scene motion blur requires RenderPlan V3";
+                const auto& blur = *plan.temporal_motion_blur;
+                if (!std::isfinite(blur.shutter_angle) || blur.shutter_angle <= 0.f ||
+                    blur.shutter_angle > 360.f || blur.samples < 2 || blur.samples > 64)
+                    return "scene motion blur requires shutter_angle in (0, 360] and samples in [2, 64]";
+            }
             if (plan.camera) {
                 const std::string camera = cameraProblem(*plan.camera);
                 if (!camera.empty()) return camera;

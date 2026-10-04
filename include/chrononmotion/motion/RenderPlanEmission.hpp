@@ -22,7 +22,8 @@
 //            style, animation, V3 video time_remap, static indexed inline_mesh,
 //            path/procedural shapes, particle emitters, and per-layer lights
 //   camera   type, position, rotation_deg, fov_deg, near, far, zoom, optional dof
-//   style    font, font_size, fill, glow
+//   style    text font/size/fill/glow and media background frame/color/padding
+//   effects  catalog saturation/contrast, seeded noise, and vignette
 //   track    property, easing, keyframes (frame + value)
 //
 // `renderPlanEmissionProblem` names the first thing in a plan that this writer
@@ -30,8 +31,8 @@
 // drop it — a plan that loses a mask or an effect on the way out would render
 // as a different composition, which is worse than no file. The unsupported
 // families are the ones with no producer side here yet: hierarchy that is not
-// already flattened, track mattes, masks, transitions, effects and
-// their parameter tracks, shape gradients/fields/imported subpaths, path
+// already flattened, track mattes, masks, transitions, effect types outside
+// the listed native subset and effect parameter tracks, shape gradients/fields/imported subpaths, path
 // operators other than trim, non-schema shape fields, emissive mesh materials,
 // global lighting rigs,
 // audio mixes, prepared overlay packages, fill-gradient animation, and a layer-level `auto_orient` (the plan

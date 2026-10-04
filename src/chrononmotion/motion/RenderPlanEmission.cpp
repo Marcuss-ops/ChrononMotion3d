@@ -258,6 +258,66 @@ namespace chrononmotion::motion {
             writer.endObject();
         }
 
+        void writeMediaStyle(detail::Writer& writer, const LayerStylePlan& style) {
+            writer.beginObject();
+            if (style.background) {
+                const auto& background = *style.background;
+                writer.key("background");
+                writer.beginObject();
+                writer.key("color"); writer.text(background.color);
+                if (background.opacity) { writer.key("opacity"); writer.number(*background.opacity); }
+                if (background.radius) { writer.key("radius"); writer.number(*background.radius); }
+                writer.key("padding");
+                writeFloats(writer, background.padding, background.padding_dimensions);
+                writer.endObject();
+            }
+            writer.endObject();
+        }
+
+        void writeEffects(detail::Writer& writer, const std::vector<LayerPlan::EffectPlan>& effects) {
+            writer.beginArray();
+            for (const auto& effect : effects) {
+                writer.item();
+                writer.beginObject();
+                switch (effect.kind) {
+                    case LayerPlan::EffectKindPlan::Catalog:
+                        writer.key("type"); writer.token("catalog");
+                        writer.key("effect_id"); writer.text(effect.canonical_effect_id);
+                        writer.key("params"); writer.beginArray();
+                        for (const auto& param : effect.canonical_params) {
+                            writer.item(); writer.beginObject();
+                            writer.key("param"); writer.text(param.param);
+                            writer.key("value"); writer.number(param.value);
+                            writer.endObject();
+                        }
+                        writer.endArray();
+                        break;
+                    case LayerPlan::EffectKindPlan::Noise:
+                        writer.key("type"); writer.token("noise");
+                        writer.key("amount"); writer.number(effect.amount);
+                        writer.key("seed"); writer.unsignedInteger(effect.seed);
+                        if (effect.animated) { writer.key("animated"); writer.boolean(true); }
+                        if (effect.noise_size != 1.f) { writer.key("size"); writer.number(effect.noise_size); }
+                        if (effect.grain_shadow_response != 1.f) { writer.key("shadow_response"); writer.number(effect.grain_shadow_response); }
+                        if (effect.grain_midtone_response != 1.f) { writer.key("midtone_response"); writer.number(effect.grain_midtone_response); }
+                        if (effect.grain_highlight_response != 1.f) { writer.key("highlight_response"); writer.number(effect.grain_highlight_response); }
+                        if (effect.rgb_noise) { writer.key("color_mode"); writer.token("rgb"); }
+                        break;
+                    case LayerPlan::EffectKindPlan::Vignette:
+                        writer.key("type"); writer.token("vignette");
+                        writer.key("amount"); writer.number(effect.amount);
+                        writer.key("radius"); writer.number(effect.radius);
+                        writer.key("softness"); writer.number(effect.softness);
+                        writer.key("color"); writeFloats(writer, effect.effect_color, effect.effect_color.size());
+                        break;
+                    default:
+                        throw std::invalid_argument("writeEffects: effect was not validated");
+                }
+                writer.endObject();
+            }
+            writer.endArray();
+        }
+
         void writeInlineMesh(detail::Writer& writer, const InlineMeshPlan& mesh) {
 
             writer.beginObject();
@@ -396,7 +456,48 @@ namespace chrononmotion::motion {
                     writer.key("radius"); writer.number(shape.radius);
                 }
             }
-            if (shape.fill_color) { writer.key("fill"); writeFloats(writer, *shape.fill_color, shape.fill_color->size()); }
+            if (shape.gradient) {
+                const auto& gradient = *shape.gradient;
+                writer.key("fill");
+                writer.beginObject();
+                writer.key("type");
+                writer.token(gradient.type == chronon3d::graphics::GradientType::Linear ? "linear" :
+                             gradient.type == chronon3d::graphics::GradientType::Radial ? "radial" : "conic");
+                writer.key("spread");
+                writer.token(gradient.spread == chronon3d::graphics::GradientSpread::Repeat ? "repeat" :
+                             gradient.spread == chronon3d::graphics::GradientSpread::Reflect ? "reflect" : "pad");
+                const std::array<float, 2> start{gradient.start.x, gradient.start.y};
+                const std::array<float, 2> end{gradient.end.x, gradient.end.y};
+                const std::array<float, 2> center{gradient.center.x, gradient.center.y};
+                writer.key("start"); writeFloats(writer, start.data(), start.size());
+                writer.key("end"); writeFloats(writer, end.data(), end.size());
+                writer.key("center"); writeFloats(writer, center.data(), center.size());
+                writer.key("radius"); writer.number(gradient.radius);
+                writer.key("angle"); writer.number(gradient.angle);
+                writer.key("color_stops"); writer.beginArray();
+                for (const auto& stop : gradient.color_stops) {
+                    writer.item(); writer.beginObject();
+                    writer.key("position"); writer.number(stop.position);
+                    writer.key("color");
+                    const std::array<float, 4> color{stop.color.r, stop.color.g, stop.color.b, stop.color.a};
+                    writeFloats(writer, color.data(), color.size());
+                    writer.endObject();
+                }
+                writer.endArray();
+                if (!gradient.opacity_stops.empty()) {
+                    writer.key("opacity_stops"); writer.beginArray();
+                    for (const auto& stop : gradient.opacity_stops) {
+                        writer.item(); writer.beginObject();
+                        writer.key("position"); writer.number(stop.position);
+                        writer.key("opacity"); writer.number(stop.opacity);
+                        writer.endObject();
+                    }
+                    writer.endArray();
+                }
+                writer.endObject();
+            } else if (shape.fill_color) {
+                writer.key("fill"); writeFloats(writer, *shape.fill_color, shape.fill_color->size());
+            }
             if (shape.type == ShapeContentTypePlan::Path || shape.type == ShapeContentTypePlan::Line) {
                 if (!shape.path.empty()) { writer.key("path"); writePathCommands(writer, shape.path); }
             }
@@ -613,6 +714,29 @@ namespace chrononmotion::motion {
                 writer.key("fit");
                 writer.token(fitName(*layer.fit));
             }
+            if (layer.crop) {
+                writer.key("crop");
+                writer.beginObject();
+                writer.key("enabled");
+                writer.boolean(layer.crop->enabled);
+                writer.key("origin");
+                writeFloats(writer, layer.crop->origin, 2);
+                writer.key("size");
+                writeFloats(writer, layer.crop->size, 2);
+                writer.key("flip_x");
+                writer.boolean(layer.crop->flip_x);
+                writer.endObject();
+            }
+
+            if (layer.style && layer.style->background &&
+                (layer.type == LayerType::Image || layer.type == LayerType::Video)) {
+                writer.key("style");
+                writeMediaStyle(writer, *layer.style);
+            }
+            if (!layer.effects.empty()) {
+                writer.key("effects");
+                writeEffects(writer, layer.effects);
+            }
 
             if (layer.type == LayerType::Text) {
                 writer.key("text");
@@ -780,6 +904,16 @@ namespace chrononmotion::motion {
             writer.beginObject();
             writer.key("max_temporal_pixels");
             writer.unsignedInteger(plan.budget.max_temporal_pixels);
+            writer.endObject();
+        }
+
+        if (plan.temporal_motion_blur) {
+            writer.key("temporal_motion_blur");
+            writer.beginObject();
+            writer.key("shutter_angle");
+            writer.number(plan.temporal_motion_blur->shutter_angle);
+            writer.key("samples");
+            writer.unsignedInteger(plan.temporal_motion_blur->samples);
             writer.endObject();
         }
 

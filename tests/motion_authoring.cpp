@@ -4,6 +4,7 @@
 #if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)
 #include "chrononmotion/motion/RenderPlanEmission.hpp"
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
+#include <chronon3d/render_plan/effect_presets.hpp>
 
 #include <nlohmann/json.hpp>
 #endif
@@ -11,6 +12,7 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -538,6 +540,7 @@ bool sameLoweredPlan(const chronon3d::render_plan::RenderPlan& left,
 }
 
 void testTypedChronon3dLowering() {
+    using namespace chronon3d::render_plan;
     section("typed Chronon3D v2/v3 RenderPlan lowering");
     MotionScene scene("plan", 30.f);
     scene.addNull(10, "Controller");
@@ -1013,6 +1016,20 @@ void testTypedChronon3dLowering() {
     const std::string cameraDofText = renderPlanToJson(cameraDofPlan);
     check(renderPlanToJson(cameraDofPlan) == cameraDofText,
           "camera depth-of-field JSON emission is byte-for-byte deterministic");
+    auto cameraBlurPlan = slowedVideo;
+    cameraBlurPlan.temporal_motion_blur = chronon3d::render_plan::MotionBlurPlan{180.f, 4};
+    check(renderPlanEmissionProblem(cameraBlurPlan).empty(),
+          "global temporal motion blur is supported by the V3 plan emitter");
+    const auto cameraBlurJson = nlohmann::json::parse(renderPlanToJson(cameraBlurPlan));
+    check(cameraBlurJson.at("temporal_motion_blur").at("shutter_angle") == 180.f &&
+              cameraBlurJson.at("temporal_motion_blur").at("samples") == 4,
+          "V3 emission preserves temporal shutter angle and sample count");
+    check(renderPlanToJson(cameraBlurPlan) == renderPlanToJson(cameraBlurPlan),
+          "temporal motion blur JSON emission is deterministic");
+    auto legacyCameraBlurPlan = cameraBlurPlan;
+    legacyCameraBlurPlan.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
+    check(!renderPlanEmissionProblem(legacyCameraBlurPlan).empty(),
+          "global temporal motion blur is rejected for the V2 schema");
     auto invalidCameraDofPlan = cameraDofPlan;
     invalidCameraDofPlan.camera->dof_aperture = 2.8f;
     check(!renderPlanEmissionProblem(invalidCameraDofPlan).empty() &&
@@ -1052,6 +1069,7 @@ void testTypedChronon3dLowering() {
     MotionScene cameraScene("camera lower", 30.f);
     auto& cameraContent = cameraScene.addContent(22, "camera content", ContentRef::image("camera-asset", {4.f, 4.f}));
     cameraContent.lifetime = FrameRange::between(0, 2);
+    cameraContent.transform.position.set(4.f, 5.f, -12.f);
     cameraScene.evaluate(0);
     CameraRig animatedRig(23, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     animatedRig.setPosition({1.f, 2.f, -8.f});
@@ -1068,8 +1086,22 @@ void testTypedChronon3dLowering() {
     const auto cameraPlan = lowerToRenderPlan(cameraScene, cameraOptions);
     check(cameraPlan.camera && cameraPlan.camera_animation && cameraPlan.camera_animation->size() == 7,
           "camera rig lowers to a typed base projection and dense camera tracks");
-    check(cameraPlan.camera_animation->front().keyframes.back().value.front() == 3.f,
-          "camera position animation samples the final authored rig pose");
+    const auto findPositionZTrack = [](const auto& tracks) -> const chronon3d::render_plan::CameraTrackPlan* {
+        const auto found = std::find_if(tracks.begin(), tracks.end(), [](const auto& track) {
+            return track.property == chronon3d::render_plan::CameraPropertyPlan::PositionZ;
+        });
+        return found == tracks.end() ? nullptr : &*found;
+    };
+    const auto* cameraPositionZ = findPositionZTrack(*cameraPlan.camera_animation);
+    const auto& loweredContent = cameraPlan.layers.front();
+    const auto& loweredPositionTrack = loweredContent.animation->tracks.front();
+    check(cameraPositionZ && cameraPlan.camera->position[2] == 8.f &&
+          cameraPositionZ->keyframes.back().value.front() == 8.f,
+          "camera position and its dense animation track mirror Motion depth into RenderPlan space");
+    check(loweredContent.position_dimensions == 3 && loweredContent.position[2] == 12.f &&
+          loweredPositionTrack.property == "position" &&
+          loweredPositionTrack.keyframes.back().value[2] == 12.f,
+          "3D layer anchor and its baked transform use the same mirrored RenderPlan depth");
     CameraRig dofRig(24, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     dofRig.setPosition({1.f, 2.f, -8.f}).setAperture(0.035f).setFocusDistance(425.f);
     auto dofCameraOptions = cameraOptions;
@@ -1077,8 +1109,94 @@ void testTypedChronon3dLowering() {
     const auto loweredDofCamera = lowerToRenderPlan(cameraScene, dofCameraOptions);
     check(loweredDofCamera.camera && loweredDofCamera.camera->dof_enabled &&
           loweredDofCamera.camera->dof_aperture == 0.035f &&
-          loweredDofCamera.camera->dof_focus_distance == 425.f,
-          "CameraRig camera lowering transfers supported static depth-of-field optics");
+          loweredDofCamera.camera->dof_focus_distance == 433.f,
+          "CameraRig focus distance lowers to the RenderPlan world-Z focal plane");
+    auto styledImagePlan = cameraPlan;
+    auto& styledImage = styledImagePlan.layers.front();
+    LayerStylePlan imageStyle;
+    BackgroundStyle imageFrame;
+    imageFrame.color = "#E8E2D5";
+    imageFrame.radius = 18.f;
+    imageFrame.padding = {6.f, 6.f};
+    imageFrame.padding_dimensions = 2;
+    imageStyle.background = imageFrame;
+    styledImage.style = imageStyle;
+    LayerPlan::EffectPlan saturation;
+    saturation.kind = LayerPlan::EffectKindPlan::Catalog;
+    saturation.canonical_effect_id = "color.saturation";
+    saturation.canonical_params.push_back({"value", 0.78f});
+    LayerPlan::EffectPlan contrast;
+    contrast.kind = LayerPlan::EffectKindPlan::Catalog;
+    contrast.canonical_effect_id = "color.contrast";
+    contrast.canonical_params.push_back({"value", 1.08f});
+    LayerPlan::EffectPlan grain;
+    grain.kind = LayerPlan::EffectKindPlan::Noise;
+    grain.amount = 0.02f;
+    grain.seed = 1986;
+    LayerPlan::EffectPlan vignette;
+    vignette.kind = LayerPlan::EffectKindPlan::Vignette;
+    vignette.amount = 0.12f;
+    vignette.radius = 0.72f;
+    vignette.softness = 0.55f;
+    styledImage.effects = {saturation, contrast, grain, vignette};
+    styledImage.crop = chronon3d::render_plan::ImageCropPlan{
+        .enabled = true, .origin = {0.1f, 0.05f}, .size = {0.8f, 0.9f}, .flip_x = true};
+    styledImagePlan.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
+    const auto styledImageJson = nlohmann::json::parse(renderPlanToJson(styledImagePlan));
+    check(styledImageJson["layers"][0]["style"]["background"]["padding"] ==
+              nlohmann::json::array({6.f, 6.f}) &&
+          styledImageJson["layers"][0]["effects"].size() == 4 &&
+          styledImageJson["layers"][0]["effects"][2]["seed"] == 1986 &&
+          styledImageJson["layers"][0]["crop"]["flip_x"] == true &&
+          styledImageJson["layers"][0]["crop"]["origin"] == nlohmann::json::array({0.1f, 0.05f}),
+          "RenderPlan emission preserves image frame, grade, crop mirror, seeded grain, and vignette");
+    auto leakProfile = chronon3d::render_plan::effect_presets::light_leak::LightLeakProfile{};
+    leakProfile.shape = chronon3d::render_plan::effect_presets::light_leak::LightLeakShape::Edge;
+    leakProfile.edge = chronon3d::render_plan::effect_presets::light_leak::LightLeakEdge::Top;
+    leakProfile.softness = 0.f;
+    const auto leakLayer = chronon3d::render_plan::effect_presets::light_leak::LightLeakResolver::resolve(
+        leakProfile, {1920.f, 1080.f}, "motion-authoring-light-leak");
+    auto leakPlan = styledImagePlan;
+    leakPlan.layers = {leakLayer};
+    leakPlan.canvas.duration = chronon3d::Frame{2};
+    leakPlan.layers.front().duration_frames = chronon3d::Frame{2};
+    leakPlan.layers.front().animation = chronon3d::render_plan::AnimationPlan{};
+    chronon3d::render_plan::AnimationTrackPlan leakOpacity;
+    leakOpacity.property = "opacity";
+    leakOpacity.keyframes = {
+        {chronon3d::Frame{0}, {0.f}}, {chronon3d::Frame{1}, {1.f}},
+        {chronon3d::Frame{2}, {0.f}}};
+    leakPlan.layers.front().animation->tracks.push_back(leakOpacity);
+    const auto leakJson = nlohmann::json::parse(renderPlanToJson(leakPlan));
+    check(leakJson["layers"][0]["shape"]["fill"]["type"] == "radial" &&
+          leakJson["layers"][0]["shape"]["fill"]["color_stops"].size() == 2 &&
+          leakJson["layers"][0]["animation"]["tracks"][0]["keyframes"].size() == 3,
+          "RenderPlan emission preserves native gradient fills and animated light-leak opacity");
+    auto unsupportedEffectPlan = styledImagePlan;
+    unsupportedEffectPlan.layers.front().effects.back().kind = LayerPlan::EffectKindPlan::FractalNoise;
+    check(!renderPlanEmissionProblem(unsupportedEffectPlan).empty(),
+          "RenderPlan emission rejects effect types outside its explicit native subset");
+    styledImagePlan.camera_animation.reset();
+    CameraPlan documentaryCamera;
+    documentaryCamera.position = {0.f, 0.f, 850.f};
+    documentaryCamera.rotation_deg = {0.f, 0.f, 0.f};
+    documentaryCamera.fov_deg = 50.f;
+    documentaryCamera.near = 0.1f;
+    documentaryCamera.far = 2000.f;
+    styledImagePlan.camera = documentaryCamera;
+    styledImagePlan.canvas.duration = chronon3d::Frame{1};
+    styledImagePlan.layers.front().asset = "assets/images/card_620x720_left.png";
+    styledImagePlan.layers.front().position = {0.f, 0.f, 0.f};
+    styledImagePlan.layers.front().position_dimensions = 3;
+    styledImagePlan.layers.front().size = {400.f, 560.f};
+    styledImagePlan.layers.front().size_dimensions = 2;
+    styledImagePlan.layers.front().animation.reset();
+    styledImagePlan.layers.front().duration_frames = chronon3d::Frame{1};
+    styledImagePlan.output.path = "/tmp/chronon_documentary_snapshot_adapter_smoke.png";
+    std::ofstream documentaryAdapterPlan("/tmp/chronon_documentary_snapshot_adapter_smoke.plan.json",
+                                         std::ios::binary | std::ios::trunc);
+    check(documentaryAdapterPlan && (documentaryAdapterPlan << renderPlanToJson(styledImagePlan)),
+          "documentary image look plan can be written for Chronon3D's native decoder");
     CameraRig invalidDofRig(25, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     invalidDofRig.setAperture(2.8f).setFocusDistance(425.f);
     auto invalidDofCameraOptions = cameraOptions;
@@ -1127,16 +1245,29 @@ void testTypedChronon3dLowering() {
         "lowering rejects non-finite camera projection data");
     CameraPose cameraPose;
     cameraPose.fov = 50.f;
+    cameraPose.position = {1.f, 2.f, -3.f};
     const auto camera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
     checkNear(camera.fov_deg, 50.f, 1e-6f, "camera pose lowering maps typed projection parameters");
+    check(camera.position == std::array<float, 3>{1.f, 2.f, 3.f},
+          "camera pose lowering maps Motion -Z depth to RenderPlan +Z-forward coordinates");
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 2.f, 1.f); }),
           "camera lowering rejects an invalid clipping interval");
     cameraPose.aperture = 0.04f;
     cameraPose.focusDistance = 480.f;
     const auto dofCamera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
     check(dofCamera.dof_enabled && dofCamera.dof_aperture == 0.04f &&
-          dofCamera.dof_focus_distance == 480.f,
-          "camera pose lowering preserves the RenderPlan V2 depth-of-field contract");
+          dofCamera.dof_focus_distance == 483.f,
+          "camera pose lowering converts optical-axis distance to RenderPlan world-Z focus");
+    cameraPose.position = {0.f, 0.f, 480.00006f};
+    cameraPose.focusDistance = 480.f;
+    const auto nearZeroFocusPlane = lowerCameraPose(cameraPose, 0.1f, 2000.f);
+    check(nearZeroFocusPlane.dof_focus_distance == 0.001f,
+          "camera lowering clamps near-zero focus-plane roundoff to the schema epsilon");
+    cameraPose.position.z = 481.f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "camera lowering still rejects materially negative RenderPlan focal planes");
+    cameraPose.position = {1.f, 2.f, -3.f};
+    cameraPose.focusDistance = 480.f;
     cameraPose.focalLength = 50.f;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
           "camera lowering rejects authored focal-length metadata without an equivalent RenderPlan lens contract");
@@ -1158,10 +1289,49 @@ void testTypedChronon3dLowering() {
     CameraRig animatedDofRig(26, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     animatedDofRig.setPosition({0.f, 0.f, -8.f}).setAperture(0.04f).setFocusDistance(480.f);
     animatedDofRig.apertureTrack().add(0.f, 0.04f).add(1.f, 0.06f);
+    animatedDofRig.focusDistanceTrack().add(0.f, 480.f).add(1.f, 720.f);
+    animatedDofRig.setMaxBlur(12.f).maxBlurTrack().add(0.f, 12.f).add(1.f, 20.f);
     RenderPlanLoweringOptions animatedDofOptions;
     animatedDofOptions.cameraRig = &animatedDofRig;
-    check(throwsInvalid([&] { (void)lowerToRenderPlan(cameraOnlyScene, animatedDofOptions); }),
-          "camera lowering rejects animated depth-of-field rather than silently freezing it at frame zero");
+    const auto animatedDofPlan = lowerToRenderPlan(cameraOnlyScene, animatedDofOptions);
+    const auto findCameraTrack = [&](chronon3d::render_plan::CameraPropertyPlan property)
+        -> const chronon3d::render_plan::CameraTrackPlan* {
+        if (!animatedDofPlan.camera_animation) return nullptr;
+        const auto found = std::find_if(animatedDofPlan.camera_animation->begin(), animatedDofPlan.camera_animation->end(),
+            [property](const auto& track) { return track.property == property; });
+        return found == animatedDofPlan.camera_animation->end() ? nullptr : &*found;
+    };
+    const auto* focusTrack = findCameraTrack(chronon3d::render_plan::CameraPropertyPlan::FocusDistance);
+    const auto* apertureTrack = findCameraTrack(chronon3d::render_plan::CameraPropertyPlan::Aperture);
+    const auto* maxBlurTrack = findCameraTrack(chronon3d::render_plan::CameraPropertyPlan::MaxBlur);
+    check(animatedDofPlan.camera && animatedDofPlan.camera->dof_enabled && focusTrack && apertureTrack && maxBlurTrack,
+          "camera lowering enables and emits typed animated depth-of-field channels");
+    check(focusTrack && focusTrack->keyframes.size() > 1 &&
+          focusTrack->keyframes.front().value.front() == 488.f &&
+          focusTrack->keyframes.back().value.front() == 728.f &&
+          apertureTrack && apertureTrack->keyframes.front().value.front() == 0.04f &&
+          apertureTrack->keyframes.back().value.front() == 0.06f &&
+          maxBlurTrack && maxBlurTrack->keyframes.front().value.front() == 12.f &&
+          maxBlurTrack->keyframes.back().value.front() == 20.f,
+          "camera lowering samples focus, aperture, and maximum blur through their final authored values");
+    const auto animatedDofJson = nlohmann::json::parse(renderPlanToJson(animatedDofPlan));
+    bool emitsFocus = false, emitsAperture = false, emitsMaxBlur = false;
+    for (const auto& track : animatedDofJson["camera_animation"]["tracks"]) {
+        const auto property = track.at("property").get<std::string>();
+        emitsFocus = emitsFocus || property == "camera_focus_distance";
+        emitsAperture = emitsAperture || property == "camera_aperture";
+        emitsMaxBlur = emitsMaxBlur || property == "camera_max_blur";
+    }
+    check(emitsFocus && emitsAperture && emitsMaxBlur,
+          "RenderPlan JSON preserves focus, aperture, and maximum-blur camera track names");
+    CameraRig dofHandoffRig(27, 50.f, 16.f / 9.f, 0.1f, 2000.f);
+    dofHandoffRig.setPosition({0.f, 0.f, -8.f}).setFocusDistance(480.f);
+    dofHandoffRig.apertureTrack().add(0.f, 0.f).add(1.f, 0.06f);
+    auto dofHandoffOptions = animatedDofOptions;
+    dofHandoffOptions.cameraRig = &dofHandoffRig;
+    const auto dofHandoffPlan = lowerToRenderPlan(cameraOnlyScene, dofHandoffOptions);
+    check(dofHandoffPlan.camera && dofHandoffPlan.camera->dof_enabled,
+          "camera lowering enables DOF in the base plan when aperture becomes active after frame zero");
     (void)loweredCameraPoseDof;
     check(throwsInvalid([&] {
         const std::array<BakedPath, 2> missingIdentity{

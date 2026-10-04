@@ -110,6 +110,9 @@ using chronon3d::render_plan::ShapeContentTypePlan;
                 case CameraPropertyPlan::RotationZ: return "camera_rotation_z";
                 case CameraPropertyPlan::FovDeg: return "camera_fov_deg";
                 case CameraPropertyPlan::Zoom: return "camera_zoom";
+                case CameraPropertyPlan::FocusDistance: return "camera_focus_distance";
+                case CameraPropertyPlan::Aperture: return "camera_aperture";
+                case CameraPropertyPlan::MaxBlur: return "camera_max_blur";
             }
             return "camera_position_z";
         }

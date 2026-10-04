@@ -43,6 +43,7 @@ namespace chrononmotion::motion {
         /// applies what is present and leaves the rest to its own optics.
         float aperture{0.f};      ///< Entrance pupil diameter, in millimetres.
         float focusDistance{0.f}; ///< Distance to the focal plane, in world units.
+        float maxBlur{0.f};        ///< Maximum blur radius in pixels; 0 means not authored.
         float fStop{0.f};         ///< Aperture as f/N.
 
         /// Roll about the view axis, after the aim is solved.
@@ -89,6 +90,7 @@ namespace chrononmotion::motion {
         CameraRig& setRoll(float radians);
         CameraRig& setAperture(float millimetres);
         CameraRig& setFocusDistance(float distance);
+        CameraRig& setMaxBlur(float pixels);
         CameraRig& setFStop(float fStop);
         CameraRig& setParent(Layer::Id parentId);
 
@@ -100,6 +102,7 @@ namespace chrononmotion::motion {
         [[nodiscard]] float roll() const { return roll_; }
         [[nodiscard]] float aperture() const { return aperture_; }
         [[nodiscard]] float focusDistance() const { return focusDistance_; }
+        [[nodiscard]] float maxBlur() const { return maxBlur_; }
         [[nodiscard]] float fStop() const { return fStop_; }
         [[nodiscard]] float aspect() const { return aspect_; }
         [[nodiscard]] float nearPlane() const { return nearPlane_; }
@@ -117,7 +120,11 @@ namespace chrononmotion::motion {
         [[nodiscard]] Track<float>& focalLengthTrack() { return focalTrack_; }
         [[nodiscard]] Track<float>& rollTrack() { return rollTrack_; }
         [[nodiscard]] Track<float>& apertureTrack() { return apertureTrack_; }
+        [[nodiscard]] const Track<float>& apertureTrack() const { return apertureTrack_; }
         [[nodiscard]] Track<float>& focusDistanceTrack() { return focusDistanceTrack_; }
+        [[nodiscard]] const Track<float>& focusDistanceTrack() const { return focusDistanceTrack_; }
+        [[nodiscard]] Track<float>& maxBlurTrack() { return maxBlurTrack_; }
+        [[nodiscard]] const Track<float>& maxBlurTrack() const { return maxBlurTrack_; }
         [[nodiscard]] Track<float>& fStopTrack() { return fStopTrack_; }
 
         /// Sample the local pose at `seconds`.
@@ -174,9 +181,11 @@ namespace chrononmotion::motion {
         Track<float> rollTrack_;
         float aperture_{0.f};
         float focusDistance_{0.f};
+        float maxBlur_{0.f};
         float fStop_{0.f};
         Track<float> apertureTrack_;
         Track<float> focusDistanceTrack_;
+        Track<float> maxBlurTrack_;
         Track<float> fStopTrack_;
         float aspect_{16.f / 9.f};
         float nearPlane_{0.1f};

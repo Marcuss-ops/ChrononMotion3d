@@ -134,7 +134,10 @@ std::array<float, 3> planPosition(const ResolvedPose& pose, LayerType type,
         return {pose.position.x + static_cast<float>(width) * .5f,
                 pose.position.y + static_cast<float>(height) * .5f, pose.position.z};
     }
-    return {pose.position.x, pose.position.y, pose.position.z};
+    // Motion cameras and 3D layers use the conventional forward -Z axis;
+    // RenderPlan's camera-backed projection uses forward +Z. Mirror depth at
+    // this boundary so authored anchors and camera targets remain coincident.
+    return {pose.position.x, pose.position.y, -pose.position.z};
 }
 
 std::array<float, 3> planAnimationPosition(const ResolvedPose& pose, LayerType type,
@@ -145,7 +148,7 @@ std::array<float, 3> planAnimationPosition(const ResolvedPose& pose, LayerType t
     (void)type;
     (void)width;
     (void)height;
-    return {pose.position.x, pose.position.y, pose.position.z};
+    return {pose.position.x, pose.position.y, -pose.position.z};
 }
 
 AnimationTrackPlan makeVectorTrack(const char* property,
@@ -720,20 +723,22 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: camera track exceeds the 65536 keyframe contract");
         std::vector<chronon3d::render_plan::AnimationKeyframePlan> positionX, positionY, positionZ;
         std::vector<chronon3d::render_plan::AnimationKeyframePlan> rotationX, rotationY, rotationZ;
+        std::vector<chronon3d::render_plan::AnimationKeyframePlan> focusDistance, aperture, maxBlur;
         positionX.reserve(last + 1); positionY.reserve(last + 1); positionZ.reserve(last + 1);
         rotationX.reserve(last + 1); rotationY.reserve(last + 1); rotationZ.reserve(last + 1);
+        const bool animateFocus = !options.cameraRig->focusDistanceTrack().empty();
+        const bool animateAperture = !options.cameraRig->apertureTrack().empty();
+        const bool animateMaxBlur = !options.cameraRig->maxBlurTrack().empty();
+        if (animateFocus) focusDistance.reserve(last + 1);
+        if (animateAperture) aperture.reserve(last + 1);
+        if (animateMaxBlur) maxBlur.reserve(last + 1);
+        bool dofEnabled = resolvedOptions.camera->dof_enabled;
         for (std::size_t frame = 0; frame <= last; ++frame) {
             CameraPose pose = options.cameraRig->sample(static_cast<float>(frame) / scene.fps());
             pose.hasTarget = false;
             pose.roll = 0.f;
             const auto camera = lowerCameraPose(pose, resolvedOptions.camera->near, resolvedOptions.camera->far);
-            const auto& baseCamera = *resolvedOptions.camera;
-            if (camera.dof_enabled != baseCamera.dof_enabled ||
-                !close(camera.dof_focus_distance, baseCamera.dof_focus_distance) ||
-                !close(camera.dof_aperture, baseCamera.dof_aperture) ||
-                !close(camera.dof_max_blur, baseCamera.dof_max_blur))
-                throw std::invalid_argument(
-                    "lowerToRenderPlan: animated camera depth of field is not representable by the RenderPlan camera animation contract");
+            dofEnabled = dofEnabled || camera.dof_enabled;
             const chronon3d::Frame keyFrame{static_cast<std::int64_t>(frame)};
             positionX.push_back(makePlanKeyframe(keyFrame, {camera.position[0]}));
             positionY.push_back(makePlanKeyframe(keyFrame, {camera.position[1]}));
@@ -741,7 +746,15 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             rotationX.push_back(makePlanKeyframe(keyFrame, {camera.rotation_deg[0]}));
             rotationY.push_back(makePlanKeyframe(keyFrame, {camera.rotation_deg[1]}));
             rotationZ.push_back(makePlanKeyframe(keyFrame, {camera.rotation_deg[2]}));
+            if (animateFocus)
+                focusDistance.push_back(makePlanKeyframe(keyFrame, {camera.dof_focus_distance}));
+            if (animateAperture)
+                aperture.push_back(makePlanKeyframe(keyFrame, {camera.dof_aperture}));
+            if (animateMaxBlur)
+                maxBlur.push_back(makePlanKeyframe(keyFrame, {camera.dof_max_blur}));
         }
+        const bool sequenceUsesDof = dofEnabled || animateFocus || animateAperture || animateMaxBlur;
+        if (plan.camera) plan.camera->dof_enabled = sequenceUsesDof;
         plan.camera_animation = std::vector<chronon3d::render_plan::CameraTrackPlan>{};
         auto& tracks = *plan.camera_animation;
         tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::PositionX, std::move(positionX), "linear", std::nullopt});
@@ -756,6 +769,12 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             fov.push_back(makePlanKeyframe(chronon3d::Frame{static_cast<std::int64_t>(frame)},
                                            {options.cameraRig->sample(static_cast<float>(frame) / scene.fps()).fov}));
         tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::FovDeg, std::move(fov), "linear", std::nullopt});
+        if (animateFocus)
+            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::FocusDistance, std::move(focusDistance), "linear", std::nullopt});
+        if (animateAperture)
+            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::Aperture, std::move(aperture), "linear", std::nullopt});
+        if (animateMaxBlur)
+            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::MaxBlur, std::move(maxBlur), "linear", std::nullopt});
     }
     return plan;
 }
@@ -778,6 +797,7 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     ensureFinite(pose.focalLength, "camera focal length");
     ensureFinite(pose.aperture, "camera aperture");
     ensureFinite(pose.focusDistance, "camera focus distance");
+    ensureFinite(pose.maxBlur, "camera maximum blur");
     ensureFinite(pose.fStop, "camera f-stop");
     ensureFinite(pose.roll, "camera roll");
     if (pose.hasTarget || pose.roll != 0.f)
@@ -787,10 +807,11 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
         throw std::invalid_argument(
             "lowerCameraPose: Chronon3D RenderPlan does not represent authored focal length or f-stop lens values");
     if (!std::isfinite(pose.aperture) || pose.aperture < 0.f || pose.aperture > 1.f ||
-        !std::isfinite(pose.focusDistance) || pose.focusDistance < 0.f || pose.focusDistance > 10'000'000.f)
+        !std::isfinite(pose.focusDistance) || pose.focusDistance < 0.f || pose.focusDistance > 10'000'000.f ||
+        pose.maxBlur < 0.f || pose.maxBlur > 256.f)
         throw std::invalid_argument(
-            "lowerCameraPose: depth-of-field aperture and focus distance are outside the RenderPlan contract");
-    const bool depthOfFieldAuthored = pose.aperture != 0.f || pose.focusDistance != 0.f;
+            "lowerCameraPose: depth-of-field values are outside the RenderPlan contract");
+    const bool depthOfFieldAuthored = pose.aperture != 0.f || pose.focusDistance != 0.f || pose.maxBlur != 0.f;
     const bool depthOfFieldEnabled = pose.aperture > 0.f;
     if (depthOfFieldEnabled && pose.focusDistance <= 0.f)
         throw std::invalid_argument(
@@ -804,11 +825,33 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
         !std::isfinite(orientation.z) || !std::isfinite(orientation.w))
         throw std::invalid_argument("lowerCameraPose: orientation must be finite and normalized");
     orientation.normalize();
+    // RenderPlan V2's legacy DOF channel stores a world-space Z focus plane,
+    // while CameraRig authors a distance along the camera's optical axis.
+    // Resolve that focal point in Motion coordinates, then mirror Z into the
+    // RenderPlan camera convention just as we do for the camera position.
+    float renderPlanFocusPlane = 0.f;
+    if (pose.focusDistance > 0.f) {
+        Vector3 motionForward(0.f, 0.f, -1.f);
+        motionForward.applyQuaternion(orientation);
+        const float motionFocusZ = pose.position.z + motionForward.z * pose.focusDistance;
+        renderPlanFocusPlane = -motionFocusZ;
+        if (!std::isfinite(renderPlanFocusPlane) || renderPlanFocusPlane < -1e-3f)
+            throw std::invalid_argument("lowerCameraPose: the focal plane must map to positive "
+                "RenderPlan camera-space depth (camera_z=" + std::to_string(pose.position.z) +
+                ", forward_z=" + std::to_string(motionForward.z) +
+                ", focus_distance=" + std::to_string(pose.focusDistance) +
+                ", plane_z=" + std::to_string(renderPlanFocusPlane) + ")");
+        // RenderPlan currently requires a strictly positive value. Its legacy
+        // DOF path measures blur from world Z, where a subject on z=0 is valid;
+        // use a negligible epsilon for that exact plane.
+        renderPlanFocusPlane = std::max(renderPlanFocusPlane, 0.001f);
+    }
+    orientation.invert(); // RenderPlan camera forward is +Z; Motion camera forward is -Z.
     Matrix4 rotation;
     rotation.makeRotationFromQuaternion(orientation);
     const auto euler = chrononCameraEuler(rotation);
     CameraPlan camera;
-    camera.position = {pose.position.x, pose.position.y, pose.position.z};
+    camera.position = {pose.position.x, pose.position.y, -pose.position.z};
     camera.rotation_deg = {math::radToDeg(euler[0]), math::radToDeg(euler[1]),
                            math::radToDeg(euler[2])};
     camera.fov_deg = pose.fov;
@@ -817,7 +860,8 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     if (depthOfFieldAuthored) {
         camera.dof_enabled = depthOfFieldEnabled;
         camera.dof_aperture = pose.aperture;
-        if (pose.focusDistance > 0.f) camera.dof_focus_distance = pose.focusDistance;
+        if (pose.focusDistance > 0.f) camera.dof_focus_distance = renderPlanFocusPlane;
+        if (pose.maxBlur > 0.f) camera.dof_max_blur = pose.maxBlur;
     }
     return camera;
 }

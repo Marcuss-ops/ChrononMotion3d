@@ -96,6 +96,15 @@ namespace chrononmotion::motion {
         return *this;
     }
 
+    CameraRig& CameraRig::setMaxBlur(float pixels) {
+
+        if (!std::isfinite(pixels) || pixels < 0.f || pixels > 256.f) {
+            throw std::invalid_argument("CameraRig::setMaxBlur: maximum blur must be finite and in [0, 256]");
+        }
+        maxBlur_ = pixels;
+        return *this;
+    }
+
     CameraRig& CameraRig::setFStop(float fStop) {
 
         if (!std::isfinite(fStop) || fStop < 0.f) {
@@ -125,6 +134,7 @@ namespace chrononmotion::motion {
         end = std::max(end, rollTrack_.endTime());
         end = std::max(end, apertureTrack_.endTime());
         end = std::max(end, focusDistanceTrack_.endTime());
+        end = std::max(end, maxBlurTrack_.endTime());
         end = std::max(end, fStopTrack_.endTime());
         return end;
     }
@@ -284,6 +294,7 @@ namespace chrononmotion::motion {
         pose.roll = rollTrack_.empty() ? roll_ : rollTrack_.sample(seconds);
         pose.aperture = apertureTrack_.empty() ? aperture_ : apertureTrack_.sample(seconds);
         pose.focusDistance = focusDistanceTrack_.empty() ? focusDistance_ : focusDistanceTrack_.sample(seconds);
+        pose.maxBlur = maxBlurTrack_.empty() ? maxBlur_ : maxBlurTrack_.sample(seconds);
         pose.fStop = fStopTrack_.empty() ? fStop_ : fStopTrack_.sample(seconds);
 
         if (pose.hasTarget) {
