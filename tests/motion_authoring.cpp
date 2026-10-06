@@ -826,6 +826,47 @@ void testTypedChronon3dLowering() {
     proceduralShape.device_frame_kind = chronon3d::render_plan::DeviceFrameKindPlan::Browser;
     checkProceduralShapeEmission(proceduralShape, "device_frame");
 
+    using FieldPlan = chronon3d::render_plan::ShapeContentPlan;
+    using FieldType = chronon3d::render_plan::ShapeContentTypePlan;
+    chronon3d::render_plan::ShapeContentPlan fieldShape;
+    fieldShape.type = FieldType::Rect;
+    fieldShape.field = chronon3d::graphics::Field2D{
+        .generator = chronon3d::graphics::Field2DGenerator::Fractal,
+        .seed = 73, .frequency = 4.f, .octaves = 5};
+    fieldShape.field_ramp = chronon3d::graphics::GradientDefinition::linear(
+        {0.f, 0.5f}, {1.f, 0.5f}, {{0.f, {0.1f, 0.05f, 0.2f, 0.2f}},
+                                  {0.5f, {0.6f, 0.2f, 0.8f, 0.8f}},
+                                  {1.f, {0.9f, 0.8f, 1.f, 1.f}}});
+    fieldShape.field_render_scale = 2;
+    fieldShape.field_drift = Vector2{0.02f, -0.01f};
+    auto fieldPlan = chalkPathPlan;
+    fieldPlan.layers[0].shape = fieldShape;
+    const std::string fieldProblem = renderPlanEmissionProblem(fieldPlan);
+    check(fieldProblem.empty(), fieldProblem.empty() ? "native Field2D fill is accepted" : fieldProblem.c_str());
+    if (fieldProblem.empty()) {
+        const auto json = nlohmann::json::parse(renderPlanToJson(fieldPlan));
+        const auto& fill = json.at("layers").at(0).at("shape").at("fill");
+        check(fill.at("type") == "field" && fill.at("field").at("seed") == 73 &&
+              fill.at("field_ramp").at("color_stops").size() == 3 &&
+              fill.at("field_render_scale") == 2 &&
+              fill.at("field_drift") == nlohmann::json{0.02f, -0.01f},
+              "Field2D source, ramp, render scale and drift stay inside the closed fill payload");
+    }
+    chronon3d::render_plan::ShapeContentPlan meshShape;
+    meshShape.type = FieldType::Rect;
+    meshShape.gradient_mesh = chronon3d::graphics::GradientMesh::four_corner(
+        {0.1f, 0.1f, 0.2f, 1.f}, {0.8f, 0.1f, 0.3f, 1.f},
+        {0.1f, 0.7f, 0.8f, 1.f}, {0.9f, 0.8f, 1.f, 1.f});
+    auto meshFillPlan = chalkPathPlan;
+    meshFillPlan.layers[0].shape = meshShape;
+    const std::string meshProblem = renderPlanEmissionProblem(meshFillPlan);
+    check(meshProblem.empty(), meshProblem.empty() ? "native GradientMesh fill is accepted" : meshProblem.c_str());
+    if (meshProblem.empty()) {
+        const auto json = nlohmann::json::parse(renderPlanToJson(meshFillPlan));
+        check(json.at("layers").at(0).at("shape").at("fill").at("mesh").at("nodes").size() == 4,
+              "GradientMesh nodes are preserved in the renderer's nested fill envelope");
+    }
+
     auto chalkDustPlan = chalkPathPlan;
     chalkDustPlan.canvas.duration = chronon3d::Frame{13};
     chalkDustPlan.layers[0].duration_frames = chronon3d::Frame{13};

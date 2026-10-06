@@ -597,8 +597,91 @@ namespace chrononmotion::motion {
                 if (layer.size_dimensions != 2 || !std::isfinite(layer.size[0]) || !std::isfinite(layer.size[1]) ||
                     layer.size[0] <= 0.f || layer.size[1] <= 0.f)
                     return owner + " shape requires a positive two-dimensional size";
-                if (shape.field || !shape.imported_subpaths.empty())
-                    return owner + " carries a field or imported subpaths that the current emitter does not write";
+                if (!shape.imported_subpaths.empty())
+                    return owner + " carries imported subpaths that the current emitter does not write";
+                if (shape.field) {
+                    const auto& field = *shape.field;
+                    if (!std::isfinite(field.frequency) || field.frequency <= 0.f || field.frequency > 4096.f ||
+                        field.octaves < 1 || field.octaves > 16 ||
+                        !std::isfinite(field.persistence) || field.persistence < 0.f || field.persistence > 1.f ||
+                        !std::isfinite(field.lacunarity) || field.lacunarity <= 0.f || field.lacunarity > 8.f ||
+                        field.operators.size() > 8 || shape.gradient || shape.gradient_mesh ||
+                        shape.fill_color || shape.type == ShapeContentTypePlan::Line ||
+                        shape.type == ShapeContentTypePlan::Arc || shape.type == ShapeContentTypePlan::Grid ||
+                        shape.type == ShapeContentTypePlan::DotGrid || shape.type == ShapeContentTypePlan::DeviceFrame)
+                        return owner + " carries a field with unsupported geometry, fill conflict, or invalid settings";
+                    const auto& transform = field.transform;
+                    if (transform.translation.x != 0.f || transform.translation.y != 0.f ||
+                        transform.scale.x != 1.f || transform.scale.y != 1.f ||
+                        transform.rotation_radians != 0.f || transform.shear.x != 0.f ||
+                        transform.shear.y != 0.f || transform.pivot.x != 0.5f || transform.pivot.y != 0.5f)
+                        return owner + " carries Field2D transform values absent from the RenderPlan field contract";
+                    bool scalarOperatorSeen = false;
+                    bool warpSeen = false;
+                    for (const auto& op : field.operators) {
+                        using chronon3d::graphics::Field2DOperatorKind;
+                        if (op.kind == Field2DOperatorKind::Warp) {
+                            if (scalarOperatorSeen || warpSeen || !std::isfinite(op.amount) ||
+                                op.amount < 0.f || op.amount > 1.f)
+                                return owner + " carries an invalid Field2D warp operator";
+                            warpSeen = true;
+                        } else {
+                            scalarOperatorSeen = true;
+                            if ((op.kind == Field2DOperatorKind::Remap &&
+                                 (!std::isfinite(op.from) || !std::isfinite(op.to) || op.from < 0.f || op.from > 1.f ||
+                                  op.to < 0.f || op.to > 1.f || std::abs(op.to - op.from) < 1e-7f)) ||
+                                (op.kind == Field2DOperatorKind::Threshold &&
+                                 (!std::isfinite(op.edge) || op.edge < 0.f || op.edge > 1.f)) ||
+                                (op.kind == Field2DOperatorKind::Smoothstep &&
+                                 (!std::isfinite(op.edge) || op.edge < 0.f || op.edge > 1.f ||
+                                  !std::isfinite(op.softness) || op.softness <= 0.f || op.softness > 1.f)) ||
+                                op.kind == Field2DOperatorKind::DomainWarp || op.kind == Field2DOperatorKind::Translate ||
+                                op.kind == Field2DOperatorKind::Scale || op.kind == Field2DOperatorKind::Rotate ||
+                                op.kind == Field2DOperatorKind::Repeat || op.kind == Field2DOperatorKind::Add ||
+                                op.kind == Field2DOperatorKind::Subtract || op.kind == Field2DOperatorKind::Multiply ||
+                                op.kind == Field2DOperatorKind::Min || op.kind == Field2DOperatorKind::Max ||
+                                op.kind == Field2DOperatorKind::Abs || op.kind == Field2DOperatorKind::Power ||
+                                op.kind == Field2DOperatorKind::Clamp)
+                                return owner + " carries a Field2D operator absent from the RenderPlan contract";
+                        }
+                    }
+                    if (shape.field_ramp) {
+                        const auto& ramp = *shape.field_ramp;
+                        if (ramp.color_stops.size() < 2 || ramp.color_stops.size() > 256)
+                            return owner + " carries a field ramp outside [2, 256] stops";
+                        for (const auto& stop : ramp.color_stops)
+                            if (!std::isfinite(stop.position) || stop.position < 0.f || stop.position > 1.f ||
+                                !std::isfinite(stop.color.r) || stop.color.r < 0.f || stop.color.r > 1.f ||
+                                !std::isfinite(stop.color.g) || stop.color.g < 0.f || stop.color.g > 1.f ||
+                                !std::isfinite(stop.color.b) || stop.color.b < 0.f || stop.color.b > 1.f ||
+                                !std::isfinite(stop.color.a) || stop.color.a < 0.f || stop.color.a > 1.f)
+                                return owner + " carries invalid field-ramp stops";
+                    }
+                    if (shape.field_render_scale != 1 && shape.field_render_scale != 2 && shape.field_render_scale != 4)
+                        return owner + " carries a field render scale outside {1, 2, 4}";
+                    if (shape.field_drift && (!std::isfinite(shape.field_drift->x) ||
+                        !std::isfinite(shape.field_drift->y) || std::abs(shape.field_drift->x) > 100.f ||
+                        std::abs(shape.field_drift->y) > 100.f))
+                        return owner + " carries field drift outside [-100, 100]";
+                } else if (shape.field_ramp || shape.field_render_scale != 1 || shape.field_drift) {
+                    return owner + " carries field options without a Field2D source";
+                }
+                if (shape.gradient_mesh) {
+                    if (shape.gradient || shape.field || shape.fill_color ||
+                        shape.gradient_mesh->nodes.empty() || shape.gradient_mesh->nodes.size() > 256 ||
+                        shape.type == ShapeContentTypePlan::Line || shape.type == ShapeContentTypePlan::Arc ||
+                        shape.type == ShapeContentTypePlan::Grid || shape.type == ShapeContentTypePlan::DeviceFrame)
+                        return owner + " carries a mesh fill with unsupported geometry, conflict, or node count";
+                    for (const auto& node : shape.gradient_mesh->nodes)
+                        if (!std::isfinite(node.position.x) || node.position.x < 0.f || node.position.x > 1.f ||
+                            !std::isfinite(node.position.y) || node.position.y < 0.f || node.position.y > 1.f ||
+                            !std::isfinite(node.color.r) || node.color.r < 0.f || node.color.r > 1.f ||
+                            !std::isfinite(node.color.g) || node.color.g < 0.f || node.color.g > 1.f ||
+                            !std::isfinite(node.color.b) || node.color.b < 0.f || node.color.b > 1.f ||
+                            !std::isfinite(node.color.a) || node.color.a < 0.f || node.color.a > 1.f ||
+                            !std::isfinite(node.weight) || node.weight < 0.0001f || node.weight > 1000.f)
+                            return owner + " carries invalid gradient-mesh nodes";
+                }
                 if (shape.gradient) {
                     const auto& gradient = *shape.gradient;
                     if (gradient.color_stops.size() < 2 ||

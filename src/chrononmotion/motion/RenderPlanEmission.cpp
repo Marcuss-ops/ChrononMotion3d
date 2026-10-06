@@ -439,6 +439,116 @@ namespace chrononmotion::motion {
             writer.endObject();
         }
 
+        [[nodiscard]] const char* fieldGeneratorName(chronon3d::graphics::Field2DGenerator generator) {
+            using chronon3d::graphics::Field2DGenerator;
+            switch (generator) {
+                case Field2DGenerator::Perlin: return "perlin";
+                case Field2DGenerator::Simplex: return "simplex";
+                case Field2DGenerator::Fractal: return "fractal";
+                case Field2DGenerator::Cellular: return "cellular";
+                case Field2DGenerator::Grid: return "grid";
+                case Field2DGenerator::Checker: return "checker";
+                case Field2DGenerator::Dots: return "dots";
+                case Field2DGenerator::Stripes: return "stripes";
+                case Field2DGenerator::Rings: return "rings";
+                case Field2DGenerator::Linear: return "linear";
+                case Field2DGenerator::Radial: return "radial";
+                case Field2DGenerator::Conic: return "conic";
+                case Field2DGenerator::Burst: return "burst";
+            }
+            return "perlin";
+        }
+
+        void writeField(detail::Writer& writer, const chronon3d::graphics::Field2D& field) {
+            using chronon3d::graphics::Field2DOperatorKind;
+            writer.beginObject();
+            writer.key("generator"); writer.token(fieldGeneratorName(field.generator));
+            writer.key("seed"); writer.unsignedInteger(field.seed);
+            writer.key("frequency"); writer.number(field.frequency);
+            if (field.generator == chronon3d::graphics::Field2DGenerator::Fractal ||
+                field.generator == chronon3d::graphics::Field2DGenerator::Burst) {
+                writer.key("octaves"); writer.unsignedInteger(field.octaves);
+            }
+            if (field.generator == chronon3d::graphics::Field2DGenerator::Fractal) {
+                writer.key("persistence"); writer.number(field.persistence);
+                writer.key("lacunarity"); writer.number(field.lacunarity);
+            }
+            if (!field.operators.empty()) {
+                writer.key("operators"); writer.beginArray();
+                for (const auto& op : field.operators) {
+                    writer.item(); writer.beginObject();
+                    switch (op.kind) {
+                        case Field2DOperatorKind::Remap:
+                            writer.key("kind"); writer.token("remap");
+                            writer.key("from"); writer.number(op.from);
+                            writer.key("to"); writer.number(op.to);
+                            break;
+                        case Field2DOperatorKind::Threshold:
+                            writer.key("kind"); writer.token("threshold");
+                            writer.key("edge"); writer.number(op.edge);
+                            break;
+                        case Field2DOperatorKind::Smoothstep:
+                            writer.key("kind"); writer.token("smoothstep");
+                            writer.key("edge"); writer.number(op.edge);
+                            writer.key("softness"); writer.number(op.softness);
+                            break;
+                        case Field2DOperatorKind::Invert:
+                            writer.key("kind"); writer.token("invert");
+                            break;
+                        case Field2DOperatorKind::Warp:
+                            writer.key("kind"); writer.token("warp");
+                            writer.key("amount"); writer.number(op.amount);
+                            break;
+                        default:
+                            throw std::invalid_argument("writeField: field operator is not expressible in RenderPlan");
+                    }
+                    writer.endObject();
+                }
+                writer.endArray();
+            }
+            writer.endObject();
+        }
+
+        void writeGradientDefinition(detail::Writer& writer,
+                                     const chronon3d::graphics::GradientDefinition& gradient) {
+            writer.beginObject();
+            writer.key("type");
+            writer.token(gradient.type == chronon3d::graphics::GradientType::Linear ? "linear" :
+                         gradient.type == chronon3d::graphics::GradientType::Radial ? "radial" : "conic");
+            writer.key("spread");
+            writer.token(gradient.spread == chronon3d::graphics::GradientSpread::Repeat ? "repeat" :
+                         gradient.spread == chronon3d::graphics::GradientSpread::Reflect ? "reflect" : "pad");
+            const std::array<float, 2> start{gradient.start.x, gradient.start.y};
+            const std::array<float, 2> end{gradient.end.x, gradient.end.y};
+            const std::array<float, 2> center{gradient.center.x, gradient.center.y};
+            writer.key("start"); writeFloats(writer, start.data(), start.size());
+            writer.key("end"); writeFloats(writer, end.data(), end.size());
+            writer.key("center"); writeFloats(writer, center.data(), center.size());
+            writer.key("radius"); writer.number(gradient.radius);
+            writer.key("angle"); writer.number(gradient.angle);
+            writer.key("color_stops"); writer.beginArray();
+            for (const auto& stop : gradient.color_stops) {
+                writer.item(); writer.beginObject();
+                writer.key("position"); writer.number(stop.position);
+                writer.key("color");
+                const std::array<float, 4> color{stop.color.r, stop.color.g, stop.color.b, stop.color.a};
+                writeFloats(writer, color.data(), color.size());
+                writer.endObject();
+            }
+            writer.endArray();
+            if (!gradient.opacity_stops.empty()) {
+                writer.key("opacity_stops"); writer.beginArray();
+                for (const auto& stop : gradient.opacity_stops) {
+                    writer.item(); writer.beginObject();
+                    writer.key("position"); writer.number(stop.position);
+                    writer.key("opacity"); writer.number(stop.opacity);
+                    writer.endObject();
+                }
+                writer.endArray();
+            }
+            writer.endObject();
+        }
+
         void writeShape(detail::Writer& writer, const ShapeContentPlan& shape) {
             writer.beginObject();
             writer.key("type"); writer.token(shapeTypeName(shape.type));
@@ -498,13 +608,50 @@ namespace chrononmotion::motion {
             } else if (shape.fill_color) {
                 writer.key("fill"); writeFloats(writer, *shape.fill_color, shape.fill_color->size());
             }
+            if (shape.field) {
+                writer.key("fill"); writer.beginObject();
+                writer.key("type"); writer.token("field");
+                writer.key("field"); writeField(writer, *shape.field);
+                if (shape.field_ramp) {
+                    writer.key("field_ramp"); writeGradientDefinition(writer, *shape.field_ramp);
+                }
+                if (shape.field_render_scale != 1) {
+                    writer.key("field_render_scale"); writer.unsignedInteger(shape.field_render_scale);
+                }
+                if (shape.field_drift) {
+                    writer.key("field_drift");
+                    const std::array<float, 2> drift{shape.field_drift->x, shape.field_drift->y};
+                    writeFloats(writer, drift.data(), drift.size());
+                }
+                writer.endObject();
+            }
+            if (shape.gradient_mesh) {
+                writer.key("fill"); writer.beginObject();
+                writer.key("type"); writer.token("mesh");
+                writer.key("mesh"); writer.beginObject();
+                writer.key("nodes"); writer.beginArray();
+                for (const auto& node : shape.gradient_mesh->nodes) {
+                    writer.item(); writer.beginObject();
+                    writer.key("position");
+                    const std::array<float, 2> position{node.position.x, node.position.y};
+                    writeFloats(writer, position.data(), position.size());
+                    writer.key("color");
+                    const std::array<float, 4> color{node.color.r, node.color.g, node.color.b, node.color.a};
+                    writeFloats(writer, color.data(), color.size());
+                    writer.key("weight"); writer.number(node.weight);
+                    writer.endObject();
+                }
+                writer.endArray(); writer.endObject(); writer.endObject();
+            }
             if (shape.type == ShapeContentTypePlan::Path || shape.type == ShapeContentTypePlan::Line) {
                 if (!shape.path.empty()) { writer.key("path"); writePathCommands(writer, shape.path); }
             }
             if (shape.stroke) { writer.key("stroke"); writeStroke(writer, *shape.stroke); }
             if (shape.type == ShapeContentTypePlan::Star || shape.type == ShapeContentTypePlan::Polygon) {
                 writer.key("points"); writer.integer(shape.points.value_or(shape.type == ShapeContentTypePlan::Star ? 5 : 6));
-                writer.key("inner_radius_ratio"); writer.number(shape.inner_radius_ratio);
+                if (shape.type == ShapeContentTypePlan::Star) {
+                    writer.key("inner_radius_ratio"); writer.number(shape.inner_radius_ratio);
+                }
                 writer.key("rotation_degrees"); writer.number(shape.shape_rotation_deg);
             }
             if (shape.type == ShapeContentTypePlan::Arc) {
@@ -642,8 +789,14 @@ namespace chrononmotion::motion {
                 writer.text(layer.source);
             }
 
-            writer.key("color");
-            writeFloats(writer, layer.color, layer.color.size());
+            const bool nativeFillShape = layer.shape &&
+                (layer.shape->type == ShapeContentTypePlan::Grid ||
+                 layer.shape->type == ShapeContentTypePlan::DotGrid || layer.shape->field ||
+                 layer.shape->gradient_mesh || !layer.shape->fill_color);
+            if (!nativeFillShape) {
+                writer.key("color");
+                writeFloats(writer, layer.color, layer.color.size());
+            }
 
             if (layer.size_dimensions != 0) {
                 writer.key("size");
