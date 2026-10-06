@@ -7,10 +7,10 @@ endif()
 set(_schema_path "${CHRONON3D_ROOT}/schemas/json/chronon.render-plan.v2.schema.json")
 set(_plan_header "${CHRONON3D_ROOT}/include/chronon3d/render_plan/render_plan.hpp")
 set(_decoder "${CHRONON3D_ROOT}/src/render_plan/render_plan_decoder_support.cpp")
-set(_fingerprint "${CHRONON3D_ROOT}/src/render_plan/fingerprint.cpp")
+set(_fingerprint "${CHRONON3D_ROOT}/src/render_plan/fingerprint_values.cpp")
 set(_motion_emitter "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanEmission.cpp")
 set(_motion_lowering "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLowering.cpp")
-set(_chronon_compiler "${CHRONON3D_ROOT}/src/render_plan/render_plan_compiler_animation.cpp")
+set(_chronon_compiler "${CHRONON3D_ROOT}/src/render_plan/render_plan_compiler_animation_utils.cpp")
 
 foreach(_path IN ITEMS
         "${_schema_path}" "${_plan_header}" "${_decoder}" "${_fingerprint}"

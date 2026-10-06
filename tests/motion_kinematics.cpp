@@ -10,6 +10,7 @@
 #include "motion_check.hpp"
 
 #include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -406,6 +407,64 @@ namespace {
         check(threw, "keyedMotion rejects an unknown layer id");
     }
 
+    void solvedPoseRegressions() {
+        section("solved previous poses and target dependencies");
+        MotionScene scene("reverse insertion", 30.f);
+        auto& follower = scene.addNull(2, "follower", 3);
+        scene.addNull(3, "parent").transform.position.x = 100.f;
+        auto& target = scene.addNull(1, "target");
+        target.transform.position.x = 10.f;
+        ConstraintSpec copy; copy.kind = ConstraintKind::CopyPosition; copy.targetId = 1;
+        follower.constraints.push_back(copy);
+        check(scene.validate().empty(), "reverse-inserted dependencies validate");
+        scene.evaluate(30);
+        checkNear(worldPos(scene, 2).x, 10.f, 1e-5f, "copy position converts target world to parent local");
+        checkNear(scene.motion(2).linearVelocity.length(), 0.f, 1e-5f, "static constraint has no velocity");
+        target.tracks.position.add(0.f, {0.f, 0.f, 0.f});
+        target.tracks.position.add(2.f, {20.f, 0.f, 0.f});
+        scene.evaluate(MotionTime{30, 60.f, .5f});
+        checkNear(scene.motion(2).linearVelocity.x, 10.f, .001f, "constrained velocity uses supplied FPS");
+        const auto before = scene.state(2).previousWorld;
+        scene.evaluate(MotionTime{29, 60.f, .5f});
+        check(before.elements == scene.worldMatrix(2).elements, "previous solved pose equals independently evaluated pose");
+        follower.constraints.clear();
+        DriverSpec driver; driver.kind = DriverKind::Float; driver.frequency = 0.f;
+        driver.phase = 1.57079632679f; driver.amplitude = 5.f;
+        follower.drivers.push_back(driver);
+        scene.evaluate(30);
+        checkNear(scene.motion(2).linearVelocity.length(), 0.f, 1e-5f, "constant driver has no velocity");
+        follower.drivers.clear();
+        follower.constraints.push_back(copy);
+        ConstraintSpec cycle = copy; cycle.targetId = 2;
+        target.constraints.push_back(cycle);
+        check(!scene.validate().empty(), "constraint cycles are diagnosed");
+        bool rejected = false;
+        try { scene.evaluate(30); } catch (const std::invalid_argument&) { rejected = true; }
+        check(rejected, "mutated constraint cycle fails closed");
+    }
+
+    void invalidTimeRegressions() {
+        section("invalid time boundaries");
+        const auto rejects = [](auto operation) {
+            try { operation(); } catch (const std::invalid_argument&) { return true; }
+            return false;
+        };
+        for (float invalid : {0.f, -1.f, std::numeric_limits<float>::infinity(),
+                              std::numeric_limits<float>::quiet_NaN()}) {
+            check(rejects([&] { MotionScene scene("invalid", invalid); }), "scene rejects invalid FPS");
+            check(rejects([&] { (void)MotionTime::atFrame(0, invalid); }), "time rejects invalid FPS");
+        }
+        for (float invalid : {std::numeric_limits<float>::infinity(),
+                              std::numeric_limits<float>::quiet_NaN(), 1e30f}) {
+            check(rejects([&] { (void)MotionTime::atPts(invalid, 30.f); }), "rounded time rejects invalid timestamp");
+            check(rejects([&] { (void)MotionTime::atPtsExact(invalid, 30.f); }), "exact time rejects invalid timestamp");
+        }
+        MotionScene scene("invalid aggregates", 30.f); scene.addNull(1, "layer");
+        for (float invalid : {-1.f, 1.f, std::numeric_limits<float>::quiet_NaN()})
+            check(rejects([&] { scene.evaluate(MotionTime{0, 30.f, invalid}); }), "aggregate rejects invalid subframe");
+        check(rejects([&] { scene.evaluate(std::numeric_limits<int>::min()); }), "previous frame underflow rejected");
+    }
+
     void subFrameEvaluation() {
 
         section("sub-frame evaluation");
@@ -471,6 +530,8 @@ int main() {
         subFrameTime();
         sceneMotion();
         subFrameEvaluation();
+        solvedPoseRegressions();
+        invalidTimeRegressions();
     } catch (const std::exception& error) {
         std::printf("  FAIL  unexpected exception: %s\n", error.what());
         ++chrononmotion_test::failures;

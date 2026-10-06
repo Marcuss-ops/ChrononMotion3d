@@ -1148,7 +1148,8 @@ void testTypedChronon3dLowering() {
           styledImageJson["layers"][0]["effects"].size() == 4 &&
           styledImageJson["layers"][0]["effects"][2]["seed"] == 1986 &&
           styledImageJson["layers"][0]["crop"]["flip_x"] == true &&
-          styledImageJson["layers"][0]["crop"]["origin"] == nlohmann::json::array({0.1f, 0.05f}),
+          static_cast<float>(styledImageJson["layers"][0]["crop"]["origin"][0].get<double>()) == 0.1f &&
+          static_cast<float>(styledImageJson["layers"][0]["crop"]["origin"][1].get<double>()) == 0.05f,
           "RenderPlan emission preserves image frame, grade, crop mirror, seeded grain, and vignette");
     auto leakProfile = chronon3d::render_plan::effect_presets::light_leak::LightLeakProfile{};
     leakProfile.shape = chronon3d::render_plan::effect_presets::light_leak::LightLeakShape::Edge;

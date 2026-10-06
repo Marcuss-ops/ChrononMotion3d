@@ -19,6 +19,7 @@
 #include <deque>
 #include <stdexcept>
 #include <memory>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -47,14 +48,21 @@ namespace chrononmotion::motion {
 
         [[nodiscard]] static MotionTime atFrame(int frame, float fps) {
 
-            if (fps <= 0.f) throw std::invalid_argument("MotionTime: fps must be positive");
+            if (!std::isfinite(fps) || fps <= 0.f)
+                throw std::invalid_argument("MotionTime: fps must be finite and positive");
             return MotionTime{frame, fps, 0.f};
         }
 
         [[nodiscard]] float pts() const {
 
-            if (fps <= 0.f) throw std::invalid_argument("MotionTime: fps must be positive");
-            return (static_cast<float>(frame) + subFrame) / fps;
+            if (!std::isfinite(fps) || fps <= 0.f)
+                throw std::invalid_argument("MotionTime: fps must be finite and positive");
+            if (!std::isfinite(subFrame) || subFrame < 0.f || subFrame >= 1.f)
+                throw std::invalid_argument("MotionTime: subFrame must be finite and in [0,1)");
+            const float seconds = (static_cast<float>(frame) + subFrame) / fps;
+            if (!std::isfinite(seconds))
+                throw std::invalid_argument("MotionTime: timestamp is not representable");
+            return seconds;
         }
 
         /// True when this sample sits exactly on a frame boundary.
@@ -65,8 +73,13 @@ namespace chrononmotion::motion {
         /// fraction is dropped, so this stays frame-quantised by construction.
         [[nodiscard]] static MotionTime atPts(float seconds, float fps) {
 
-            if (fps <= 0.f) throw std::invalid_argument("MotionTime: fps must be positive");
-            return MotionTime{static_cast<int>(std::lround(seconds * fps)), fps, 0.f};
+            if (!std::isfinite(fps) || fps <= 0.f)
+                throw std::invalid_argument("MotionTime: fps must be finite and positive");
+            const double rounded = std::round(static_cast<double>(seconds) * fps);
+            if (!std::isfinite(rounded) || rounded < std::numeric_limits<int>::min() ||
+                rounded > std::numeric_limits<int>::max())
+                throw std::invalid_argument("MotionTime: timestamp exceeds frame range");
+            return MotionTime{static_cast<int>(rounded), fps, 0.f};
         }
 
         /// Exact sample: no rounding, no frame snapping. The frame is the floor
@@ -74,15 +87,21 @@ namespace chrononmotion::motion {
         /// requested position without a second rounding error.
         [[nodiscard]] static MotionTime atPtsExact(float seconds, float fps) {
 
-            if (fps <= 0.f) throw std::invalid_argument("MotionTime: fps must be positive");
+            if (!std::isfinite(fps) || fps <= 0.f)
+                throw std::invalid_argument("MotionTime: fps must be finite and positive");
             const float exact = seconds * fps;
-            const float frame = std::floor(exact);
+            const double frame = std::floor(static_cast<double>(exact));
+            if (!std::isfinite(frame) || frame < std::numeric_limits<int>::min() ||
+                frame > std::numeric_limits<int>::max())
+                throw std::invalid_argument("MotionTime: timestamp exceeds frame range");
             const int whole = static_cast<int>(frame);
             // Clamp so a PTS that rounds to the very end of a frame (0.9999999
             // of the way there) reports the next frame with no fraction, rather
             // than a frame carrying a subFrame of ~1.
-            const float fraction = exact - frame;
+            const float fraction = static_cast<float>(static_cast<double>(exact) - frame);
             if (fraction >= 1.f - 1e-6f) {
+                if (whole == std::numeric_limits<int>::max())
+                    throw std::invalid_argument("MotionTime: timestamp exceeds frame range");
                 return MotionTime{whole + 1, fps, 0.f};
             }
             if (fraction < 0.f) {
@@ -214,6 +233,7 @@ namespace chrononmotion::motion {
         [[nodiscard]] std::size_t indexOf(Layer::Id id) const;
         [[nodiscard]] std::size_t lightIndexOf(Light::Id id) const;
         void evaluateLights(const MotionTime& time);
+        void evaluatePose(const MotionTime& time);
 
         /// Resolve one cross-layer link to that channel's value (or, in rate
         /// mode, its derivative), recursively and with a stack-scoped cycle

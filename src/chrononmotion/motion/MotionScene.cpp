@@ -123,7 +123,8 @@ namespace chrononmotion::motion {
     MotionScene::MotionScene(std::string name, float fps)
         : name_(std::move(name)), fps_(fps) {
 
-        if (fps <= 0.f) throw std::invalid_argument("MotionScene: fps must be positive");
+        if (!std::isfinite(fps) || fps <= 0.f)
+            throw std::invalid_argument("MotionScene: fps must be finite and positive");
     }
 
     Layer& MotionScene::addLayer(Layer layer) {
@@ -267,7 +268,8 @@ namespace chrononmotion::motion {
 
     MotionScene& MotionScene::setFps(float fps) {
 
-        if (fps <= 0.f) throw std::invalid_argument("MotionScene::setFps: fps must be positive");
+        if (!std::isfinite(fps) || fps <= 0.f)
+            throw std::invalid_argument("MotionScene::setFps: fps must be finite and positive");
         fps_ = fps;
         return *this;
     }
@@ -285,9 +287,16 @@ namespace chrononmotion::motion {
         for (std::size_t position = 0; position < order_.size(); ++position) {
             const Layer& layer = layers_[order_[position]];
             if (layer.parentId != orderParentIds_[position]) return true;
-            if (layer.spaceSwitches.size() != orderSwitchParentIds_[position].size()) return true;
-            for (std::size_t point = 0; point < layer.spaceSwitches.size(); ++point)
-                if (layer.spaceSwitches[point].parentId != orderSwitchParentIds_[position][point]) return true;
+            const auto& dependencies = orderSwitchParentIds_[position];
+            if (layer.spaceSwitches.size() + layer.constraints.size() + layer.drivers.size() !=
+                dependencies.size()) return true;
+            std::size_t dependency = 0;
+            for (const auto& point : layer.spaceSwitches)
+                if (point.parentId != dependencies[dependency++]) return true;
+            for (const auto& constraint : layer.constraints)
+                if (constraint.targetId != dependencies[dependency++]) return true;
+            for (const auto& driver : layer.drivers)
+                if (driver.targetId != dependencies[dependency++]) return true;
         }
         return false;
     }
@@ -363,6 +372,8 @@ namespace chrononmotion::motion {
             };
             addDependency(layers_[index].parentId);
             for (const auto& point : layers_[index].spaceSwitches) addDependency(point.parentId);
+            for (const auto& constraint : layers_[index].constraints) addDependency(constraint.targetId);
+            for (const auto& driver : layers_[index].drivers) addDependency(driver.targetId);
         }
 
         // 0 = unvisited, 1 = on the current path, 2 = emitted.
@@ -410,6 +421,10 @@ namespace chrononmotion::motion {
             switchParents.reserve(layers_[index].spaceSwitches.size());
             for (const auto& point : layers_[index].spaceSwitches)
                 switchParents.push_back(point.parentId);
+            for (const auto& constraint : layers_[index].constraints)
+                switchParents.push_back(constraint.targetId);
+            for (const auto& driver : layers_[index].drivers)
+                switchParents.push_back(driver.targetId);
         }
 
         orderDirty_ = false;
@@ -428,6 +443,21 @@ namespace chrononmotion::motion {
     }
 
     void MotionScene::evaluate(const MotionTime& time) {
+        (void)time.pts(); // validate aggregate-constructed samples too
+        if (time.frame == std::numeric_limits<int>::min())
+            throw std::invalid_argument("MotionScene::evaluate: previous frame is not representable");
+        // Use the exact same solver for both samples; drivers, constraints and
+        // space switches must never be omitted from the previous pose.
+        evaluatePose(MotionTime{time.frame - 1, time.fps, time.subFrame});
+        for (auto& state : states_) {
+            state.previousWorld = state.world;
+            state.previousWorldOpacity = state.worldOpacity;
+            state.previousVisible = state.visible;
+        }
+        evaluatePose(time);
+    }
+
+    void MotionScene::evaluatePose(const MotionTime& time) {
 
         const float seconds = time.pts();
 
@@ -535,8 +565,9 @@ namespace chrononmotion::motion {
                     const Vector3 rootPosition{};
                     const Quaternion rootRotation{};
                     const Vector3 rootScale{1.f, 1.f, 1.f};
-                    (void)applyConstraint(evaluatedConstraint, state.local, rootPosition,
-                                          rootRotation, rootScale, layerSeconds);
+                    if (!applyConstraint(evaluatedConstraint, state.local, rootPosition,
+                                          rootRotation, rootScale, layerSeconds))
+                        throw std::invalid_argument("MotionScene::evaluate: constraint failed");
                     continue;
                 }
                 if (target == npos || !states_[target].evaluated) {
@@ -545,10 +576,7 @@ namespace chrononmotion::motion {
                     }
                     continue;
                 }
-                if (constraint.kind == ConstraintKind::Parent || constraint.kind == ConstraintKind::Orient ||
-                    constraint.kind == ConstraintKind::Point || constraint.kind == ConstraintKind::StretchTo ||
-                    constraint.kind == ConstraintKind::DampedAim || constraint.kind == ConstraintKind::SurfaceAttach ||
-                    constraint.kind == ConstraintKind::LookAtWithRoll) {
+                { // Every target-dependent constraint consumes target state in local space.
                     Matrix4 relative = states_[target].world;
                     if (activeParentId != Layer::kRoot) {
                         const auto parent = indexOf(activeParentId);
@@ -568,20 +596,27 @@ namespace chrononmotion::motion {
                     relative.decompose(position, rotation, scale);
                     if (!applyConstraint(evaluatedConstraint, state.local, position, rotation, scale, layerSeconds))
                         throw std::invalid_argument("MotionScene::evaluate: constraint failed");
-                    continue;
                 }
-                Vector3 targetPosition;
-                targetPosition.setFromMatrixPosition(states_[target].world);
-                (void)applyConstraint(evaluatedConstraint, state.local, targetPosition,
-                                      layers_[target].transform.orientation,
-                                      layers_[target].transform.scale, layerSeconds);
             }
 
             for (const auto& driver : layers_[index].drivers) {
                 const std::size_t target = indexOf(driver.targetId);
                 Vector3 targetPosition;
                 if (target != npos && states_[target].evaluated) {
-                    targetPosition.setFromMatrixPosition(states_[target].world);
+                    Matrix4 relative = states_[target].world;
+                    if (activeParentId != Layer::kRoot) {
+                        Matrix4 inverse = states_[indexOf(activeParentId)].world;
+                        if (std::fabs(inverse.determinant()) < 1e-10f)
+                            throw std::invalid_argument("MotionScene::evaluate: singular driver parent");
+                        relative.premultiply(inverse.invert());
+                    }
+                    Matrix4 inverseOffset = localOffset;
+                    if (std::fabs(inverseOffset.determinant()) < 1e-10f)
+                        throw std::invalid_argument("MotionScene::evaluate: singular driver space");
+                    relative.premultiply(inverseOffset.invert());
+                    targetPosition.setFromMatrixPosition(relative);
+                } else if (driver.targetId != Layer::kRoot) {
+                    throw std::invalid_argument("MotionScene::evaluate: unknown or unsolved driver target");
                 }
                 const Vector3 offset = evaluateDriverOffset(
                         driver, layerSeconds, state.local.position, targetPosition);
@@ -601,29 +636,10 @@ namespace chrononmotion::motion {
                 localMatrix.premultiply(localOffset);
             state.world.copy(localMatrix);
 
-            Transform previousLocal;
-            // The previous sample is exactly one frame before THIS sample, so on a
-            // sub-frame instant it is (frame - 1) + subFrame, not frame - 1. Using
-            // the bare integer here would make the finite difference span shrink
-            // to less than a frame and overstate the velocity by exactly the
-            // fraction.
-            const float previousExactFrame = static_cast<float>(time.frame - 1) + time.subFrame;
-            const float previousSceneSeconds = previousExactFrame / time.fps;
-            const float previousSeconds =
-                    layers_[index].mapFrame(previousExactFrame, previousSceneSeconds, resolve) / time.fps;
-            layers_[index].sample(previousSeconds, previousLocal, resolve);
-            previousLocal.compose(state.previousWorld);
-            std::vector<Layer::Id> previousSpaceRecursion;
-            const EvaluatedSpace previousSpace = spaceAt(layers_[index].id, previousSeconds, previousSpaceRecursion);
-            const Layer::Id previousParentId = previousSpace.first;
-            if (!layers_[index].spaceSwitches.empty())
-                state.previousWorld.premultiply(previousSpace.second);
-
             // Lifetime is a whole-frame contract: a layer's in/out point is an
             // authoring decision, not a continuous one, so visibility stays
             // keyed to the integer frame and is unaffected by the fraction.
             const bool alive = layers_[index].visibleAt(time.frame);
-            const bool previousAlive = layers_[index].visibleAt(time.frame - 1);
             const std::size_t parent = activeParentId == Layer::kRoot ? npos : indexOf(activeParentId);
             if (parent != npos && !states_[parent].evaluated)
                 throw std::invalid_argument("MotionScene::evaluate: space-switch parent was not evaluated first");
@@ -640,23 +656,9 @@ namespace chrononmotion::motion {
                 // Lifetime hides the subtree: a hidden null hides its children.
                 state.visible = alive && states_[parent].visible;
                 state.worldOpacity = states_[parent].worldOpacity * state.local.opacity;
-                const std::size_t previousParent = previousParentId == Layer::kRoot ? npos : indexOf(previousParentId);
-                if (previousParent != npos && states_[previousParent].evaluated)
-                    state.previousWorld.multiplyMatrices(states_[previousParent].previousWorld, state.previousWorld);
-                state.previousVisible = previousAlive &&
-                        (previousParent == npos || states_[previousParent].previousVisible);
-                state.previousWorldOpacity = previousLocal.opacity *
-                        (previousParent == npos ? 1.f : states_[previousParent].previousWorldOpacity);
             } else {
                 state.visible = alive;
                 state.worldOpacity = state.local.opacity;
-                state.previousVisible = previousAlive;
-                state.previousWorldOpacity = previousLocal.opacity;
-                if (!layers_[index].spaceSwitches.empty() && previousParentId != Layer::kRoot) {
-                    const std::size_t previousParent = indexOf(previousParentId);
-                    if (previousParent != npos && states_[previousParent].evaluated)
-                        state.previousWorld.multiplyMatrices(states_[previousParent].previousWorld, state.previousWorld);
-                }
             }
 
             // `Layer` is the Object3D graph node, so the evaluated pose is written
@@ -725,7 +727,7 @@ namespace chrononmotion::motion {
         // One frame is the spacing between `world` and `previousWorld`, whatever
         // the sub-frame fraction is: the previous sample is (frame-1)+subFrame,
         // so the span is still exactly 1 frame.
-        const float dt = 1.f / fps_;
+        const float dt = 1.f / lastTime_.fps;
         if (!(dt > 0.f)) return out;
 
         Vector3 here;
@@ -1032,15 +1034,20 @@ namespace chrononmotion::motion {
         std::function<void(std::size_t)> visit = [&](std::size_t index) {
             color[index] = 1;
 
-            const std::size_t parent = indexOf(layers_[index].parentId);
-            if (parent != npos && parent != index) {
-                if (color[parent] == 1) {
-                    cyclic = true;
-                } else if (color[parent] == 0) {
-                    visit(parent);
-                }
-            } else if (parent == index) {
-                cyclic = true;
+            const auto dependency = [&](Layer::Id id) {
+                if (id == Layer::kRoot) return;
+                const std::size_t target = indexOf(id);
+                if (target == npos) return; // reported at its authoring boundary
+                if (color[target] == 1) cyclic = true;
+                else if (color[target] == 0) visit(target);
+            };
+            dependency(layers_[index].parentId);
+            for (const auto& point : layers_[index].spaceSwitches) dependency(point.parentId);
+            for (const auto& constraint : layers_[index].constraints) dependency(constraint.targetId);
+            for (const auto& driver : layers_[index].drivers) {
+                if (driver.targetId != Layer::kRoot && !hasLayer(driver.targetId))
+                    problems.emplace_back("driver references unknown layer " + std::to_string(driver.targetId));
+                dependency(driver.targetId);
             }
 
             color[index] = 2;
@@ -1051,7 +1058,7 @@ namespace chrononmotion::motion {
         }
 
         if (cyclic) {
-            problems.emplace_back("hierarchy contains a parent cycle");
+            problems.emplace_back("hierarchy contains a parent or evaluation dependency cycle");
         }
 
         return problems;

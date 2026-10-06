@@ -57,7 +57,9 @@ void checkTrackParity(const char* name, const Easing& easing) {
         }
         checkNear(key.value[0], motionSample.x, 2e-4f, "RenderPlan X equals Motion sample");
         checkNear(key.value[1], motionSample.y, 2e-4f, "RenderPlan Y equals Motion sample");
-        checkNear(key.value[2], motionSample.z, 2e-4f, "RenderPlan Z equals Motion sample");
+        // The adapter mirrors Motion's -Z-forward depth into RenderPlan's
+        // +Z-forward space, just as it does for static layers and cameras.
+        checkNear(key.value[2], -motionSample.z, 2e-4f, "RenderPlan Z equals mirrored Motion depth");
     }
 }
 

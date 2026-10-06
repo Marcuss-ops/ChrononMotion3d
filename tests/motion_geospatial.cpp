@@ -1214,10 +1214,14 @@ namespace {
         const auto obliqueRendererRotation = chronon3d::math::camera_rotation_quat(
             chronon3d::Vec3{obliquePlan.rotation_deg[0], obliquePlan.rotation_deg[1],
                             obliquePlan.rotation_deg[2]});
-        const float obliqueDot = obliqueRendererRotation.x * resolved.orientation.x +
-            obliqueRendererRotation.y * resolved.orientation.y +
-            obliqueRendererRotation.z * resolved.orientation.z +
-            obliqueRendererRotation.w * resolved.orientation.w;
+        // RenderPlan uses the inverse camera orientation at this boundary,
+        // paired with its mirrored depth. Compare in that documented space.
+        Quaternion expectedOrientation = resolved.orientation;
+        expectedOrientation.invert();
+        const float obliqueDot = obliqueRendererRotation.x * expectedOrientation.x +
+            obliqueRendererRotation.y * expectedOrientation.y +
+            obliqueRendererRotation.z * expectedOrientation.z +
+            obliqueRendererRotation.w * expectedOrientation.w;
         checkNear(std::abs(obliqueDot), 1.0, 1e-4,
                   "oblique look-at Euler conversion matches Chronon3D camera convention");
     }
