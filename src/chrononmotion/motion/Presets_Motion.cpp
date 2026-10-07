@@ -54,10 +54,12 @@ namespace chrononmotion::motion::presets {
 
     }// namespace
 
+    using detail::authorizePresetForLayer;
     using detail::keyVector3;
     using detail::restOf;
 
     void breathe(Layer& layer, int inFrame, int duration, float fps, float amplitude) {
+        authorizePresetForLayer(layer, "breathe");
 
         requireFiniteAmplitude(amplitude, "breathe");
         if (amplitude >= 1.f) throw std::invalid_argument("breathe: amplitude must be less than one");
@@ -77,6 +79,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void bob(Layer& layer, int inFrame, int duration, float fps, float amplitude) {
+        authorizePresetForLayer(layer, "bob");
 
         requireFiniteAmplitude(amplitude, "bob");
 
@@ -94,6 +97,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void pulse(Layer& layer, int inFrame, int duration, float fps) {
+        authorizePresetForLayer(layer, "pulse");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -112,6 +116,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void floatDrift(Layer& layer, int inFrame, int duration, float fps) {
+        authorizePresetForLayer(layer, "floatDrift");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -133,49 +138,67 @@ namespace chrononmotion::motion::presets {
         });
     }
 
-    void arcMotion(Layer& layer, const Vector3& to, const Vector3& apex, int inFrame, int duration, float fps) {
+    namespace {
+        void pathMotionImpl(Layer& layer, const MotionPath& path, int inFrame, int duration, float fps,
+                            bool orient, unsigned int steps) {
+            const float t0 = frameToTime(inFrame, fps);
+            const float t1 = frameToTime(inFrame + duration, fps);
+            const unsigned int segments = std::max(steps, 2u);
 
-        const Transform rest = restOf(layer, inFrame, fps);
-        const MotionPath path = MotionPath::quadraticBezier(rest.position, apex, to);
-        pathMotion(layer, path, inFrame, duration, fps, false, 16);
-    }
+            for (unsigned int i = 0; i <= segments; ++i) {
+                const float progress = static_cast<float>(i) / static_cast<float>(segments);
+                const float time = t0 + (t1 - t0) * progress;
 
-    void arcEntrance(Layer& layer, const Vector3& to, const Vector3& apex,
-                     int inFrame, int duration, float fps) {
-        arcMotion(layer, to, apex, inFrame, duration, fps);
-    }
-
-    void pathMotion(Layer& layer, const MotionPath& path, int inFrame, int duration, float fps,
-                    bool orient, unsigned int steps) {
-
-        const float t0 = frameToTime(inFrame, fps);
-        const float t1 = frameToTime(inFrame + duration, fps);
-        const unsigned int segments = std::max(steps, 2u);
-
-        for (unsigned int i = 0; i <= segments; ++i) {
-            const float progress = static_cast<float>(i) / static_cast<float>(segments);
-            const float time = t0 + (t1 - t0) * progress;
-
-            layer.tracks.position.add(time, path.sampleUniform(progress), Easing::linear());
-
-            if (orient) {
-                layer.tracks.orientation.add(time, path.orientToPath(progress), Easing::linear());
+                layer.tracks.position.add(time, path.sampleUniform(progress), Easing::linear());
+                if (orient) {
+                    layer.tracks.orientation.add(time, path.orientToPath(progress), Easing::linear());
+                }
             }
         }
     }
 
+    void arcMotion(Layer& layer, const Vector3& to, const Vector3& apex, int inFrame, int duration, float fps) {
+        authorizePresetForLayer(layer, "arcMotion");
+        const Transform rest = restOf(layer, inFrame, fps);
+        pathMotionImpl(layer, MotionPath::quadraticBezier(rest.position, apex, to), inFrame, duration, fps, false, 16);
+    }
+
+    void arcEntrance(Layer& layer, const Vector3& to, const Vector3& apex,
+                     int inFrame, int duration, float fps) {
+        authorizePresetForLayer(layer, "arcEntrance");
+        const Transform rest = restOf(layer, inFrame, fps);
+        pathMotionImpl(layer, MotionPath::quadraticBezier(rest.position, apex, to), inFrame, duration, fps, false, 16);
+    }
+
+    void pathMotion(Layer& layer, const MotionPath& path, int inFrame, int duration, float fps,
+                    bool orient, unsigned int steps) {
+        authorizePresetForLayer(layer, "pathMotion");
+        pathMotionImpl(layer, path, inFrame, duration, fps, orient, steps);
+    }
+
     void staggeredEntrance(const std::vector<Layer*>& layers, Direction direction,
                            int inFrame, int stagger, int duration, float distance, float fps) {
+        for (const auto* layer : layers) if (layer) authorizePresetForLayer(*layer, "staggeredEntrance");
 
         for (std::size_t i = 0; i < layers.size(); ++i) {
             if (layers[i] == nullptr) continue;
+            Layer& layer = *layers[i];
             const int start = inFrame + static_cast<int>(i) * stagger;
-            fadeSlide(*layers[i], direction, start, duration, distance, fps);
+            const Transform rest = restOf(layer, start, fps);
+            Vector3 from = rest.position;
+            from.addScaledVector(directionOffset(direction), distance);
+            const float t0 = frameToTime(start, fps);
+            const float t1 = frameToTime(start + duration, fps);
+            keyVector3(layer.tracks.position, t0, t1, from, rest.position, Easing::easeOut());
+            layer.tracks.opacity.add(t0, 0.f, Easing::easeOut());
+            layer.tracks.opacity.add(t1, layer.transform.opacity, Easing::linear());
         }
     }
 
     void parentGroupReveal(Layer& parent, const std::vector<Layer*>& children,
                            int inFrame, int duration, float fps) {
+        authorizePresetForLayer(parent, "parentGroupReveal");
+        for (const auto* layer : children) if (layer) authorizePresetForLayer(*layer, "parentGroupReveal");
 
         const Transform rest = restOf(parent, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -192,7 +215,11 @@ namespace chrononmotion::motion::presets {
         for (int i = 0; i < childCount; ++i) {
             if (children[static_cast<std::size_t>(i)] == nullptr) continue;
             const int start = inFrame + (childWindow * i) / std::max(1, childCount);
-            fadeIn(*children[static_cast<std::size_t>(i)], start, childWindow, fps);
+            Layer& child = *children[static_cast<std::size_t>(i)];
+            const float childT0 = frameToTime(start, fps);
+            const float childT1 = frameToTime(start + childWindow, fps);
+            child.tracks.opacity.add(childT0, 0.f, Easing::easeOut());
+            child.tracks.opacity.add(childT1, child.transform.opacity, Easing::linear());
         }
     }
 
@@ -214,6 +241,7 @@ namespace chrononmotion::motion::presets {
     }// namespace
 
     void bounceIn(Layer& layer, Axis axis, int inFrame, int duration, float distance, float fps) {
+        authorizePresetForLayer(layer, "bounceIn");
 
         requireFiniteAmplitude(distance, "bounceIn");
 
@@ -227,6 +255,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void springSettle(Layer& layer, Axis axis, int inFrame, int duration, float amplitude, float fps) {
+        authorizePresetForLayer(layer, "springSettle");
 
         requireFiniteAmplitude(amplitude, "springSettle");
 
@@ -241,6 +270,7 @@ namespace chrononmotion::motion::presets {
 
     void rippleWave(const std::vector<Layer*>& layers, Direction direction, int inFrame,
                     int duration, float cycles, float distance, float fps) {
+        for (const auto* layer : layers) if (layer) authorizePresetForLayer(*layer, "rippleWave");
 
         if (layers.empty()) return;
         requireFiniteAmplitude(distance, "rippleWave");
@@ -288,6 +318,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void followThrough(Layer& layer, const Layer& source, float lagSeconds) {
+        authorizePresetForLayer(layer, "followThrough");
 
         if (!std::isfinite(lagSeconds) || lagSeconds < 0.f) {
             throw std::invalid_argument("followThrough: lag must be finite and non-negative");
@@ -305,6 +336,7 @@ namespace chrononmotion::motion::presets {
     void crosshairLock(const std::vector<Layer*>& segments,
                        const std::vector<Vector3>& outward,
                        int inFrame, int duration, float fps, const Easing& easing) {
+        for (const auto* layer : segments) if (layer) authorizePresetForLayer(*layer, "crosshairLock");
 
         if (segments.empty()) return;
 

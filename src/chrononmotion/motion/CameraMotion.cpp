@@ -14,6 +14,7 @@
 
 namespace chrononmotion::motion {
 
+    using presets::detail::authorizePresetForCamera;
     using presets::detail::keyVector3;
 
     // ------------------------------------------------------------- ShotAnchor
@@ -141,6 +142,7 @@ namespace chrononmotion::motion {
     // ------------------------------------------------------ CameraTransition
 
     void CameraTransition::apply(CameraRig& rig, const MotionScene* scene, float fps) const {
+        authorizePresetForCamera(rig, "CameraTransition", scene);
         if (duration <= 0) {
             throw std::invalid_argument("CameraTransition::apply: duration must be positive");
         }
@@ -291,6 +293,7 @@ namespace chrononmotion::motion {
     void cameraFocusPush(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
                          float pushDistance, float startAperture, float endAperture,
                          float fps, const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraFocusPush", scene);
         if (duration <= 0) throw std::invalid_argument("cameraFocusPush: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -335,6 +338,7 @@ namespace chrononmotion::motion {
     void cameraRackFocusDuo(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                             int inFrame, int duration, float aperture, float fps,
                             const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraRackFocusDuo", scene);
         if (duration <= 0) throw std::invalid_argument("cameraRackFocusDuo: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -359,6 +363,7 @@ namespace chrononmotion::motion {
                                  int inFrame, int duration, const Vector3& dollyDelta,
                                  float aperture, float fps, const Easing& easing,
                                  const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraDollyFocusHandoff", scene);
         if (duration <= 0) throw std::invalid_argument("cameraDollyFocusHandoff: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -408,6 +413,7 @@ namespace chrononmotion::motion {
     void cameraLateralSubjectToSubject(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                        int inFrame, int duration, float fps,
                                        const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraLateralSubjectToSubject", scene);
         if (duration <= 0) throw std::invalid_argument("cameraLateralSubjectToSubject: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -453,6 +459,7 @@ namespace chrononmotion::motion {
     void cameraOrbit90Reveal(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                              const Vector3& pivot, int inFrame, int duration, float fps,
                              const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraOrbit90Reveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraOrbit90Reveal: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -487,6 +494,7 @@ namespace chrononmotion::motion {
                                 const Vector3& cornerPoint, int inFrame, int duration,
                                 float cornerRadius, float fps, const Easing& easing,
                                 const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraCornerTurnReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraCornerTurnReveal: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -556,6 +564,7 @@ namespace chrononmotion::motion {
     void cameraDetachTurnReacquire(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                    int inFrame, int duration, float fps,
                                    const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraDetachTurnReacquire", scene);
         if (duration <= 0) throw std::invalid_argument("cameraDetachTurnReacquire: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -593,6 +602,7 @@ namespace chrononmotion::motion {
                                     int inFrame, int duration, const Vector3& lateralPassOffset,
                                     float aperture, float fps, const Easing& easing,
                                     const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraForegroundPassReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraForegroundPassReveal: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -640,6 +650,7 @@ namespace chrononmotion::motion {
                          int inFrame, int duration, float pushPerSubject,
                          float aperture, float fps, const Easing& easing,
                          const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraDepthPeel", scene);
         if (subjects.size() < 2) {
             throw std::invalid_argument("cameraDepthPeel: requires at least two subjects");
         }
@@ -689,6 +700,7 @@ namespace chrononmotion::motion {
     void cameraArcBetweenSubjects(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                   int inFrame, int duration, float arcBowDistance,
                                   float fps, const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraArcBetweenSubjects", scene);
         if (duration <= 0) throw std::invalid_argument("cameraArcBetweenSubjects: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -743,6 +755,7 @@ namespace chrononmotion::motion {
     // 11. cameraWhipPanHandoff
     void cameraWhipPanHandoff(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                               int inFrame, int duration, float fps, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraWhipPanHandoff", scene);
         if (duration <= 0) throw std::invalid_argument("cameraWhipPanHandoff: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -781,6 +794,7 @@ namespace chrononmotion::motion {
                              int inFrame, int duration, float craneUp, float craneBack,
                              float startFov, float endFov, float fps,
                              const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraCraneUpReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraCraneUpReveal: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -819,6 +833,7 @@ namespace chrononmotion::motion {
     void cameraPushThroughOverlay(CameraRig& rig, const ShotAnchor& cardA, const ShotAnchor& sceneB,
                                   int inFrame, int duration, float passThroughDistance,
                                   float fps, const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraPushThroughOverlay", scene);
         if (duration <= 0) throw std::invalid_argument("cameraPushThroughOverlay: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -852,6 +867,7 @@ namespace chrononmotion::motion {
     void cameraParallaxGallery(CameraRig& rig, const std::vector<ShotAnchor>& cards,
                                int inFrame, int duration, float cameraZOffset,
                                float aperture, float fps, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraParallaxGallery", scene);
         if (cards.size() < 2) {
             throw std::invalid_argument("cameraParallaxGallery: requires at least two cards");
         }
@@ -913,6 +929,7 @@ namespace chrononmotion::motion {
                                 int inFrame, int duration,
                                 float yawSweepDeg, float pitchSweepDeg,
                                 float pushDistance, float fps, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraFocusOrbitSettle", scene);
         if (duration <= 0) throw std::invalid_argument("cameraFocusOrbitSettle: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -956,6 +973,7 @@ namespace chrononmotion::motion {
     void cameraVertigoDollyZoom(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
                                 float startDistance, float endDistance, float startFov,
                                 float fps, const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraVertigoDollyZoom", scene);
         if (duration <= 0) throw std::invalid_argument("cameraVertigoDollyZoom: duration must be positive");
         if (startDistance <= 0.f || endDistance <= 0.f) throw std::invalid_argument("cameraVertigoDollyZoom: distances must be positive");
 
@@ -998,6 +1016,7 @@ namespace chrononmotion::motion {
     void cameraBulletTimeOrbitFreeze(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
                                      float radius, float height, float sweepDegrees,
                                      float aperture, float fps, const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraBulletTimeOrbitFreeze", scene);
         if (duration <= 0) throw std::invalid_argument("cameraBulletTimeOrbitFreeze: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1033,6 +1052,7 @@ namespace chrononmotion::motion {
     void cameraFpvDroneDiveRoll(CameraRig& rig, const ShotAnchor& approachAnchor, const ShotAnchor& targetSubject,
                                 int inFrame, int duration, float diveElevation, float maxBankRollDeg,
                                 float fps, const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraFpvDroneDiveRoll", scene);
         if (duration <= 0) throw std::invalid_argument("cameraFpvDroneDiveRoll: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1073,6 +1093,7 @@ namespace chrononmotion::motion {
     void cameraSplitDiopterDualPlane(CameraRig& rig, const ShotAnchor& foregroundLeft, const ShotAnchor& backgroundRight,
                                      int inFrame, int duration, float aperture, float fps,
                                      const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraSplitDiopterDualPlane", scene);
         if (duration <= 0) throw std::invalid_argument("cameraSplitDiopterDualPlane: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1115,6 +1136,7 @@ namespace chrononmotion::motion {
     void cameraSpiralHelixAscend(CameraRig& rig, const ShotAnchor& centerPillar, int inFrame, int duration,
                                  float climbHeight, float radius, float totalTurns,
                                  float fps, const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraSpiralHelixAscend", scene);
         if (duration <= 0) throw std::invalid_argument("cameraSpiralHelixAscend: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1150,6 +1172,7 @@ namespace chrononmotion::motion {
     void cameraFlyUnderReveal(CameraRig& rig, const ShotAnchor& foregroundObstacle, const ShotAnchor& heroTarget,
                               int inFrame, int duration, float subFloorDepth, float fps,
                               const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraFlyUnderReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraFlyUnderReveal: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1189,6 +1212,7 @@ namespace chrononmotion::motion {
     void cameraAnamorphicBarrelSweep(CameraRig& rig, const ShotAnchor& anchorLeft, const ShotAnchor& anchorRight,
                                      int inFrame, int duration, float sweepSpanX, float fps,
                                      const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraAnamorphicBarrelSweep", scene);
         if (duration <= 0) throw std::invalid_argument("cameraAnamorphicBarrelSweep: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1222,6 +1246,7 @@ namespace chrononmotion::motion {
     void cameraCorkscrewThroughRing(CameraRig& rig, const ShotAnchor& ringCenter, const ShotAnchor& interiorCore,
                                     int inFrame, int duration, float plungeDistance, float fps,
                                     const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraCorkscrewThroughRing", scene);
         if (duration <= 0) throw std::invalid_argument("cameraCorkscrewThroughRing: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1257,6 +1282,7 @@ namespace chrononmotion::motion {
     void cameraPendulumSwingReveal(CameraRig& rig, const ShotAnchor& startAnchor, const ShotAnchor& endAnchor,
                                    int inFrame, int duration, float pendulumDrop, float fps,
                                    const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraPendulumSwingReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraPendulumSwingReveal: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1290,6 +1316,7 @@ namespace chrononmotion::motion {
     void cameraCrashZoomSnap(CameraRig& rig, const ShotAnchor& heroSubject, int inFrame, int duration,
                              float startDistance, float endDistance, float fps,
                              const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraCrashZoomSnap", scene);
         if (duration <= 0) throw std::invalid_argument("cameraCrashZoomSnap: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1327,6 +1354,7 @@ namespace chrononmotion::motion {
     void cameraInfinityMirrorDive(CameraRig& rig, const std::vector<ShotAnchor>& portalFrames, int inFrame, int duration,
                                   float totalZTravel, float fps, const Easing& easing,
                                   const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraInfinityMirrorDive", scene);
         if (duration <= 0) throw std::invalid_argument("cameraInfinityMirrorDive: duration must be positive");
         if (portalFrames.empty()) throw std::invalid_argument("cameraInfinityMirrorDive: portalFrames cannot be empty");
 
@@ -1358,6 +1386,7 @@ namespace chrononmotion::motion {
     void cameraOverTheShoulderDialogue(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                        int inFrame, int duration, float shoulderOffset, float fps,
                                        const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraOverTheShoulderDialogue", scene);
         if (duration <= 0) throw std::invalid_argument("cameraOverTheShoulderDialogue: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1393,6 +1422,7 @@ namespace chrononmotion::motion {
     void cameraBirdsEyeGodViewDescent(CameraRig& rig, const ShotAnchor& groundSubject, int inFrame, int duration,
                                       float godViewHeight, float eyeLevelDistance, float fps,
                                       const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraBirdsEyeGodViewDescent", scene);
         if (duration <= 0) throw std::invalid_argument("cameraBirdsEyeGodViewDescent: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);
@@ -1421,6 +1451,7 @@ namespace chrononmotion::motion {
     void cameraSlalomCardWeave(CameraRig& rig, const std::vector<ShotAnchor>& slalomGates, int inFrame, int duration,
                                float slalomAmplitude, float maxBankRollDeg, float fps,
                                const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraSlalomCardWeave", scene);
         if (duration <= 0) throw std::invalid_argument("cameraSlalomCardWeave: duration must be positive");
         if (slalomGates.empty()) throw std::invalid_argument("cameraSlalomCardWeave: slalomGates cannot be empty");
 
@@ -1461,6 +1492,7 @@ namespace chrononmotion::motion {
                                          float radius, float floorLevelY, float orbitSweepDeg,
                                          float upwardPitchDeg, float fps,
                                          const Easing& easing, const MotionScene* scene) {
+        authorizePresetForCamera(rig, "cameraHeroLowAngleMonolithOrbit", scene);
         if (duration <= 0) throw std::invalid_argument("cameraHeroLowAngleMonolithOrbit: duration must be positive");
 
         const float t0 = frameToTime(inFrame, fps);

@@ -19,15 +19,25 @@
 #include "chrononmotion/math/Vector3.hpp"
 
 #include <cstdint>
+#include <functional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace chrononmotion::motion {
+
+    class MotionScene;
 
     /// Frames -> seconds. Presets are authored in frames (the timeline authority)
     /// and keyed in seconds; this is the one conversion they all use.
     [[nodiscard]] float frameToTime(int frame, float fps);
 
     namespace presets {
+
+        /// Author a motion through a scene-owned policy. `presetName` must be
+        /// registered in `catalog()`; the callback runs only after authorization.
+        void author(MotionScene& scene, const std::string& presetName,
+                    const std::function<void()>& operation);
 
         enum class Direction {
             Left,
@@ -44,6 +54,10 @@ namespace chrononmotion::motion {
 
         /// Unit offset for a slide direction.
         [[nodiscard]] Vector3 directionOffset(Direction direction);
+
+        /// Stable registry names used by AuthoringPolicy::allowedPresets.
+        [[nodiscard]] const std::vector<std::string_view>& catalog();
+        [[nodiscard]] bool known(std::string_view name);
 
         /// Unit vector for a flip axis.
         [[nodiscard]] Vector3 axisVector(Axis axis);

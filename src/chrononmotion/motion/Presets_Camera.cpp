@@ -19,26 +19,72 @@
 
 namespace chrononmotion::motion::presets {
 
+    using detail::authorizePresetForCamera;
     using detail::keyVector3;
 
+    namespace {
+        void cameraPushImpl(CameraRig& rig, int inFrame, int duration, float distance, float fps) {
+            const float t0 = frameToTime(inFrame, fps);
+            const float t1 = frameToTime(inFrame + duration, fps);
+            CameraPose start = rig.sample(t0);
+            CameraPose end = start;
+            CameraRig::dolly(end, distance);
+            keyVector3(rig.positionTrack(), t0, t1, start.position, end.position, Easing::easeInOut());
+        }
+
+        void cameraOrbitImpl(CameraRig& rig, int inFrame, int duration, float yaw, float pitch, float fps) {
+            const float t0 = frameToTime(inFrame, fps);
+            const float t1 = frameToTime(inFrame + duration, fps);
+            const unsigned int steps = static_cast<unsigned int>(std::max(duration, 2));
+            const CameraPose start = rig.sample(t0);
+            auto& position = rig.positionTrack();
+            for (unsigned int step = 0; step <= steps; ++step) {
+                const float progress = static_cast<float>(step) / static_cast<float>(steps);
+                CameraPose sample = start;
+                CameraRig::orbit(sample, yaw * progress, pitch * progress);
+                position.add(t0 + (t1 - t0) * progress, sample.position,
+                             step == steps ? Easing::linear() : Easing::easeInOut());
+            }
+        }
+
+        void cameraShakeImpl(CameraRig& rig, int inFrame, int duration, float amplitude, float fps) {
+            const float t0 = frameToTime(inFrame, fps);
+            const CameraPose base = rig.sample(t0);
+            constexpr int steps = 16;
+            auto& track = rig.positionTrack();
+            for (int i = 0; i <= steps; ++i) {
+                const int frame = inFrame + (duration * i) / steps;
+                const float progress = static_cast<float>(i) / static_cast<float>(steps);
+                const float decay = 1.f - progress;
+                const float shakeX = std::sin(progress * math::TWO_PI * 2.f) * decay;
+                const float shakeY = std::sin(progress * math::TWO_PI * 3.f) * decay;
+                track.add(frameToTime(frame, fps),
+                    Vector3(base.position.x + amplitude * shakeX,
+                            base.position.y - amplitude * 0.6f * shakeY, base.position.z),
+                    Easing::linear());
+            }
+        }
+
+        void cameraFovImpl(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps) {
+            const float t0 = frameToTime(inFrame, fps);
+            const float t1 = frameToTime(inFrame + duration, fps);
+            rig.fovTrack().add(t0, fromFov, Easing::easeInOut());
+            rig.fovTrack().add(t1, toFov, Easing::linear());
+        }
+    }
+
     void cameraPush(CameraRig& rig, int inFrame, int duration, float distance, float fps) {
-
-        const float t0 = frameToTime(inFrame, fps);
-        const float t1 = frameToTime(inFrame + duration, fps);
-
-        CameraPose start = rig.sample(t0);
-        CameraPose end = start;
-        CameraRig::dolly(end, distance);
-
-        keyVector3(rig.positionTrack(), t0, t1, start.position, end.position, Easing::easeInOut());
+        authorizePresetForCamera(rig, "cameraPush");
+        cameraPushImpl(rig, inFrame, duration, distance, fps);
     }
 
     void cameraPull(CameraRig& rig, int inFrame, int duration, float distance, float fps) {
-
-        cameraPush(rig, inFrame, duration, -distance, fps);
+        authorizePresetForCamera(rig, "cameraPull");
+        cameraPushImpl(rig, inFrame, duration, -distance, fps);
     }
 
     void cameraPan(CameraRig& rig, int inFrame, int duration, const Vector2& delta, float fps) {
+        authorizePresetForCamera(rig, "cameraPan");
 
         const float t0 = frameToTime(inFrame, fps);
         const float t1 = frameToTime(inFrame + duration, fps);
@@ -51,37 +97,28 @@ namespace chrononmotion::motion::presets {
     }
 
     void orbitMild(CameraRig& rig, int inFrame, int duration, float fps) {
-        cameraOrbit(rig, inFrame, duration, math::degToRad(12.f), math::degToRad(4.f), fps);
+        authorizePresetForCamera(rig, "orbitMild");
+        cameraOrbitImpl(rig, inFrame, duration, math::degToRad(12.f), math::degToRad(4.f), fps);
     }
 
     void cameraOrbit(CameraRig& rig, int inFrame, int duration, float yaw, float pitch, float fps) {
-
-        const float t0 = frameToTime(inFrame, fps);
-        const float t1 = frameToTime(inFrame + duration, fps);
-        const unsigned int steps = static_cast<unsigned int>(std::max(duration, 2));
-
-        const CameraPose start = rig.sample(t0);
-        auto& position = rig.positionTrack();
-        for (unsigned int step = 0; step <= steps; ++step) {
-            const float progress = static_cast<float>(step) / static_cast<float>(steps);
-            CameraPose sample = start;
-            CameraRig::orbit(sample, yaw * progress, pitch * progress);
-            const float time = t0 + (t1 - t0) * progress;
-            position.add(time, sample.position,
-                         step == steps ? Easing::linear() : Easing::easeInOut());
-        }
+        authorizePresetForCamera(rig, "cameraOrbit");
+        cameraOrbitImpl(rig, inFrame, duration, yaw, pitch, fps);
     }
 
     void shakeMild(CameraRig& rig, int inFrame, int duration, float amplitude, float fps) {
-        cameraShake(rig, inFrame, duration, amplitude, fps);
+        authorizePresetForCamera(rig, "shakeMild");
+        cameraShakeImpl(rig, inFrame, duration, amplitude, fps);
     }
 
     void focusPush(CameraRig& rig, int inFrame, int duration, float distance, float fps) {
-        cameraPush(rig, inFrame, duration, distance, fps);
+        authorizePresetForCamera(rig, "focusPush");
+        cameraPushImpl(rig, inFrame, duration, distance, fps);
     }
 
     void rackFocus(CameraRig& rig, int inFrame, int duration,
                    float fromDistance, float toDistance, float fps) {
+        authorizePresetForCamera(rig, "rackFocus");
 
         if (!std::isfinite(fromDistance) || !std::isfinite(toDistance) ||
             fromDistance < 0.f || toDistance < 0.f) {
@@ -96,36 +133,13 @@ namespace chrononmotion::motion::presets {
     }
 
     void cameraShake(CameraRig& rig, int inFrame, int duration, float amplitude, float fps) {
-
-        const float t0 = frameToTime(inFrame, fps);
-        const CameraPose base = rig.sample(t0);
-
-        constexpr int steps = 16;
-        auto& track = rig.positionTrack();
-
-        for (int i = 0; i <= steps; ++i) {
-            const int frame = inFrame + (duration * i) / steps;
-            const float time = frameToTime(frame, fps);
-            const float progress = static_cast<float>(i) / static_cast<float>(steps);
-
-            // A decaying pair of whole sine cycles, at different frequencies
-            // per axis. Whole cycles start and end at zero, and the decay is
-            // zero at the end too, so the shake begins and resolves exactly on
-            // the base pose; no RNG, so a re-render shakes identically.
-            const float decay = 1.f - progress;
-            const float shakeX = std::sin(progress * math::TWO_PI * 2.f) * decay;
-            const float shakeY = std::sin(progress * math::TWO_PI * 3.f) * decay;
-
-            track.add(time,
-                      Vector3(base.position.x + amplitude * shakeX,
-                              base.position.y - amplitude * 0.6f * shakeY,
-                              base.position.z),
-                      Easing::linear());
-        }
+        authorizePresetForCamera(rig, "cameraShake");
+        cameraShakeImpl(rig, inFrame, duration, amplitude, fps);
     }
 
     void handheldShake(CameraRig& rig, float intensity_units, float frequency_hz,
                        std::uint32_t seed, float start_s, float end_s) {
+        authorizePresetForCamera(rig, "handheldShake");
 
         if (!std::isfinite(intensity_units) || intensity_units < 0.f ||
             !std::isfinite(frequency_hz) || frequency_hz <= 0.f ||
@@ -201,21 +215,19 @@ namespace chrononmotion::motion::presets {
     }
 
     void cameraFovBreath(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps) {
-        cameraFov(rig, inFrame, duration, fromFov, toFov, fps);
+        authorizePresetForCamera(rig, "cameraFovBreath");
+        cameraFovImpl(rig, inFrame, duration, fromFov, toFov, fps);
     }
 
     void cameraFov(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps) {
-
-        const float t0 = frameToTime(inFrame, fps);
-        const float t1 = frameToTime(inFrame + duration, fps);
-
-        rig.fovTrack().add(t0, fromFov, Easing::easeInOut());
-        rig.fovTrack().add(t1, toFov, Easing::linear());
+        authorizePresetForCamera(rig, "cameraFov");
+        cameraFovImpl(rig, inFrame, duration, fromFov, toFov, fps);
     }
 
     void orbitalSlamZoom(CameraRig& rig, int inFrame, int duration,
                          float yawDeg, float pitchDeg, float dollyDistance,
                          float fromFov, float toFov, float fps) {
+        authorizePresetForCamera(rig, "orbitalSlamZoom");
 
         const float t0 = frameToTime(inFrame, fps);
         const float t1 = frameToTime(inFrame + duration, fps);
@@ -236,6 +248,7 @@ namespace chrononmotion::motion::presets {
 
     void cameraDrift(CameraRig& rig, int inFrame, int duration,
                      float yawRateDegPerSec, float pitchRateDegPerSec, float fps) {
+        authorizePresetForCamera(rig, "cameraDrift");
 
         const float t0 = frameToTime(inFrame, fps);
         const float t1 = frameToTime(inFrame + duration, fps);

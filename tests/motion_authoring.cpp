@@ -838,7 +838,7 @@ void testTypedChronon3dLowering() {
                                   {0.5f, {0.6f, 0.2f, 0.8f, 0.8f}},
                                   {1.f, {0.9f, 0.8f, 1.f, 1.f}}});
     fieldShape.field_render_scale = 2;
-    fieldShape.field_drift = Vector2{0.02f, -0.01f};
+    fieldShape.field_drift = glm::vec2{0.02f, -0.01f};
     auto fieldPlan = chalkPathPlan;
     fieldPlan.layers[0].shape = fieldShape;
     const std::string fieldProblem = renderPlanEmissionProblem(fieldPlan);
@@ -846,11 +846,15 @@ void testTypedChronon3dLowering() {
     if (fieldProblem.empty()) {
         const auto json = nlohmann::json::parse(renderPlanToJson(fieldPlan));
         const auto& fill = json.at("layers").at(0).at("shape").at("fill");
-        check(fill.at("type") == "field" && fill.at("field").at("seed") == 73 &&
-              fill.at("field_ramp").at("color_stops").size() == 3 &&
-              fill.at("field_render_scale") == 2 &&
-              fill.at("field_drift") == nlohmann::json{0.02f, -0.01f},
-              "Field2D source, ramp, render scale and drift stay inside the closed fill payload");
+        check(fill.at("type") == "field", "Field2D type stays inside the closed fill payload");
+        check(fill.at("field").at("seed") == 73, "Field2D source seed stays inside the closed fill payload");
+        check(fill.at("field_ramp").at("color_stops").size() == 3, "Field2D ramp stays inside the closed fill payload");
+        check(fill.at("field_render_scale") == 2, "Field2D render scale stays inside the closed fill payload");
+        const auto& drift = fill.at("field_drift");
+        check(drift.is_array() && drift.size() == 2 &&
+              std::abs(drift.at(0).get<float>() - 0.02f) < 1e-6f &&
+              std::abs(drift.at(1).get<float>() + 0.01f) < 1e-6f,
+              "Field2D drift stays inside the closed fill payload");
     }
     chronon3d::render_plan::ShapeContentPlan meshShape;
     meshShape.type = FieldType::Rect;

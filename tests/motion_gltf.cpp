@@ -1,4 +1,6 @@
 #include "chrononmotion/assets/GltfReader.hpp"
+#include "chrononmotion/motion/MotionScene.hpp"
+#include "chrononmotion/motion/AuthoringPolicy.hpp"
 
 #include <array>
 #include <cmath>
@@ -189,6 +191,30 @@ void rejectsUnsupportedAndMalformed() {
             "POSITION accessor min/max must agree with the decoded vertices");
     rejects([&] { (void)loadGltf(replaceOnce(base, "\"max\":[1,1,0]", "\"max\":[1,1,0],\"unknownAccessorFlag\":true")); },
             "unknown accessor fields are rejected");
+
+    GltfReadPolicy disabled;
+    disabled.allowStaticGltfImport = false;
+    rejects([&] { (void)loadGltf(base, {}, disabled); }, "authoring policy can disable static glTF import");
+    GltfReadPolicy tinyBudget;
+    tinyBudget.maxVertices = 2;
+    rejects([&] { (void)loadGltf(base, {}, tinyBudget); }, "authoring policy enforces glTF vertex budget");
+    bool sceneImportDenied = false;
+    motion::MotionScene importScene("import policy");
+    motion::AuthoringPolicy scenePolicy;
+    scenePolicy.allowStaticGltfImport = false;
+    importScene.setAuthoringPolicy(scenePolicy);
+    const auto sceneImportPolicy = importScene.gltfReadPolicy();
+    try { (void)loadGltf(base, {}, sceneImportPolicy); }
+    catch (const std::invalid_argument&) { sceneImportDenied = true; }
+    check(sceneImportDenied && importScene.auditLog().size() == 1,
+          "scene-derived glTF policy denies imports before recording an accepted audit event");
+    bool auditedImport = false;
+    GltfReadPolicy observed;
+    observed.audit = [&](bool motion, std::string_view format) {
+        auditedImport = !motion && format == "gltf-json-static";
+    };
+    (void)loadGltf(base, {}, observed);
+    check(auditedImport, "glTF reader reports accepted imports to the policy audit hook");
 
 }
 

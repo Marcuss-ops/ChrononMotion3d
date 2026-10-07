@@ -16,34 +16,54 @@
 
 namespace chrononmotion::motion::presets {
 
+    using detail::authorizePresetForLayer;
     using detail::keyVector3;
     using detail::restOf;
     using detail::uniform;
 
+    namespace {
+        void scalePopImpl(Layer& layer, int inFrame, int duration, float from, float to, float fps,
+                          const Easing& easing) {
+            const float t0 = frameToTime(inFrame, fps);
+            const float t1 = frameToTime(inFrame + duration, fps);
+            keyVector3(layer.tracks.scale, t0, t1, uniform(from), uniform(to), easing);
+        }
+
+        void fadeInImpl(Layer& layer, int inFrame, int duration, float fps, const Easing& easing) {
+            const float t0 = frameToTime(inFrame, fps);
+            const float t1 = frameToTime(inFrame + duration, fps);
+            layer.tracks.opacity.add(t0, 0.f, easing);
+            layer.tracks.opacity.add(t1, layer.transform.opacity, Easing::linear());
+        }
+
+        void flipImpl(Layer& layer, Axis axis, int inFrame, int duration, float fps, float degrees) {
+            const float t0 = frameToTime(inFrame, fps);
+            const float t1 = frameToTime(inFrame + duration, fps);
+            Quaternion turned;
+            turned.setFromAxisAngle(axisVector(axis), math::degToRad(degrees));
+            layer.tracks.orientation.add(t0, Quaternion(0.f, 0.f, 0.f, 1.f), Easing::easeInOut());
+            layer.tracks.orientation.add(t1, turned, Easing::linear());
+        }
+    }
+
     void scalePop(Layer& layer, int inFrame, int duration, float from, float to, float fps,
                   const Easing& easing) {
-
-        const float t0 = frameToTime(inFrame, fps);
-        const float t1 = frameToTime(inFrame + duration, fps);
-
-        keyVector3(layer.tracks.scale, t0, t1, uniform(from), uniform(to), easing);
+        authorizePresetForLayer(layer, "scalePop");
+        scalePopImpl(layer, inFrame, duration, from, to, fps, easing);
     }
 
     void scaleOvershoot(Layer& layer, int inFrame, int duration, float from, float to, float fps) {
-
-        scalePop(layer, inFrame, duration, from, to, fps, Easing::overshoot(1.2f));
+        authorizePresetForLayer(layer, "scaleOvershoot");
+        scalePopImpl(layer, inFrame, duration, from, to, fps, Easing::overshoot(1.2f));
     }
 
     void fadeIn(Layer& layer, int inFrame, int duration, float fps, const Easing& easing) {
-
-        const float t0 = frameToTime(inFrame, fps);
-        const float t1 = frameToTime(inFrame + duration, fps);
-
-        layer.tracks.opacity.add(t0, 0.f, easing);
-        layer.tracks.opacity.add(t1, layer.transform.opacity, Easing::linear());
+        authorizePresetForLayer(layer, "fadeIn");
+        fadeInImpl(layer, inFrame, duration, fps, easing);
     }
 
     void fadeOut(Layer& layer, int inFrame, int duration, float fps, const Easing& easing) {
+        authorizePresetForLayer(layer, "fadeOut");
 
         const float t0 = frameToTime(inFrame, fps);
         const float t1 = frameToTime(inFrame + duration, fps);
@@ -53,12 +73,18 @@ namespace chrononmotion::motion::presets {
     }
 
     void fadeSlide(Layer& layer, Direction direction, int inFrame, int duration, float distance, float fps) {
-
-        slideIn(layer, direction, inFrame, duration, distance, fps, Easing::easeOut());
-        fadeIn(layer, inFrame, duration, fps, Easing::easeOut());
+        authorizePresetForLayer(layer, "fadeSlide");
+        const Vector3 rest = restOf(layer, inFrame, fps).position;
+        Vector3 from = rest;
+        from.addScaledVector(directionOffset(direction), distance);
+        const float t0 = frameToTime(inFrame, fps);
+        const float t1 = frameToTime(inFrame + duration, fps);
+        keyVector3(layer.tracks.position, t0, t1, from, rest, Easing::easeOut());
+        fadeInImpl(layer, inFrame, duration, fps, Easing::easeOut());
     }
 
     void fadeScale(Layer& layer, int inFrame, int duration, float from, float fps) {
+        authorizePresetForLayer(layer, "fadeScale");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -73,6 +99,7 @@ namespace chrononmotion::motion::presets {
 
     void anchorTo(Layer& layer, const Vector3& to, int inFrame, int duration, float fps,
                   const Easing& easing) {
+        authorizePresetForLayer(layer, "anchorTo");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -82,26 +109,22 @@ namespace chrononmotion::motion::presets {
     }
 
     void flipX(Layer& layer, int inFrame, int duration, float fps, float degrees) {
-        flip(layer, Axis::X, inFrame, duration, fps, degrees);
+        authorizePresetForLayer(layer, "flipX");
+        flipImpl(layer, Axis::X, inFrame, duration, fps, degrees);
     }
 
     void flipY(Layer& layer, int inFrame, int duration, float fps, float degrees) {
-        flip(layer, Axis::Y, inFrame, duration, fps, degrees);
+        authorizePresetForLayer(layer, "flipY");
+        flipImpl(layer, Axis::Y, inFrame, duration, fps, degrees);
     }
 
     void flip(Layer& layer, Axis axis, int inFrame, int duration, float fps, float degrees) {
-
-        const float t0 = frameToTime(inFrame, fps);
-        const float t1 = frameToTime(inFrame + duration, fps);
-
-        Quaternion turned;
-        turned.setFromAxisAngle(axisVector(axis), math::degToRad(degrees));
-
-        layer.tracks.orientation.add(t0, Quaternion(0.f, 0.f, 0.f, 1.f), Easing::easeInOut());
-        layer.tracks.orientation.add(t1, turned, Easing::linear());
+        authorizePresetForLayer(layer, "flip");
+        flipImpl(layer, axis, inFrame, duration, fps, degrees);
     }
 
     void cardTurn(Layer& layer, int inFrame, int duration, float fps) {
+        authorizePresetForLayer(layer, "cardTurn");
 
         const float t0 = frameToTime(inFrame, fps);
         const float t1 = frameToTime(inFrame + duration, fps);
@@ -114,6 +137,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void tilt3D(Layer& layer, int inFrame, int duration, float degrees, float fps) {
+        authorizePresetForLayer(layer, "tilt3D");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -127,6 +151,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void spinZ(Layer& layer, int inFrame, int duration, float turns, float fps) {
+        authorizePresetForLayer(layer, "spinZ");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -140,6 +165,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void spinXYZ(Layer& layer, int inFrame, int duration, float turns, float fps) {
+        authorizePresetForLayer(layer, "spinXYZ");
 
         const float t0 = frameToTime(inFrame, fps);
         const float t1 = frameToTime(inFrame + duration, fps);
@@ -160,6 +186,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void spinIn(Layer& layer, Axis axis, int inFrame, int duration, float turns, float fps) {
+        authorizePresetForLayer(layer, "spinIn");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -189,6 +216,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void pulseOpacity(Layer& layer, int inFrame, int duration, int cycles, float fps, float floorOpacity) {
+        authorizePresetForLayer(layer, "pulseOpacity");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -238,6 +266,7 @@ namespace chrononmotion::motion::presets {
 
     void radarPing(Layer& layer, int inFrame, int duration, int pulses,
                    float fromScale, float toScale, float fps, const Easing& easing) {
+        authorizePresetForLayer(layer, "radarPing");
 
         if (duration <= 0) return;
 
@@ -266,6 +295,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void areaReveal(Layer& layer, int inFrame, int duration, float fps, const Easing& easing) {
+        authorizePresetForLayer(layer, "areaReveal");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -278,6 +308,7 @@ namespace chrononmotion::motion::presets {
 
     void extrudeRise(Layer& layer, int inFrame, int duration, float height, float fps,
                      const Easing& easing) {
+        authorizePresetForLayer(layer, "extrudeRise");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -293,6 +324,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void lineDraw(Layer& layer, int inFrame, int duration, float fps, const Easing& easing) {
+        authorizePresetForLayer(layer, "lineDraw");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);

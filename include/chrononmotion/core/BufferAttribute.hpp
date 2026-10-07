@@ -108,7 +108,11 @@ namespace chrononmotion {
 
     public:
         unsigned int version = 0;
-
+        void freeze() { readOnly_ = true; }
+        [[nodiscard]] bool readOnly() const { return readOnly_; }
+        void checkMutable() const {
+            if (readOnly_) throw std::logic_error("BufferAttribute: attribute is read-only");
+        }
         [[nodiscard]] virtual int count() const = 0;
 
         // Type-erased access to the backing store. These let consumers that only
@@ -134,6 +138,7 @@ namespace chrononmotion {
 
         void needsUpdate() {
 
+            checkMutable();
             ++version;
         }
 
@@ -146,6 +151,7 @@ namespace chrononmotion {
         virtual ~BufferAttribute() = default;
 
     protected:
+        bool readOnly_{false};
         int itemSize_{};
         bool normalized_{};
 
@@ -197,15 +203,17 @@ namespace chrononmotion {
             return clone();
         }
 
-        virtual std::vector<T>& array() {
-
-            return array_;
-        }
-
         virtual const std::vector<T>& array() const {
 
             return array_;
         }
+
+        virtual std::vector<T>& array() {
+
+            this->checkMutable();
+            return array_;
+        }
+
 
         // Copy one element from `attribute` into this attribute.
         // NB: this used to `return &this;` — taking the address of a prvalue,
@@ -213,6 +221,7 @@ namespace chrononmotion {
         // it; the first caller would have been a hard error.
         TypedBufferAttribute<T>& copyAt(unsigned int index1, const TypedBufferAttribute<T>& attribute, unsigned int index2) {
 
+            this->checkMutable();
             index1 *= this->itemSize_;
             index2 *= attribute.itemSize_;
 
@@ -226,6 +235,7 @@ namespace chrononmotion {
 
         TypedBufferAttribute<T>& copyArray(const std::vector<T>& array) {
 
+            this->checkMutable();
             this->array_ = array;
 
             return *this;
@@ -233,6 +243,7 @@ namespace chrononmotion {
 
         TypedBufferAttribute<T>& copyColorsArray(const std::vector<Color>& colors) {
 
+            this->checkMutable();
             unsigned int offset = 0;
 
             for (const auto& color : colors) {
@@ -247,6 +258,7 @@ namespace chrononmotion {
 
         TypedBufferAttribute<T>& copyVector2sArray(const std::vector<Vector2>& vectors) {
 
+            this->checkMutable();
             unsigned int offset = 0;
 
             for (const auto& vector : vectors) {
@@ -260,6 +272,7 @@ namespace chrononmotion {
 
         TypedBufferAttribute<T>& copyVector3sArray(const std::vector<Vector3>& vectors) {
 
+            this->checkMutable();
             unsigned int offset = 0;
 
             for (const auto& vector : vectors) {
@@ -274,6 +287,7 @@ namespace chrononmotion {
 
         TypedBufferAttribute<T>& copyVector4sArray(std::vector<Vector4>& vectors) {
 
+            this->checkMutable();
             unsigned int offset = 0;
 
             for (const auto& vector : vectors) {
@@ -379,6 +393,7 @@ namespace chrononmotion {
 
         virtual TypedBufferAttribute<T>& setX(size_t index, T x) {
 
+            this->checkMutable();
             checkAccess(index, 0);
             this->array_[index * this->itemSize_] = x;
 
@@ -393,6 +408,7 @@ namespace chrononmotion {
 
         virtual TypedBufferAttribute<T>& setY(size_t index, T y) {
 
+            this->checkMutable();
             checkAccess(index, 1);
             this->array_[index * this->itemSize_ + 1] = y;
 
@@ -407,6 +423,7 @@ namespace chrononmotion {
 
         virtual TypedBufferAttribute<T>& setZ(size_t index, T z) {
 
+            this->checkMutable();
             checkAccess(index, 2);
             this->array_[index * this->itemSize_ + 2] = z;
 
@@ -421,6 +438,7 @@ namespace chrononmotion {
 
         virtual TypedBufferAttribute<T>& setW(size_t index, T w) {
 
+            this->checkMutable();
             checkAccess(index, 3);
             this->array_[index * this->itemSize_ + 3] = w;
 
@@ -429,6 +447,7 @@ namespace chrononmotion {
 
         virtual TypedBufferAttribute<T>& setXY(size_t index, T x, T y) {
 
+            this->checkMutable();
             checkAccess(index, 1);
             index *= this->itemSize_;
 
@@ -440,6 +459,7 @@ namespace chrononmotion {
 
         virtual TypedBufferAttribute<T>& setXYZ(size_t index, T x, T y, T z) {
 
+            this->checkMutable();
             checkAccess(index, 2);
             index *= this->itemSize_;
 
@@ -452,6 +472,7 @@ namespace chrononmotion {
 
         virtual TypedBufferAttribute<T>& setXYZW(size_t index, T x, T y, T z, T w) {
 
+            this->checkMutable();
             checkAccess(index, 3);
             index *= this->itemSize_;
 

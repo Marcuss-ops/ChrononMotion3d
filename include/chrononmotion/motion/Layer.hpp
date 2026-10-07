@@ -28,6 +28,8 @@
 
 namespace chrononmotion::motion {
 
+    class MotionScene;
+
     /// The frame range a layer is alive for. `outFrame < 0` means open-ended, so a
     /// layer with no declared out point stays visible to the end of the timeline.
     struct FrameRange {
@@ -128,6 +130,7 @@ namespace chrononmotion::motion {
 
         Id id{kRoot};
         Id parentId{kRoot};
+        MotionScene* authoringOwner{nullptr};
         ContentRef content{};
         /// Present for a mesh layer: asset identity + renderer-facing handles.
         MeshAttachment mesh{};

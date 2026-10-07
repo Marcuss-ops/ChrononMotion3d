@@ -94,12 +94,14 @@ const std::unordered_map<std::string, std::shared_ptr<BufferAttribute>>& BufferG
 
 void BufferGeometry::setAttribute(const std::string& name, std::shared_ptr<BufferAttribute> attribute) {
 
+    checkMutable();
     attributes_[name] = std::move(attribute);
     ++attributesVersion_;
 }
 
 void BufferGeometry::deleteAttribute(const std::string& name) {
 
+    checkMutable();
     if (attributes_.count(name)) {
 
         attributes_.erase(name);
@@ -114,16 +116,19 @@ bool BufferGeometry::hasAttribute(const std::string& name) const {
 
 void BufferGeometry::addGroup(int start, int count, unsigned int materialIndex) {
 
+    checkMutable();
     groups.emplace_back(GeometryGroup{start, count, materialIndex});
 }
 
 void BufferGeometry::clearGroups() {
 
+    checkMutable();
     groups.clear();
 }
 
 BufferGeometry& BufferGeometry::applyMatrix4(const Matrix4& matrix) {
 
+    checkMutable();
     if (hasAttribute("position")) {
 
         auto position = dynamic_cast<TypedBufferAttribute<float>*>(this->attributes_.at("position").get());
@@ -168,6 +173,7 @@ BufferGeometry& BufferGeometry::applyMatrix4(const Matrix4& matrix) {
 
 BufferGeometry& BufferGeometry::applyQuaternion(const Quaternion& q) {
 
+    checkMutable();
     Matrix4 _m1{};
     _m1.makeRotationFromQuaternion(q);
 
@@ -178,6 +184,7 @@ BufferGeometry& BufferGeometry::applyQuaternion(const Quaternion& q) {
 
 BufferGeometry& BufferGeometry::rotateX(float angle) {
 
+    checkMutable();
     // rotate geometry around world x-axis
 
     Matrix4 _m1{};
@@ -190,6 +197,7 @@ BufferGeometry& BufferGeometry::rotateX(float angle) {
 
 BufferGeometry& BufferGeometry::rotateY(float angle) {
 
+    checkMutable();
     // rotate geometry around world y-axis
 
     Matrix4 _m1{};
@@ -202,6 +210,7 @@ BufferGeometry& BufferGeometry::rotateY(float angle) {
 
 BufferGeometry& BufferGeometry::rotateZ(float angle) {
 
+    checkMutable();
     // rotate geometry around world z-axis
 
     Matrix4 _m1{};
@@ -214,6 +223,7 @@ BufferGeometry& BufferGeometry::rotateZ(float angle) {
 
 BufferGeometry& BufferGeometry::translate(float x, float y, float z) {
 
+    checkMutable();
     // translate geometry
 
     Matrix4 _m1{};
@@ -226,6 +236,7 @@ BufferGeometry& BufferGeometry::translate(float x, float y, float z) {
 
 BufferGeometry& BufferGeometry::scale(float x, float y, float z) {
 
+    checkMutable();
     // scale geometry
 
     Matrix4 _m1{};
@@ -238,6 +249,7 @@ BufferGeometry& BufferGeometry::scale(float x, float y, float z) {
 
 BufferGeometry& BufferGeometry::center() {
 
+    checkMutable();
     this->computeBoundingBox();
 
     Vector3 _offset{};
@@ -251,6 +263,7 @@ BufferGeometry& BufferGeometry::center() {
 
 BufferGeometry& BufferGeometry::setFromPoints(const std::vector<Vector2>& points) {
 
+    checkMutable();
     std::vector<float> position(points.size() * 3);
 
     for (unsigned i = 0, j = 0, l = points.size(); i < l; i++) {
@@ -268,6 +281,7 @@ BufferGeometry& BufferGeometry::setFromPoints(const std::vector<Vector2>& points
 
 BufferGeometry& BufferGeometry::setFromPoints(const std::vector<Vector3>& points) {
 
+    checkMutable();
     std::vector<float> position(points.size() * 3);
 
     for (unsigned i = 0, j = 0, l = points.size(); i < l; i++) {
@@ -348,6 +362,7 @@ void BufferGeometry::computeBoundingSphere() {
 
 void BufferGeometry::normalizeNormals() {
 
+    checkMutable();
     auto normals = getAttribute<float>("normal");
     if (!normals) {
         throw std::invalid_argument("BufferGeometry::normalizeNormals: missing float normal attribute");
@@ -365,6 +380,7 @@ void BufferGeometry::normalizeNormals() {
 }
 
 void BufferGeometry::copy(const BufferGeometry& source) {
+    checkMutable();
     // reset
 
     this->index_ = nullptr;
@@ -464,6 +480,7 @@ std::shared_ptr<BufferGeometry> BufferGeometry::toNonIndexed() const {
 
 void BufferGeometry::computeVertexNormals() {
 
+    checkMutable();
     auto index = getIndex();
 
     const auto positionAttribute = this->getAttribute<float>("position");

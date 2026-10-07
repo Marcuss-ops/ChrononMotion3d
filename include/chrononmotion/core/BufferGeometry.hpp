@@ -61,6 +61,7 @@ namespace chrononmotion {
         template<class ArrayLike>
         BufferGeometry& setIndex(const ArrayLike& index) {
 
+            checkMutable();
             this->index_ = IntBufferAttribute::create(index, 1);
             ++attributesVersion_;
 
@@ -73,6 +74,7 @@ namespace chrononmotion {
         // so `setIndex(std::move(indices))` moves rather than copies.
         BufferGeometry& setIndex(std::vector<unsigned int>&& index) {
 
+            checkMutable();
             this->index_ = IntBufferAttribute::create(std::move(index), 1);
             ++attributesVersion_;
 
@@ -111,6 +113,11 @@ namespace chrononmotion {
         [[nodiscard]] const std::unordered_map<std::string, std::shared_ptr<BufferAttribute>>& getAttributes() const;
 
         void setAttribute(const std::string& name, std::shared_ptr<BufferAttribute> attribute);
+        void freeze() { readOnly_ = true; }
+        [[nodiscard]] bool readOnly() const { return readOnly_; }
+        void checkMutable() const {
+            if (readOnly_) throw std::logic_error("BufferGeometry: geometry is read-only");
+        }
 
         void deleteAttribute(const std::string& name);
 
@@ -162,6 +169,7 @@ namespace chrononmotion {
 
     private:
         bool disposed_ = false;
+        bool readOnly_ = false;
         std::unique_ptr<IntBufferAttribute> index_;
         std::unordered_map<std::string, std::shared_ptr<BufferAttribute>> attributes_;
         unsigned int attributesVersion_ = 0;// see attributesVersion()

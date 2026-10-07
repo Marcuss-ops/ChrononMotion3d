@@ -19,6 +19,20 @@ namespace chrononmotion {
     using GltfExternalBufferResolver =
         std::function<std::vector<std::byte>(std::string_view uri)>;
 
+    struct GltfReadPolicy {
+        bool enabled{true};
+        bool allowStaticGltfImport{true};
+        bool allowMotionGltfImport{true};
+        std::size_t maxJsonBytes{16u * 1024u * 1024u};
+        std::size_t maxBufferBytes{256u * 1024u * 1024u};
+        std::size_t maxTotalBufferBytes{512u * 1024u * 1024u};
+        std::size_t maxNodes{100'000};
+        std::size_t maxMeshes{100'000};
+        std::size_t maxPrimitives{100'000};
+        std::size_t maxVertices{8'000'000};
+        std::function<void(bool motion, std::string_view format)> audit{};
+    };
+
     struct GltfAsset {
         std::shared_ptr<Scene> scene;
         // All primitives in the selected glTF scene, in deterministic node,
@@ -58,20 +72,23 @@ namespace chrononmotion {
     // Narrow TRS hierarchy, triangle POSITION, skins and linear/step clips;
     // no materials, extensions, compression, sparse or implicit I/O.
     [[nodiscard]] GltfMotionAsset loadGltfMotion(
-        std::string_view json, const GltfExternalBufferResolver& resolver = {});
+        std::string_view json, const GltfExternalBufferResolver& resolver = {},
+        const GltfReadPolicy& policy = {});
 
     /// Load static glTF 2.0 JSON. Buffers may be embedded base64 data URIs or
     /// supplied by the explicit resolver. Materials, animations, skins,
     /// morph targets, extensions, and non-triangle primitives fail closed.
     [[nodiscard]] GltfAsset loadGltf(
         std::string_view json,
-        const GltfExternalBufferResolver& resolveExternalBuffer = {});
+        const GltfExternalBufferResolver& resolveExternalBuffer = {},
+        const GltfReadPolicy& policy = {});
 
     /// Load a GLB 2.0 container. JSON and BIN chunks are parsed in memory;
     /// external buffer URIs still require the explicit caller resolver.
     [[nodiscard]] GltfAsset loadGlb(
         std::span<const std::byte> bytes,
-        const GltfExternalBufferResolver& resolveExternalBuffer = {});
+        const GltfExternalBufferResolver& resolveExternalBuffer = {},
+        const GltfReadPolicy& policy = {});
 
 } // namespace chrononmotion
 

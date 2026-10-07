@@ -83,6 +83,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/CameraRig.cpp
         src/chrononmotion/motion/CameraMotion.cpp
         src/chrononmotion/motion/Lighting.cpp
+        src/chrononmotion/motion/AuthoringPolicy.cpp
         src/chrononmotion/motion/Procedural.cpp
         src/chrononmotion/motion/Constraints.cpp
         src/chrononmotion/motion/RigGraph.cpp

@@ -2,6 +2,12 @@
 
 #include "chrononmotion/motion/CompiledScene.hpp"
 #include "chrononmotion/motion/SceneExport.hpp"
+#include "chrononmotion/motion/Presets.hpp"
+#include "chrononmotion/assets/GltfReader.hpp"
+#include "chrononmotion/geometries/BoxGeometry.hpp"
+#include "chrononmotion/geometries/PlaneGeometry.hpp"
+#include "chrononmotion/geometries/SphereGeometry.hpp"
+#include "JsonWriter.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -32,6 +38,74 @@ namespace chrononmotion::motion {
                 case TrackChannel::TimeRemap: return LinkType::ScalarType;
             }
             return LinkType::ScalarType;
+        }
+
+        [[nodiscard]] std::size_t saturatedAdd(std::size_t left, std::size_t right) {
+            const auto maximum = std::numeric_limits<std::size_t>::max();
+            return right > maximum - left ? maximum : left + right;
+        }
+
+        [[nodiscard]] std::size_t saturatedMultiply(std::size_t left, std::size_t right) {
+            const auto maximum = std::numeric_limits<std::size_t>::max();
+            return left != 0 && right > maximum / left ? maximum : left * right;
+        }
+
+        template<class... Tracks>
+        [[nodiscard]] std::size_t trackKeyCount(const Tracks&... tracks) {
+            std::size_t total = 0;
+            ((total = saturatedAdd(total, tracks.size())), ...);
+            return total;
+        }
+
+        [[nodiscard]] std::size_t keyframeCount(const Layer& layer) {
+            std::size_t total = trackKeyCount(layer.tracks.position, layer.tracks.anchor, layer.tracks.scale,
+                                              layer.tracks.rotation, layer.tracks.orientation, layer.tracks.opacity,
+                                              layer.timeRemapTrack);
+            for (const auto& constraint : layer.constraints)
+                if (constraint.amountTrack) total = saturatedAdd(total, constraint.amountTrack->size());
+            return total;
+        }
+
+        [[nodiscard]] std::size_t keyframeCount(const Light& light) {
+            std::size_t total = trackKeyCount(light.intensityTrack, light.colorTrack, light.positionTrack,
+                light.rotationTrack, light.directionTrack, light.shadowBiasTrack,
+                light.shadowNormalBiasTrack, light.shadowRadiusTrack);
+            if (const auto* point = dynamic_cast<const PointLight*>(&light))
+                total = saturatedAdd(total, trackKeyCount(point->rangeTrack, point->decayTrack));
+            if (const auto* spot = dynamic_cast<const SpotLight*>(&light))
+                total = saturatedAdd(total, trackKeyCount(spot->rangeTrack, spot->angleTrack,
+                                                         spot->penumbraTrack, spot->decayTrack));
+            return total;
+        }
+
+        [[nodiscard]] std::size_t geometryVertexCount(const BufferGeometry& geometry) {
+            const auto* positions = geometry.getAttribute<FloatBufferAttribute>("position");
+            return positions ? positions->count() : 0;
+        }
+
+        [[nodiscard]] std::size_t primitiveSegmentCount(const BufferGeometry& geometry) {
+            std::size_t first = 0;
+            std::size_t second = 0;
+            if (const auto* plane = dynamic_cast<const PlaneGeometry*>(&geometry)) {
+                first = plane->widthSegments;
+                second = plane->heightSegments;
+            } else if (const auto* sphere = dynamic_cast<const SphereGeometry*>(&geometry)) {
+                first = std::max(3u, sphere->parameters.widthSegments);
+                second = std::max(2u, sphere->parameters.heightSegments);
+            } else if (const auto* box = dynamic_cast<const BoxGeometry*>(&geometry)) {
+                const auto& p = box->parameters;
+                const std::size_t xy = saturatedMultiply(p.widthSegments, p.heightSegments);
+                const std::size_t xz = saturatedMultiply(p.widthSegments, p.depthSegments);
+                const std::size_t yz = saturatedMultiply(p.heightSegments, p.depthSegments);
+                return saturatedAdd(saturatedAdd(xy, xy),
+                                    saturatedAdd(saturatedAdd(xz, xz), saturatedAdd(yz, yz)));
+            } else {
+                return 0;
+            }
+            if (first == 0 || second == 0) return std::numeric_limits<std::size_t>::max();
+            if (second > std::numeric_limits<std::size_t>::max() / first)
+                return std::numeric_limits<std::size_t>::max();
+            return first * second;
         }
 
     }// namespace
@@ -127,24 +201,350 @@ namespace chrononmotion::motion {
             throw std::invalid_argument("MotionScene: fps must be finite and positive");
     }
 
+    MotionScene::MotionScene(MotionScene&& other)
+        : name_(std::move(other.name_)),
+          fps_(other.fps_),
+          policy_(std::move(other.policy_)),
+          sealed_(other.sealed_),
+          auditLog_(std::move(other.auditLog_)),
+          layers_(std::move(other.layers_)),
+          index_(std::move(other.index_)),
+          states_(std::move(other.states_)),
+          lights_(std::move(other.lights_)),
+          lightIndex_(std::move(other.lightIndex_)),
+          lightStates_(std::move(other.lightStates_)),
+          lastFrame_(other.lastFrame_),
+          lastPts_(other.lastPts_),
+          lastTime_(other.lastTime_),
+          hasEvaluated_(other.hasEvaluated_),
+          order_(std::move(other.order_)),
+          orderParents_(std::move(other.orderParents_)),
+          orderParentIds_(std::move(other.orderParentIds_)),
+          orderSwitchParentIds_(std::move(other.orderSwitchParentIds_)),
+          orderDirty_(other.orderDirty_),
+          orderValid_(other.orderValid_) {
+        for (auto& layer : layers_) {
+            layer.authoringOwner = this;
+            attachTrackGuards(layer);
+        }
+        for (auto& light : lights_) attachLightTrackGuards(*light);
+    }
+
+    void MotionScene::ensureMutable(const char* action) const {
+        if (sealed_) {
+            audit(action, "scene", false, "scene is sealed");
+            throw std::logic_error(std::string("MotionScene: cannot ") + action + " after seal()");
+        }
+    }
+
+    void MotionScene::audit(std::string action, std::string subject, bool accepted, std::string reason) const {
+        auditLog_.push_back(AuthoringAuditEntry{std::move(action), std::move(subject), accepted, std::move(reason)});
+    }
+
+    GltfReadPolicy MotionScene::gltfReadPolicy() const {
+        GltfReadPolicy result;
+        result.enabled = true;
+        result.allowStaticGltfImport = policy_.allowStaticGltfImport;
+        result.allowMotionGltfImport = policy_.allowMotionGltfImport;
+        result.maxVertices = policy_.maxGeometryVertices;
+        result.audit = [this](bool motion, std::string_view format) {
+            try {
+                const_cast<MotionScene*>(this)->recordGltfImport(motion, std::string(format));
+            } catch (const std::logic_error& error) {
+                throw std::invalid_argument(error.what());
+            }
+        };
+        return result;
+    }
+
+    MotionScene& MotionScene::setAuthoringPolicy(AuthoringPolicy policy) {
+        ensureMutable("change authoring policy");
+        for (const auto& name : policy.allowedPresets) {
+            if (!presets::known(name)) {
+                audit("setPolicy", name, false, "allowlist contains an unknown preset");
+                throw std::invalid_argument("MotionScene::setAuthoringPolicy: unknown preset '" + name + "'");
+            }
+        }
+        policy_ = std::move(policy);
+        audit("setPolicy", name_, true);
+        return *this;
+    }
+
+    void MotionScene::authorizePreset(const std::string& presetName) {
+        authorizePresetName(presetName);
+    }
+
+    void MotionScene::authorizeCustomPreset(const std::string& presetName) {
+        ensureMutable("create animation preset");
+        if (!policy_.allowAnimations || !policy_.allowNewCustomPresets) {
+            audit("customPreset", presetName, false, "custom presets are disabled by authoring policy");
+            throw std::logic_error("MotionScene: custom presets are disabled by authoring policy");
+        }
+        audit("customPreset", presetName, true);
+    }
+
+    void MotionScene::authorizePresetName(const std::string& presetName) {
+        if (!presets::known(presetName)) {
+            audit("preset", presetName, false, "unknown built-in preset");
+            throw std::invalid_argument("MotionScene: unknown built-in preset: " + presetName);
+        }
+        if (sealed_ || !policy_.allowAnimations) {
+            audit("preset", presetName, false, sealed_ ? "scene is sealed" : "animations are disabled");
+            throw std::logic_error("MotionScene: animation preset is not allowed: " + presetName);
+        }
+        if (!policy_.allowedPresets.empty() &&
+            std::find(policy_.allowedPresets.begin(), policy_.allowedPresets.end(), presetName) == policy_.allowedPresets.end()) {
+            audit("preset", presetName, false, "preset is not in the allowlist");
+            throw std::invalid_argument("MotionScene: preset is not allowlisted: " + presetName);
+        }
+        audit("preset", presetName, true);
+    }
+
+    void MotionScene::authorizePresetFor(const Layer& layer, const std::string& presetName) {
+        if (layer.authoringOwner) {
+            layer.authoringOwner->authorizePresetName(presetName);
+            return;
+        }
+        const Object3D* node = layer.parent;
+        while (node) {
+            if (const auto* scene = dynamic_cast<const MotionScene*>(node)) {
+                const_cast<MotionScene*>(scene)->authorizePresetName(presetName);
+                return;
+            }
+            node = node->parent;
+        }
+        if (!presets::known(presetName))
+            throw std::invalid_argument("MotionScene: unknown built-in preset: " + presetName);
+    }
+
+    void MotionScene::seal() {
+        if (sealed_) return;
+        const auto problems = validate();
+        if (!problems.empty()) {
+            audit("seal", name_, false, problems.front());
+            throw std::invalid_argument("MotionScene::seal: scene validation failed: " + problems.front());
+        }
+        sealed_ = true;
+        audit("seal", name_, true);
+    }
+
+    void MotionScene::recordGltfImport(bool motion, std::string sourceName) {
+        ensureMutable("import glTF");
+        const bool permitted = motion ? policy_.allowMotionGltfImport : policy_.allowStaticGltfImport;
+        if (!permitted) {
+            audit("gltfImport", sourceName, false, motion ? "motion glTF import is disabled" : "static glTF import is disabled");
+            throw std::logic_error("MotionScene: glTF import is disabled by authoring policy");
+        }
+        audit("gltfImport", sourceName, true, motion ? "motion" : "static");
+    }
+
+    std::string MotionScene::auditJson(int indentSpaces) const {
+        if (indentSpaces < 0) throw std::invalid_argument("MotionScene::auditJson: indent must be non-negative");
+        detail::Writer writer(indentSpaces);
+        writer.beginArray();
+        for (const auto& entry : auditLog_) {
+            writer.item();
+            writer.beginObject();
+            writer.key("action"); writer.text(entry.action);
+            writer.key("subject"); writer.text(entry.subject);
+            writer.key("accepted"); writer.boolean(entry.accepted);
+            writer.key("reason"); writer.text(entry.reason);
+            writer.endObject();
+        }
+        writer.endArray();
+        return writer.take();
+    }
+
+
+
+    void MotionScene::attachTrackGuards(Layer& layer) {
+        Layer* const guardedLayer = &layer;
+        const auto guard = [this, guardedLayer](std::size_t oldCount, std::size_t newCount) {
+            ensureMutable("modify animation track");
+            if (!policy_.allowAnimations) {
+                audit("keyframe", guardedLayer->name, false, "animations are disabled");
+                throw std::logic_error("MotionScene: animations are disabled by authoring policy");
+            }
+            if (policy_.maxKeyframes == std::numeric_limits<std::size_t>::max()) {
+                audit("keyframe", guardedLayer->name, true);
+                return;
+            }
+            std::size_t total = 0;
+            for (const auto& candidate : layers_) {
+                total = saturatedAdd(total, keyframeCount(candidate));
+            }
+            for (const auto& candidate : lights_) total = saturatedAdd(total, keyframeCount(*candidate));
+            const std::size_t remaining = policy_.maxKeyframes - std::min(total, policy_.maxKeyframes);
+            if (newCount > oldCount && newCount - oldCount > remaining) {
+                audit("keyframe", guardedLayer->name, false, "keyframe budget exceeded");
+                throw std::length_error("MotionScene: keyframe budget exceeded");
+            }
+            audit("keyframe", guardedLayer->name, true);
+        };
+        layer.tracks.position.setMutationGuard(guard);
+        layer.tracks.anchor.setMutationGuard(guard);
+        layer.tracks.scale.setMutationGuard(guard);
+        layer.tracks.rotation.setMutationGuard(guard);
+        layer.tracks.orientation.setMutationGuard(guard);
+        layer.tracks.opacity.setMutationGuard(guard);
+        layer.timeRemapTrack.setMutationGuard(guard);
+        for (const auto& constraint : layer.constraints) {
+            if (constraint.amountTrack) constraint.amountTrack->setMutationGuard(guard);
+        }
+        const auto readOnly = [this]() { ensureMutable("modify animation track"); };
+        for (const auto& constraint : layer.constraints) {
+            if (constraint.amountTrack) constraint.amountTrack->setReadOnlyGuard(readOnly);
+        }
+        layer.tracks.position.setReadOnlyGuard(readOnly);
+        layer.tracks.anchor.setReadOnlyGuard(readOnly);
+        layer.tracks.scale.setReadOnlyGuard(readOnly);
+        layer.tracks.rotation.setReadOnlyGuard(readOnly);
+        layer.tracks.orientation.setReadOnlyGuard(readOnly);
+        layer.tracks.opacity.setReadOnlyGuard(readOnly);
+        layer.timeRemapTrack.setReadOnlyGuard(readOnly);
+    }
+
+    void MotionScene::attachLightTrackGuards(Light& light) {
+        const auto guard = [this, guarded = &light](std::size_t oldCount, std::size_t newCount) {
+            ensureMutable("modify light animation track");
+            if (!policy_.allowAnimations) {
+                audit("keyframe", guarded->name, false, "animations are disabled");
+                throw std::logic_error("MotionScene: animations are disabled by authoring policy");
+            }
+            if (policy_.maxKeyframes == std::numeric_limits<std::size_t>::max()) {
+                audit("keyframe", guarded->name, true);
+                return;
+            }
+            std::size_t total = 0;
+            for (const auto& layer : layers_) total = saturatedAdd(total, keyframeCount(layer));
+            for (const auto& candidate : lights_) total = saturatedAdd(total, keyframeCount(*candidate));
+            const std::size_t remaining = policy_.maxKeyframes - std::min(total, policy_.maxKeyframes);
+            if (newCount > oldCount && newCount - oldCount > remaining) {
+                audit("keyframe", guarded->name, false, "keyframe budget exceeded");
+                throw std::length_error("MotionScene: keyframe budget exceeded");
+            }
+            audit("keyframe", guarded->name, true);
+        };
+        const auto readOnly = [this]() { ensureMutable("modify light animation track"); };
+        const auto bind = [&](auto& track) {
+            track.setMutationGuard(guard);
+            track.setReadOnlyGuard(readOnly);
+        };
+        bind(light.intensityTrack);
+        bind(light.colorTrack);
+        bind(light.positionTrack);
+        bind(light.rotationTrack);
+        bind(light.directionTrack);
+        bind(light.shadowBiasTrack);
+        bind(light.shadowNormalBiasTrack);
+        bind(light.shadowRadiusTrack);
+        if (auto* point = dynamic_cast<PointLight*>(&light)) {
+            bind(point->rangeTrack);
+            bind(point->decayTrack);
+        }
+        if (auto* spot = dynamic_cast<SpotLight*>(&light)) {
+            bind(spot->rangeTrack);
+            bind(spot->angleTrack);
+            bind(spot->penumbraTrack);
+            bind(spot->decayTrack);
+        }
+    }
+
     Layer& MotionScene::addLayer(Layer layer) {
 
+        ensureMutable("add or replace layer");
+        const bool replaces = index_.contains(layer.id);
+        if (!replaces && layers_.size() >= policy_.maxLayers) {
+            audit("addLayer", layer.name, false, "layer budget exceeded");
+            throw std::length_error("MotionScene: layer budget exceeded");
+        }
+        if (layer.mesh.geometry) {
+            const std::string geometryType = layer.mesh.geometry->type();
+            if (!policy_.allowedGeometryTypes.empty() &&
+                std::find(policy_.allowedGeometryTypes.begin(), policy_.allowedGeometryTypes.end(), geometryType) ==
+                    policy_.allowedGeometryTypes.end()) {
+                audit("addGeometry", geometryType, false, "geometry type is not in the allowlist");
+                throw std::invalid_argument("MotionScene: geometry type is not allowlisted: " + geometryType);
+            }
+            const std::size_t vertices = geometryVertexCount(*layer.mesh.geometry);
+            std::size_t totalVertices = 0;
+            for (const auto& candidate : layers_) {
+                if (replaces && candidate.id == layer.id) continue;
+                if (candidate.mesh.geometry)
+                    totalVertices = saturatedAdd(totalVertices, geometryVertexCount(*candidate.mesh.geometry));
+            }
+            if (vertices > policy_.maxGeometryVertices - std::min(totalVertices, policy_.maxGeometryVertices)) {
+                audit("addGeometry", geometryType, false, "geometry vertex budget exceeded");
+                throw std::length_error("MotionScene: geometry vertex budget exceeded");
+            }
+        }
+        std::size_t existingKeyframes = 0;
+        std::size_t existingVertices = 0;
+        std::size_t existingSegments = 0;
+        for (const auto& candidate : layers_) {
+            if (replaces && candidate.id == layer.id) continue;
+            existingKeyframes = saturatedAdd(existingKeyframes, keyframeCount(candidate));
+            if (candidate.mesh.geometry) {
+                existingVertices = saturatedAdd(existingVertices, geometryVertexCount(*candidate.mesh.geometry));
+                existingSegments = saturatedAdd(existingSegments, primitiveSegmentCount(*candidate.mesh.geometry));
+            }
+        }
+        for (const auto& candidate : lights_)
+            existingKeyframes = saturatedAdd(existingKeyframes, keyframeCount(*candidate));
+        if (policy_.maxKeyframes != std::numeric_limits<std::size_t>::max() &&
+            keyframeCount(layer) > policy_.maxKeyframes - std::min(existingKeyframes, policy_.maxKeyframes)) {
+            audit("addLayer", layer.name, false, "keyframe budget exceeded");
+            throw std::length_error("MotionScene: keyframe budget exceeded");
+        }
+        if (layer.mesh.geometry &&
+            geometryVertexCount(*layer.mesh.geometry) >
+                policy_.maxGeometryVertices - std::min(existingVertices, policy_.maxGeometryVertices)) {
+            audit("addGeometry", layer.mesh.geometry->type(), false, "geometry vertex budget exceeded");
+            throw std::length_error("MotionScene: geometry vertex budget exceeded");
+        }
+        if (layer.mesh.geometry &&
+            primitiveSegmentCount(*layer.mesh.geometry) >
+                policy_.maxPrimitiveSegments - std::min(existingSegments, policy_.maxPrimitiveSegments)) {
+            audit("addGeometry", layer.mesh.geometry->type(), false, "primitive segment budget exceeded");
+            throw std::length_error("MotionScene: primitive segment budget exceeded");
+        }
+        if (!policy_.allowAnimations && keyframeCount(layer) != 0) {
+            audit("addLayer", layer.name, false, "animations are disabled");
+            throw std::logic_error("MotionScene: animations are disabled by authoring policy");
+        }
+        audit(replaces ? "replaceLayer" : "addLayer", layer.name, true);
+        if (layer.mesh.geometry) {
+            layer.mesh.geometry->freeze();
+            for (const auto& [unused, attribute] : layer.mesh.geometry->getAttributes()) {
+                (void)unused;
+                if (attribute) attribute->freeze();
+            }
+            if (auto* index = layer.mesh.geometry->getIndex()) index->freeze();
+            audit("addGeometry", layer.mesh.geometry->type(), true);
+        }
+        layer.authoringOwner = this;
         const Layer::Id id = layer.id;
         const auto existing = index_.find(id);
 
         if (existing != index_.end()) {
-            layers_[existing->second].replaceAuthoring(std::move(layer));
+            Layer& stored = layers_[existing->second];
+            stored.replaceAuthoring(std::move(layer));
+            stored.authoringOwner = this;
+            attachTrackGuards(stored);
             states_[existing->second] = LayerState{};
             orderDirty_ = true;
-            return layers_[existing->second];
+            return stored;
         }
 
         index_.emplace(id, layers_.size());
         layers_.emplace_back();
-        layers_.back().replaceAuthoring(std::move(layer));
+        Layer& stored = layers_.back();
+        stored.replaceAuthoring(std::move(layer));
+        stored.authoringOwner = this;
+        attachTrackGuards(stored);
         states_.emplace_back();
         orderDirty_ = true;
-        return layers_.back();
+        return stored;
     }
 
     Layer& MotionScene::addLayer(Layer::Id id, std::string name) {
@@ -176,6 +576,7 @@ namespace chrononmotion::motion {
     }
 
     Layer::Id MotionScene::allocateLayerId() {
+        ensureMutable("allocate layer id");
         Layer::Id candidate = 1;
         while (index_.contains(candidate)) {
             if (candidate == std::numeric_limits<Layer::Id>::max())
@@ -186,13 +587,33 @@ namespace chrononmotion::motion {
     }
 
     Light& MotionScene::addLight(std::unique_ptr<Light> light) {
+        ensureMutable("add light");
         if (!light) throw std::invalid_argument("MotionScene::addLight: light is required");
+        if (lightIndex_.size() >= policy_.maxLights) {
+            audit("addLight", light->name, false, "light budget exceeded");
+            throw std::length_error("MotionScene: light budget exceeded");
+        }
         if (lightIndex_.contains(light->id)) {
+            audit("addLight", light->name, false, "duplicate light id");
             throw std::invalid_argument("MotionScene::addLight: duplicate light id");
         }
+        if (!policy_.allowAnimations && keyframeCount(*light) != 0) {
+            audit("addLight", light->name, false, "animations are disabled");
+            throw std::logic_error("MotionScene: animations are disabled by authoring policy");
+        }
+        std::size_t existingKeyframes = 0;
+        for (const auto& layer : layers_) existingKeyframes = saturatedAdd(existingKeyframes, keyframeCount(layer));
+        for (const auto& candidate : lights_) existingKeyframes = saturatedAdd(existingKeyframes, keyframeCount(*candidate));
+        if (policy_.maxKeyframes != std::numeric_limits<std::size_t>::max() &&
+            keyframeCount(*light) > policy_.maxKeyframes - std::min(existingKeyframes, policy_.maxKeyframes)) {
+            audit("addLight", light->name, false, "keyframe budget exceeded");
+            throw std::length_error("MotionScene: keyframe budget exceeded");
+        }
+        audit("addLight", light->name, true);
         const Light::Id id = light->id;
         lightIndex_.emplace(id, lights_.size());
         lights_.push_back(std::move(light));
+        attachLightTrackGuards(*lights_.back());
         lightStates_.emplace_back();
         return *lights_.back();
     }
@@ -235,6 +656,7 @@ namespace chrononmotion::motion {
 
     Layer* MotionScene::findLayer(Layer::Id id) {
 
+        ensureMutable("mutable layer access");
         const std::size_t index = indexOf(id);
         return index == npos ? nullptr : &layers_[index];
     }
@@ -247,6 +669,7 @@ namespace chrononmotion::motion {
 
     Layer* MotionScene::findLayer(const std::string& name) {
 
+        ensureMutable("mutable layer access");
         for (auto& layer : layers_) {
             if (layer.name == name) return &layer;
         }
@@ -268,6 +691,7 @@ namespace chrononmotion::motion {
 
     MotionScene& MotionScene::setFps(float fps) {
 
+        ensureMutable("change fps");
         if (!std::isfinite(fps) || fps <= 0.f)
             throw std::invalid_argument("MotionScene::setFps: fps must be finite and positive");
         fps_ = fps;
@@ -843,6 +1267,41 @@ namespace chrononmotion::motion {
     std::vector<std::string> MotionScene::validate() const {
 
         std::vector<std::string> problems;
+        if (layers_.size() > policy_.maxLayers) problems.emplace_back("scene exceeds authoring layer budget");
+        if (lights_.size() > policy_.maxLights) problems.emplace_back("scene exceeds authoring light budget");
+        std::size_t totalKeyframes = 0;
+        std::size_t totalGeometryVertices = 0;
+        std::size_t totalPrimitiveSegments = 0;
+        if (!policy_.allowAnimations) {
+            bool hasAnimations = false;
+            for (const auto& layer : layers_) {
+                hasAnimations = hasAnimations || !layer.tracks.empty() || !layer.timeRemapTrack.empty();
+                for (const auto& constraint : layer.constraints)
+                    hasAnimations = hasAnimations || (constraint.amountTrack && !constraint.amountTrack->empty());
+            }
+            for (const auto& light : lights_) hasAnimations = hasAnimations || keyframeCount(*light) != 0;
+            if (hasAnimations) problems.emplace_back("scene contains animations but authoring policy disables animations");
+        }
+        for (const auto& layer : layers_) {
+            totalKeyframes = saturatedAdd(totalKeyframes, keyframeCount(layer));
+            if (layer.mesh.geometry) {
+                const std::string geometryType = layer.mesh.geometry->type();
+                totalPrimitiveSegments = saturatedAdd(totalPrimitiveSegments,
+                    primitiveSegmentCount(*layer.mesh.geometry));
+                if (!policy_.allowedGeometryTypes.empty() &&
+                    std::find(policy_.allowedGeometryTypes.begin(), policy_.allowedGeometryTypes.end(), geometryType) ==
+                        policy_.allowedGeometryTypes.end())
+                    problems.push_back("layer " + std::to_string(layer.id) + ": geometry type is not allowlisted: " + geometryType);
+                if (const auto* positions = layer.mesh.geometry->getAttribute<FloatBufferAttribute>("position"))
+                    totalGeometryVertices = saturatedAdd(totalGeometryVertices,
+                        static_cast<std::size_t>(positions->count()));
+            }
+        }
+        for (const auto& light : lights_) totalKeyframes = saturatedAdd(totalKeyframes, keyframeCount(*light));
+        if (totalKeyframes > policy_.maxKeyframes) problems.emplace_back("scene exceeds authoring keyframe budget");
+        if (totalGeometryVertices > policy_.maxGeometryVertices) problems.emplace_back("scene exceeds geometry vertex budget");
+        if (totalPrimitiveSegments > policy_.maxPrimitiveSegments)
+            problems.emplace_back("scene exceeds primitive segment budget");
 
         // The link graph over (layer, channel) nodes. A link is an edge; an edge
         // that leads back into one already on the resolution path is a cycle and

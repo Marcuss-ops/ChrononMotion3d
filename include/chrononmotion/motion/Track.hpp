@@ -224,6 +224,15 @@ namespace chrononmotion::motion {
             }
         }
 
+        /// Attach an owner policy guard. Intended for MotionScene-owned tracks.
+        void setMutationGuard(std::function<void(std::size_t, std::size_t)> guard) {
+            mutationGuard_ = std::move(guard);
+        }
+
+        void setReadOnlyGuard(std::function<void()> guard) {
+            readOnlyGuard_ = std::move(guard);
+        }
+
         /// Insert (or replace) a key. Out-of-order times are fine: the track sorts.
         Track& add(float time, const T& value, const Easing& easing = Easing::linear()) {
 
@@ -232,12 +241,14 @@ namespace chrononmotion::motion {
                     [](const Keyframe<T>& key, float t) { return key.time < t; });
 
             if (it != keys_.end() && it->time == time) {
+                checkMutation(keys_.size(), keys_.size());
                 it->value = value;
                 it->easing = easing;
                 it->discrete = false;
                 return *this;
             }
 
+            checkMutation(keys_.size(), keys_.size() + 1);
             keys_.insert(it, Keyframe<T>{time, value, easing, false});
             return *this;
         }
@@ -250,11 +261,13 @@ namespace chrononmotion::motion {
                     [](const Keyframe<T>& key, float t) { return key.time < t; });
 
             if (it != keys_.end() && it->time == time) {
+                checkMutation(keys_.size(), keys_.size());
                 it->value = value;
                 it->discrete = true;
                 return *this;
             }
 
+            checkMutation(keys_.size(), keys_.size() + 1);
             keys_.insert(it, Keyframe<T>{time, value, Easing::linear(), true});
             return *this;
         }
@@ -267,40 +280,57 @@ namespace chrononmotion::motion {
                     [](const Keyframe<T>& key, float t) { return key.time < t; });
 
             if (it == keys_.end() || it->time != time) return false;
+            checkMutation(keys_.size(), keys_.size() - 1);
             keys_.erase(it);
             return true;
         }
 
         Track& clear() {
 
+            checkMutation(keys_.size(), 0);
             keys_.clear();
             return *this;
         }
 
-        void reserve(std::size_t count) { keys_.reserve(count); }
+        void reserve(std::size_t count) {
+            if (readOnlyGuard_) readOnlyGuard_();
+            keys_.reserve(count);
+        }
 
         [[nodiscard]] bool empty() const { return keys_.empty(); }
         [[nodiscard]] std::size_t size() const { return keys_.size(); }
         [[nodiscard]] const std::vector<Keyframe<T>>& keys() const { return keys_; }
-        [[nodiscard]] std::vector<Keyframe<T>>& keys() { return keys_; }
+        [[nodiscard]] std::vector<Keyframe<T>>& keys() {
+            if (readOnlyGuard_) readOnlyGuard_();
+            return keys_;
+        }
+
         [[nodiscard]] const std::vector<TrackModifier>& modifiers() const { return modifiers_; }
+        [[nodiscard]] std::vector<TrackModifier>& editModifiers() {
+            if (readOnlyGuard_) readOnlyGuard_();
+            return modifiers_;
+        }
 
         Track& addModifier(LoopModifier modifier) {
+            checkMutation(keys_.size(), keys_.size());
             modifiers_.emplace_back(modifier);
             return *this;
         }
 
         Track& addModifier(PosterizeModifier modifier) {
+            checkMutation(keys_.size(), keys_.size());
             modifiers_.emplace_back(modifier);
             return *this;
         }
 
         Track& addModifier(DelayModifier modifier) {
+            checkMutation(keys_.size(), keys_.size());
             modifiers_.emplace_back(modifier);
             return *this;
         }
 
         Track& addModifier(LinkModifier modifier) {
+            checkMutation(keys_.size(), keys_.size());
             modifiers_.emplace_back(modifier);
             return *this;
         }
@@ -322,16 +352,19 @@ namespace chrononmotion::motion {
         }
 
         Track& addModifier(WindowModifier modifier) {
+            checkMutation(keys_.size(), keys_.size());
             modifiers_.emplace_back(modifier);
             return *this;
         }
 
         Track& addModifier(InfluenceModifier modifier) {
+            checkMutation(keys_.size(), keys_.size());
             modifiers_.emplace_back(modifier);
             return *this;
         }
 
         Track& addModifier(SmoothModifier modifier) {
+            checkMutation(keys_.size(), keys_.size());
             modifiers_.emplace_back(modifier);
             return *this;
         }
@@ -489,6 +522,14 @@ namespace chrononmotion::motion {
         }
 
     private:
+        void checkMutation(std::size_t oldCount, std::size_t newCount) const {
+            if (readOnlyGuard_) readOnlyGuard_();
+            if (mutationGuard_) mutationGuard_(oldCount, newCount);
+        }
+
+        std::function<void(std::size_t, std::size_t)> mutationGuard_{};
+        std::function<void()> readOnlyGuard_{};
+
         /// True when this channel carries a cross-layer link, so an empty key list
         /// is not the same thing as "nothing to say".
         [[nodiscard]] bool hasLinkModifier() const {

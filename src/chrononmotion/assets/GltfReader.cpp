@@ -71,8 +71,8 @@ struct JsonValue {
 
 class JsonParser {
 public:
-    explicit JsonParser(std::string_view input) : input_(input) {
-        if (input.size() > kMaxJsonBytes) invalid("JSON exceeds the 16 MiB input limit");
+    explicit JsonParser(std::string_view input, std::size_t maxBytes = kMaxJsonBytes) : input_(input) {
+        if (input.size() > maxBytes) invalid("JSON exceeds the configured input limit");
     }
 
     JsonValue parse() {
@@ -342,8 +342,12 @@ std::uint16_t readU16(const std::byte* data) {
 
 class Document {
 public:
-    Document(JsonValue root, std::vector<std::vector<std::byte>> buffers, bool hasGlbBinChunk)
-        : root_(std::move(root)), buffers_(std::move(buffers)), hasGlbBinChunk_(hasGlbBinChunk) {}
+    Document(JsonValue root, std::vector<std::vector<std::byte>> buffers, bool hasGlbBinChunk,
+             GltfReadPolicy policy = {})
+        : root_(std::move(root)), buffers_(std::move(buffers)), hasGlbBinChunk_(hasGlbBinChunk),
+          policy_(std::move(policy)) {
+        if (!policy_.enabled) invalid("import is disabled by authoring policy");
+    }
 
     GltfAsset load() {
         rejectUnknownKeys(root_, {"asset", "scene", "scenes", "nodes", "buffers", "bufferViews",
@@ -381,6 +385,7 @@ private:
     std::vector<Accessor> accessors_;
     std::vector<MeshData> meshes_;
     bool hasGlbBinChunk_{false};
+    GltfReadPolicy policy_{};
 
     void parseBuffers() {
         const auto* entries = find(root_, "buffers");
@@ -393,7 +398,7 @@ private:
         std::size_t totalDeclaredBytes = 0;
         for (const auto& raw : list) {
             const auto declared = indexValue(required(raw, "byteLength", "buffer"), "buffer.byteLength");
-            if (declared > kMaxTotalBufferBytes - totalDeclaredBytes)
+            if (declared > policy_.maxTotalBufferBytes - std::min(totalDeclaredBytes, policy_.maxTotalBufferBytes))
                 invalid("aggregate declared buffer bytes exceed the 512 MiB limit");
             totalDeclaredBytes += declared;
         }
@@ -401,7 +406,7 @@ private:
         for (std::size_t i = 0; i < list.size(); ++i) {
             rejectUnknownKeys(list[i], {"byteLength", "uri", "name", "extras"}, "buffer");
             const std::size_t expected = indexValue(required(list[i], "byteLength", "buffer"), "buffer.byteLength");
-            if (expected > kMaxBufferBytes) invalid("buffer exceeds the 256 MiB limit");
+            if (expected > policy_.maxBufferBytes) invalid("buffer exceeds the configured per-buffer limit");
             declaredBufferLengths_[i] = expected;
             if (i == 0 && hasGlbBinChunk_ && find(list[i], "uri"))
                 invalid("GLB buffer 0 must omit uri when a BIN chunk is present");
@@ -424,8 +429,8 @@ private:
             } else if (buffers_[i].size() != expected) {
                 invalid("non-GLB buffer data length must equal declared byteLength");
             }
-            if (buffers_[i].size() > kMaxBufferBytes) invalid("buffer exceeds the 256 MiB limit");
-            if (buffers_[i].size() > kMaxTotalBufferBytes - totalBytes)
+            if (buffers_[i].size() > policy_.maxBufferBytes) invalid("buffer exceeds the configured per-buffer limit");
+            if (buffers_[i].size() > policy_.maxTotalBufferBytes - std::min(totalBytes, policy_.maxTotalBufferBytes))
                 invalid("aggregate buffer bytes exceed the 512 MiB limit");
             totalBytes += buffers_[i].size();
         }
@@ -584,7 +589,7 @@ private:
 
     void parseMeshes() {
         const auto& rawMeshes = required(root_, "meshes", "root").array("meshes");
-        if (rawMeshes.size() > kMaxMeshes) invalid("mesh count exceeds the 100000 limit");
+        if (rawMeshes.size() > std::min(kMaxMeshes, policy_.maxMeshes)) invalid("mesh count exceeds the configured limit");
         std::size_t primitiveCount = 0;
         std::size_t totalVertices = 0;
         std::size_t totalIndices = 0;
@@ -596,7 +601,7 @@ private:
             mesh.name = find(raw, "name") ? find(raw, "name")->string("mesh.name") : "mesh_" + std::to_string(meshIndex);
             if (find(raw, "weights")) invalid("mesh morph weights are not supported");
             const auto& primitives = required(raw, "primitives", "mesh").array("mesh.primitives");
-            if (primitives.empty() || primitives.size() > kMaxPrimitives - primitiveCount) invalid("primitive count exceeds the 100000 limit");
+            if (primitives.empty() || primitives.size() > std::min(kMaxPrimitives, policy_.maxPrimitives) - std::min(primitiveCount, std::min(kMaxPrimitives, policy_.maxPrimitives))) invalid("primitive count exceeds the configured limit");
             primitiveCount += primitives.size();
             for (std::size_t primitiveIndex = 0; primitiveIndex < primitives.size(); ++primitiveIndex) {
                 const auto& primitive = primitives[primitiveIndex];
@@ -621,8 +626,8 @@ private:
                 const auto& positionView = views_[positionAccessor.view];
                 if (positionView.target && *positionView.target != 34962)
                     invalid("vertex attributes require ARRAY_BUFFER bufferViews");
-                if (positionAccessor.count > kMaxTotalVertices - totalVertices)
-                    invalid("total decoded vertices exceed the 8000000 limit");
+                if (positionAccessor.count > std::min(kMaxTotalVertices, policy_.maxVertices) - std::min(totalVertices, std::min(kMaxTotalVertices, policy_.maxVertices)))
+                    invalid("total decoded vertices exceed the configured limit");
                 totalVertices += positionAccessor.count;
                 auto geometry = BufferGeometry::create();
                 auto positions = floatAttribute(positionAccessor, 3, "POSITION");
@@ -689,7 +694,7 @@ private:
         asset.scene = Scene::create();
         asset.scene->name = "glTF";
         const auto& rawNodes = required(root_, "nodes", "root").array("nodes");
-        if (rawNodes.size() > kMaxNodes) invalid("node count exceeds the 100000 limit");
+        if (rawNodes.size() > std::min(kMaxNodes, policy_.maxNodes)) invalid("node count exceeds the configured limit");
         for (const auto& node : rawNodes)
             rejectUnknownKeys(node, {"name", "mesh", "children", "translation", "rotation", "scale", "matrix", "camera", "skin", "weights", "extensions", "extras"}, "node");
         for (const auto& mesh : required(root_, "meshes", "root").array("meshes")) {
@@ -1071,9 +1076,10 @@ GltfMotionAsset Document::loadMotion() {
 }
 
 GltfAsset loadDocument(std::string_view json, std::vector<std::vector<std::byte>> buffers,
-                      const GltfExternalBufferResolver& resolver, bool hasGlbBinChunk = false) {
-    JsonValue root = JsonParser(json).parse();
-    Document document(std::move(root), std::move(buffers), hasGlbBinChunk);
+                      const GltfExternalBufferResolver& resolver, bool hasGlbBinChunk = false,
+                      const GltfReadPolicy& policy = {}) {
+    JsonValue root = JsonParser(json, std::min(kMaxJsonBytes, policy.maxJsonBytes)).parse();
+    Document document(std::move(root), std::move(buffers), hasGlbBinChunk, policy);
     document.setExternalResolver(&resolver);
     return document.load();
 }
@@ -1085,17 +1091,26 @@ std::uint32_t littleU32(std::span<const std::byte> bytes, std::size_t offset) {
 
 } // namespace
 
-GltfMotionAsset loadGltfMotion(std::string_view json, const GltfExternalBufferResolver& resolver) {
-    Document document(JsonParser(json).parse(), {}, false); document.setExternalResolver(&resolver);
+GltfMotionAsset loadGltfMotion(std::string_view json, const GltfExternalBufferResolver& resolver,
+                               const GltfReadPolicy& policy) {
+    if (!policy.enabled || !policy.allowMotionGltfImport) invalid("motion import is disabled by authoring policy");
+    if (policy.audit) policy.audit(true, "gltf-json-motion");
+    Document document(JsonParser(json, std::min(kMaxJsonBytes, policy.maxJsonBytes)).parse(), {}, false, policy); document.setExternalResolver(&resolver);
     return document.loadMotion();
 }
 
-GltfAsset loadGltf(std::string_view json, const GltfExternalBufferResolver& resolveExternalBuffer) {
-    return loadDocument(json, {}, resolveExternalBuffer);
+GltfAsset loadGltf(std::string_view json, const GltfExternalBufferResolver& resolveExternalBuffer,
+                   const GltfReadPolicy& policy) {
+    if (!policy.enabled || !policy.allowStaticGltfImport) invalid("static import is disabled by authoring policy");
+    if (policy.audit) policy.audit(false, "gltf-json-static");
+    return loadDocument(json, {}, resolveExternalBuffer, false, policy);
 }
 
-GltfAsset loadGlb(std::span<const std::byte> bytes, const GltfExternalBufferResolver& resolveExternalBuffer) {
-    if (bytes.size() < 12 || bytes.size() > kMaxTotalBufferBytes + kMaxJsonBytes + 1024) invalid("GLB size is invalid");
+GltfAsset loadGlb(std::span<const std::byte> bytes, const GltfExternalBufferResolver& resolveExternalBuffer,
+                   const GltfReadPolicy& policy) {
+    if (!policy.enabled || !policy.allowStaticGltfImport) invalid("static import is disabled by authoring policy");
+    if (policy.audit) policy.audit(false, "glb-static");
+    if (bytes.size() < 12 || bytes.size() > policy.maxTotalBufferBytes + std::min(kMaxJsonBytes, policy.maxJsonBytes) + 1024) invalid("GLB size is invalid");
     if (littleU32(bytes, 0) != 0x46546c67u) invalid("invalid GLB magic");
     if (littleU32(bytes, 4) != 2) invalid("only GLB version 2 is supported");
     if (littleU32(bytes, 8) != bytes.size()) invalid("GLB declared length does not match input size");
@@ -1128,7 +1143,7 @@ GltfAsset loadGlb(std::span<const std::byte> bytes, const GltfExternalBufferReso
     if (!gotJson) invalid("GLB has no JSON chunk");
     std::vector<std::vector<std::byte>> buffers;
     if (gotBin) buffers.push_back(std::move(binary));
-    return loadDocument(json, std::move(buffers), resolveExternalBuffer, gotBin);
+    return loadDocument(json, std::move(buffers), resolveExternalBuffer, gotBin, policy);
 }
 
 namespace motion {

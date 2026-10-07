@@ -11,6 +11,7 @@
 
 #include "chrononmotion/motion/Layer.hpp"
 #include "chrononmotion/motion/Lighting.hpp"
+#include "chrononmotion/motion/AuthoringPolicy.hpp"
 
 #include "chrononmotion/math/Matrix4.hpp"
 
@@ -23,6 +24,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+namespace chrononmotion {
+    struct GltfReadPolicy;
+}
 
 namespace chrononmotion::motion {
 
@@ -134,6 +139,27 @@ namespace chrononmotion::motion {
     public:
         MotionScene() = default;
         explicit MotionScene(std::string name, float fps = 24.f);
+        MotionScene(const MotionScene&) = delete;
+        MotionScene& operator=(const MotionScene&) = delete;
+        MotionScene(MotionScene&& other);
+        MotionScene& operator=(MotionScene&&) = delete;
+
+        MotionScene& setAuthoringPolicy(AuthoringPolicy policy);
+        [[nodiscard]] const AuthoringPolicy& authoringPolicy() const { return policy_; }
+        [[nodiscard]] bool permitsStaticGltfImport() const { return policy_.allowStaticGltfImport; }
+        [[nodiscard]] bool permitsMotionGltfImport() const { return policy_.allowMotionGltfImport; }
+        [[nodiscard]] bool permitsNewCustomPresets() const { return policy_.allowNewCustomPresets; }
+        [[nodiscard]] GltfReadPolicy gltfReadPolicy() const;
+        [[nodiscard]] bool sealed() const { return sealed_; }
+        void seal();
+        void recordGltfImport(bool motion, std::string sourceName = {});
+        [[nodiscard]] const std::vector<AuthoringAuditEntry>& auditLog() const { return auditLog_; }
+        [[nodiscard]] std::string auditJson(int indentSpaces = 2) const;
+
+        /// Check whether an animation preset is allowed and record the decision.
+        void authorizePreset(const std::string& presetName);
+        void authorizeCustomPreset(const std::string& presetName);
+        static void authorizePresetFor(const Layer& layer, const std::string& presetName);
 
         // --- authoring
         Layer& addLayer(Layer layer);
@@ -162,6 +188,9 @@ namespace chrononmotion::motion {
         [[nodiscard]] const Layer* findLayer(Layer::Id id) const;
         [[nodiscard]] Layer* findLayer(const std::string& name);
         [[nodiscard]] const Layer* findLayer(const std::string& name) const;
+        [[nodiscard]] const Layer* findLayerReadOnly(Layer::Id id) const { return findLayer(id); }
+        [[nodiscard]] Layer* editLayer(Layer::Id id) { ensureMutable("mutable layer access"); return findLayer(id); }
+        [[nodiscard]] Layer* editLayer(const std::string& name) { ensureMutable("mutable layer access"); return findLayer(name); }
         [[nodiscard]] bool hasLayer(Layer::Id id) const;
         [[nodiscard]] const std::deque<std::unique_ptr<Light>>& lights() const { return lights_; }
         [[nodiscard]] const LightState& lightState(Light::Id id) const;
@@ -169,7 +198,8 @@ namespace chrononmotion::motion {
         [[nodiscard]] std::size_t layerCount() const { return layers_.size(); }
         [[nodiscard]] std::size_t lightCount() const { return lights_.size(); }
         [[nodiscard]] const std::deque<Layer>& layers() const { return layers_; }
-        [[nodiscard]] std::deque<Layer>& layers() { return layers_; }
+        [[nodiscard]] std::deque<Layer>& layers() { ensureMutable("mutable layers access"); return layers_; }
+        [[nodiscard]] std::deque<Layer>& editLayers() { ensureMutable("mutable layers access"); return layers_; }
 
         [[nodiscard]] const std::string& name() const { return name_; }
         [[nodiscard]] float fps() const { return fps_; }
@@ -230,6 +260,12 @@ namespace chrononmotion::motion {
     private:
         static constexpr std::size_t npos = static_cast<std::size_t>(-1);
 
+        void ensureMutable(const char* action) const;
+        void audit(std::string action, std::string subject, bool accepted, std::string reason = {}) const;
+        void attachTrackGuards(Layer& layer);
+        void attachLightTrackGuards(Light& light);
+        void authorizePresetName(const std::string& presetName);
+
         [[nodiscard]] std::size_t indexOf(Layer::Id id) const;
         [[nodiscard]] std::size_t lightIndexOf(Light::Id id) const;
         void evaluateLights(const MotionTime& time);
@@ -267,6 +303,9 @@ namespace chrononmotion::motion {
 
         std::string name_{};
         float fps_{24.f};
+        AuthoringPolicy policy_{};
+        bool sealed_{false};
+        mutable std::vector<AuthoringAuditEntry> auditLog_{};
         std::deque<Layer> layers_{};
         std::unordered_map<Layer::Id, std::size_t> index_{};
         std::deque<LayerState> states_{};

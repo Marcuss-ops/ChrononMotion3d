@@ -14,8 +14,25 @@
 #define CHRONONMOTION_MOTION_PRESETS_DETAIL_HPP
 
 #include "chrononmotion/motion/Presets.hpp"
+#include "chrononmotion/motion/MotionScene.hpp"
+
+#include <stdexcept>
+#include <string>
 
 namespace chrononmotion::motion::presets::detail {
+
+    inline void authorizePresetForLayer(const Layer& layer, const char* name) {
+        MotionScene::authorizePresetFor(layer, name);
+    }
+
+    inline void authorizePresetForCamera(const CameraRig& rig, const char* name,
+                                         const MotionScene* scene = nullptr) {
+        if (scene) {
+            const_cast<MotionScene*>(scene)->authorizePreset(name);
+            return;
+        }
+        MotionScene::authorizePresetFor(rig.layer(), name);
+    }
 
     /// The pose a preset starts from: the layer as it is sampled just before the
     /// preset writes its first key.

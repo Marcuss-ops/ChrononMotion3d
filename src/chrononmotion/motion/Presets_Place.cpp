@@ -13,6 +13,7 @@
 
 namespace chrononmotion::motion::presets {
 
+    using detail::authorizePresetForLayer;
     using detail::keyVector3;
     using detail::restOf;
 
@@ -20,6 +21,7 @@ namespace chrononmotion::motion::presets {
 
     void slideIn(Layer& layer, Direction direction, int inFrame, int duration, float distance, float fps,
                  const Easing& easing) {
+        authorizePresetForLayer(layer, "slideIn");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -36,6 +38,7 @@ namespace chrononmotion::motion::presets {
 
     void slideOut(Layer& layer, Direction direction, int inFrame, int duration, float distance, float fps,
                   const Easing& easing) {
+        authorizePresetForLayer(layer, "slideOut");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -52,6 +55,7 @@ namespace chrononmotion::motion::presets {
 
     void pushInZ(Layer& layer, int inFrame, int duration, float fromDepth, float fps,
                  const Easing& easing) {
+        authorizePresetForLayer(layer, "pushInZ");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -65,6 +69,7 @@ namespace chrononmotion::motion::presets {
 
     void pullOutZ(Layer& layer, int inFrame, int duration, float toDepth, float fps,
                   const Easing& easing) {
+        authorizePresetForLayer(layer, "pullOutZ");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -108,25 +113,45 @@ namespace chrononmotion::motion::presets {
     void lifetimeSlide(Layer& layer, Direction inDirection, Direction outDirection,
                        int duration, float distance, float fps,
                        const Easing& inEasing, const Easing& outEasing) {
+        authorizePresetForLayer(layer, "lifetimeSlide");
 
         const LifetimeWindows windows = lifetimeWindows(layer, duration);
 
         if (windows.hasIn) {
+            const int start = windows.in.inFrame;
             const int frames = windows.in.duration();
-            slideIn(layer, inDirection, windows.in.inFrame, frames, distance, fps, inEasing);
-            fadeIn(layer, windows.in.inFrame, frames, fps, inEasing);
+            const Transform rest = restOf(layer, start, fps);
+            Vector3 offset = directionOffset(inDirection);
+            offset.multiplyScalar(distance);
+            Vector3 from = rest.position;
+            from.add(offset);
+            const float t0 = frameToTime(start, fps);
+            const float t1 = frameToTime(start + frames, fps);
+            keyVector3(layer.tracks.position, t0, t1, from, rest.position, inEasing);
+            layer.tracks.opacity.add(t0, 0.f, inEasing);
+            layer.tracks.opacity.add(t1, layer.transform.opacity, Easing::linear());
         }
 
         if (windows.hasOut) {
+            const int start = windows.out.inFrame;
             const int frames = windows.out.duration();
-            slideOut(layer, outDirection, windows.out.inFrame, frames, distance, fps, outEasing);
-            fadeOut(layer, windows.out.inFrame, frames, fps, outEasing);
+            const Transform rest = restOf(layer, start, fps);
+            Vector3 offset = directionOffset(outDirection);
+            offset.multiplyScalar(distance);
+            Vector3 to = rest.position;
+            to.add(offset);
+            const float t0 = frameToTime(start, fps);
+            const float t1 = frameToTime(start + frames, fps);
+            keyVector3(layer.tracks.position, t0, t1, rest.position, to, outEasing);
+            layer.tracks.opacity.add(t0, layer.transform.opacity, outEasing);
+            layer.tracks.opacity.add(t1, 0.f, Easing::linear());
         }
     }
 
     // ------------------------------------------------------------------- 2.5D
 
     void parallaxEntrance(Layer& layer, int inFrame, int duration, float fromDepth, float fps) {
+        authorizePresetForLayer(layer, "parallaxEntrance");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -139,6 +164,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void floatHover(Layer& layer, int inFrame, int duration, float amplitude, float fps) {
+        authorizePresetForLayer(layer, "floatHover");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -157,6 +183,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void drift(Layer& layer, int inFrame, int duration, const Vector3& offset, float fps) {
+        authorizePresetForLayer(layer, "drift");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);

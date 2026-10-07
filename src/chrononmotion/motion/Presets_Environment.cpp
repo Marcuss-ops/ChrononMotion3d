@@ -12,6 +12,8 @@
 
 namespace chrononmotion::motion::presets {
 
+    using detail::authorizePresetForCamera;
+    using detail::authorizePresetForLayer;
     using detail::keyVector3;
     using detail::restOf;
 
@@ -27,6 +29,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void setupBackgroundPlane(Layer& layer, float depth, float fovDegrees, float aspect, float overscan) {
+        authorizePresetForLayer(layer, "setupBackgroundPlane");
 
         const Vector2 coverage = frustumCoverage(fovDegrees, aspect, std::abs(depth), overscan);
         layer.transform.position.z = depth;
@@ -35,6 +38,7 @@ namespace chrononmotion::motion::presets {
     }
 
     void horizonGrid(Layer& layer, float floorY, float depthZ, float tiltDegrees) {
+        authorizePresetForLayer(layer, "horizonGrid");
 
         layer.transform.position.set(0.f, floorY, depthZ);
         layer.transform.rotation.set(math::degToRad(tiltDegrees), 0.f, 0.f);
@@ -43,6 +47,7 @@ namespace chrononmotion::motion::presets {
 
     void groundTravel(Layer& layer, int inFrame, int duration, float distanceZ, float fps,
                       const Easing& easing) {
+        authorizePresetForLayer(layer, "groundTravel");
 
         const Transform rest = restOf(layer, inFrame, fps);
         const float t0 = frameToTime(inFrame, fps);
@@ -56,6 +61,7 @@ namespace chrononmotion::motion::presets {
 
     void ambientDriftField(const std::vector<Layer*>& layers, int inFrame, int duration, float fps,
                            std::uint32_t seed, float maxRadius, float speed) {
+        for (const auto* layer : layers) if (layer) authorizePresetForLayer(*layer, "ambientDriftField");
 
         if (layers.empty() || duration <= 0) return;
         const float t0 = frameToTime(inFrame, fps);
@@ -91,6 +97,7 @@ namespace chrononmotion::motion::presets {
 
     void auraBlobMotion(Layer& layer, int inFrame, int duration, const Vector3& center,
                         const Vector2& radius, float frequency, float fps, std::uint32_t seed) {
+        authorizePresetForLayer(layer, "auraBlobMotion");
 
         if (duration <= 0) return;
         const float t0 = frameToTime(inFrame, fps);
@@ -111,6 +118,8 @@ namespace chrononmotion::motion::presets {
     }
 
     void autoFocus(CameraRig& rig, const Layer& targetLayer, int inFrame, int duration, float fps) {
+        authorizePresetForCamera(rig, "autoFocus");
+        authorizePresetForLayer(targetLayer, "autoFocus");
 
         if (duration <= 0) return;
         const float t0 = frameToTime(inFrame, fps);

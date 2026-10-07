@@ -82,6 +82,7 @@ namespace chrononmotion::motion {
         : Object3D(),
           id(source.id),
           parentId(source.parentId),
+          authoringOwner(nullptr),
           content(source.content),
           mesh(source.mesh),
           precomp(source.precomp),
@@ -107,6 +108,7 @@ namespace chrononmotion::motion {
         Object3D::name = std::move(source.Object3D::name);
         id = source.id;
         parentId = source.parentId;
+        authoringOwner = source.authoringOwner;
         content = std::move(source.content);
         mesh = std::move(source.mesh);
         precomp = std::move(source.precomp);

@@ -7,7 +7,9 @@
 #include "chrononmotion/chrononmotion.hpp"
 
 #include "motion_check.hpp"
+#include "chrononmotion/geometries/PlaneGeometry.hpp"
 
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -399,6 +401,172 @@ namespace {
         check(rejectedCycle, "evaluation rejects a cyclic hierarchy");
     }
 
+    void authoringPolicyAuditAndSeal() {
+
+        section("authoring policy, audit and seal");
+
+        MotionScene scene("governed", 24.f);
+        AuthoringPolicy policy;
+        policy.allowedPresets = {"slideIn"};
+        policy.maxLayers = 1;
+        policy.maxKeyframes = 2;
+        scene.setAuthoringPolicy(policy);
+        Layer& layer = scene.addNull(1, "allowed");
+
+        presets::author(scene, "slideIn", [&] {
+            presets::slideIn(layer, presets::Direction::Left, 0, 12, 2.f, 24.f);
+        });
+        check(layer.tracks.position.size() == 2, "allowlisted presets author their bounded keyframes");
+        bool deniedPreset = false;
+        try { presets::fadeIn(layer, 0, 12, 24.f); }
+        catch (const std::invalid_argument&) { deniedPreset = true; }
+        check(deniedPreset, "a preset absent from the allowlist is rejected before it writes keys");
+        check(layer.tracks.opacity.empty(), "a denied preset leaves its target track unchanged");
+
+        MotionScene compoundScene("compound preset policy", 24.f);
+        AuthoringPolicy compoundPolicy;
+        compoundPolicy.allowedPresets = {"fadeSlide", "scaleOvershoot"};
+        compoundScene.setAuthoringPolicy(compoundPolicy);
+        Layer& compoundLayer = compoundScene.addNull(10, "compound");
+        presets::fadeSlide(compoundLayer, presets::Direction::Left, 0, 12, 3.f, 24.f);
+        check(compoundLayer.tracks.position.size() == 2 && compoundLayer.tracks.opacity.size() == 2,
+              "fadeSlide succeeds when only the composite preset is allowlisted");
+        presets::scaleOvershoot(compoundLayer, 12, 12, 0.5f, 1.f, 24.f);
+        check(compoundLayer.tracks.scale.size() == 2,
+              "scaleOvershoot succeeds when scalePop is not allowlisted");
+
+        MotionScene lifetimeScene("lifetime composite policy", 24.f);
+        AuthoringPolicy lifetimePolicy;
+        lifetimePolicy.allowedPresets = {"lifetimeSlide"};
+        lifetimeScene.setAuthoringPolicy(lifetimePolicy);
+        Layer& lifetimeLayer = lifetimeScene.addNull(11, "lifetime composite");
+        lifetimeLayer.lifetime = FrameRange::between(4, 44);
+        presets::lifetimeSlide(lifetimeLayer, presets::Direction::Left, presets::Direction::Right,
+                               10, 2.f, 24.f);
+        check(lifetimeLayer.tracks.position.size() == 4 && lifetimeLayer.tracks.opacity.size() == 4,
+              "lifetimeSlide succeeds with only lifetimeSlide allowlisted and writes both windows");
+
+        AuthoringPolicy deniedChildPolicy;
+        deniedChildPolicy.allowedPresets = {"fadeSlide"};
+        MotionScene deniedChildScene("denied child preset", 24.f);
+        deniedChildScene.setAuthoringPolicy(deniedChildPolicy);
+        Layer& deniedChildLayer = deniedChildScene.addNull(12, "denied child");
+        presets::fadeSlide(deniedChildLayer, presets::Direction::Left, 0, 12, 3.f, 24.f);
+        check(deniedChildLayer.tracks.position.size() == 2 && deniedChildLayer.tracks.opacity.size() == 2,
+              "a composite does not authorize its implementation children independently");
+
+        bool deniedLayer = false;
+        try { scene.addNull(2, "over-budget"); }
+        catch (const std::length_error&) { deniedLayer = true; }
+        check(deniedLayer, "layer budget is enforced before insertion");
+        check(scene.layerCount() == 1, "rejected layer does not mutate the scene");
+
+        const std::string auditBeforeSeal = scene.auditJson(0);
+        check(auditBeforeSeal.find("fadeIn") != std::string::npos &&
+              auditBeforeSeal.find("false") != std::string::npos,
+              "audit JSON records denied preset attempts deterministically");
+        check(auditBeforeSeal == scene.auditJson(0), "audit JSON is byte-stable across repeated exports");
+
+        scene.seal();
+        check(scene.sealed(), "a valid scene can be sealed");
+        bool deniedLayerEdit = false;
+        try { (void)scene.layers(); }
+        catch (const std::logic_error&) { deniedLayerEdit = true; }
+        check(deniedLayerEdit, "sealed scenes reject mutable layer collection access");
+        bool deniedKeyEdit = false;
+        try { layer.tracks.position.add(2.f, Vector3(0.f, 0.f, 0.f)); }
+        catch (const std::logic_error&) { deniedKeyEdit = true; }
+        check(deniedKeyEdit, "sealed scenes reject edits through existing track references");
+        bool deniedSceneEdit = false;
+        try { scene.setFps(30.f); }
+        catch (const std::logic_error&) { deniedSceneEdit = true; }
+        check(deniedSceneEdit, "sealed scenes reject mutation through authoring methods");
+        check(scene.auditJson(0).find("scene is sealed") != std::string::npos,
+              "post-seal rejection is present in the audit report");
+
+        MotionScene animationOff("static-only", 24.f);
+        AuthoringPolicy staticOnly;
+        staticOnly.allowAnimations = false;
+        animationOff.setAuthoringPolicy(staticOnly);
+        Layer& staticLayer = animationOff.addNull(1, "static");
+        bool deniedKeyframe = false;
+        try { staticLayer.tracks.opacity.add(0.f, 1.f); }
+        catch (const std::logic_error&) { deniedKeyframe = true; }
+        check(deniedKeyframe, "animation-disabled policy blocks direct layer track authoring");
+
+        MotionScene lightBudget("light keyframe budget", 24.f);
+        AuthoringPolicy lightPolicy;
+        lightPolicy.maxKeyframes = 1;
+        lightBudget.setAuthoringPolicy(lightPolicy);
+        auto& light = lightBudget.addPointLight(7, "bounded light");
+        light.intensityTrack.add(0.f, 1.f);
+        bool deniedLightKey = false;
+        try { light.intensityTrack.add(1.f, 2.f); }
+        catch (const std::length_error&) { deniedLightKey = true; }
+        check(deniedLightKey, "keyframe budget includes light tracks and guards their mutation");
+
+        MotionScene geometryBudget("primitive budget", 24.f);
+        AuthoringPolicy geometryPolicy;
+        geometryPolicy.maxPrimitiveSegments = 3;
+        geometryBudget.setAuthoringPolicy(geometryPolicy);
+        bool deniedPrimitive = false;
+        try {
+            auto plane = PlaneGeometry::create(1.f, 1.f, 2, 2);
+            geometryBudget.addMesh(20, "too detailed", MeshAttachment{.geometry = plane});
+        } catch (const std::length_error&) { deniedPrimitive = true; }
+        check(deniedPrimitive && geometryBudget.layerCount() == 0,
+              "primitive segment budget rejects oversized generated geometry before insertion");
+
+        MotionScene aggregatePrimitiveBudget("aggregate primitive budget", 24.f);
+        AuthoringPolicy aggregatePrimitivePolicy;
+        aggregatePrimitivePolicy.maxPrimitiveSegments = 1;
+        aggregatePrimitiveBudget.setAuthoringPolicy(aggregatePrimitivePolicy);
+        aggregatePrimitiveBudget.addMesh(22, "first plane", MeshAttachment{
+            .geometry = PlaneGeometry::create(1.f, 1.f, 1, 1)});
+        bool deniedSecondPrimitive = false;
+        try { aggregatePrimitiveBudget.addMesh(23, "second plane", MeshAttachment{
+            .geometry = PlaneGeometry::create(1.f, 1.f, 1, 1)}); }
+        catch (const std::length_error&) { deniedSecondPrimitive = true; }
+        check(deniedSecondPrimitive && aggregatePrimitiveBudget.layerCount() == 1,
+              "primitive segment budget accounts for the scene aggregate before inserting another geometry");
+
+        MotionScene replaceBudget("geometry replacement budget", 24.f);
+        AuthoringPolicy replacePolicy;
+        replacePolicy.maxGeometryVertices = 4;
+        replaceBudget.setAuthoringPolicy(replacePolicy);
+        auto firstGeometry = PlaneGeometry::create(1.f, 1.f, 1, 1);
+        replaceBudget.addMesh(21, "replaceable", MeshAttachment{.geometry = firstGeometry});
+        auto replacementGeometry = PlaneGeometry::create(1.f, 1.f, 1, 1);
+        bool replacementAllowed = true;
+        try { replaceBudget.addMesh(21, "replacement", MeshAttachment{.geometry = replacementGeometry}); }
+        catch (const std::length_error&) { replacementAllowed = false; }
+        check(replacementAllowed, "geometry replacement excludes the replaced layer from aggregate vertex usage");
+
+        MotionScene cameraScene("camera preset policy", 30.f);
+        AuthoringPolicy cameraPolicy;
+        cameraPolicy.allowedPresets = {"slideIn"};
+        cameraScene.setAuthoringPolicy(cameraPolicy);
+        CameraRig camera(31);
+        CameraTransition transition;
+        transition.duration = 4;
+        const auto positionKeysBefore = camera.positionTrack().size();
+        bool deniedCameraPreset = false;
+        try { transition.apply(camera, &cameraScene, 30.f); }
+        catch (const std::invalid_argument&) { deniedCameraPreset = true; }
+        check(deniedCameraPreset && camera.positionTrack().size() == positionKeysBefore,
+              "camera motion presets respect the owning scene allowlist before writing tracks");
+
+        MotionScene badSeal("invalid seal");
+        badSeal.addNull(1, "broken");
+        badSeal.findLayer(1)->parentId = 99;
+        bool sealRejected = false;
+        try { badSeal.seal(); }
+        catch (const std::invalid_argument&) { sealRejected = true; }
+        check(sealRejected && !badSeal.sealed(), "seal refuses an invalid scene without marking it sealed");
+        check(badSeal.auditLog().back().action == "seal" && !badSeal.auditLog().back().accepted,
+              "failed seal records a deterministic denial in the audit log");
+    }
+
     void sceneEndFrameAndLookup() {
 
         section("scene bounds and lookup");
@@ -450,6 +618,7 @@ int main() {
     lifetimeHidesSubtreesAndOpacityMultiplies();
     evaluationIsDeterministic();
     sceneReportsAuthoringProblems();
+    authoringPolicyAuditAndSeal();
     sceneEndFrameAndLookup();
 
     return chrononmotion_test::report();
