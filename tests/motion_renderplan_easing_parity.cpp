@@ -67,7 +67,7 @@ void checkTrackParity(const char* name, const Easing& easing) {
 
 int main() {
     section("Motion → RenderPlan easing sample parity");
-    const std::array<std::pair<const char*, Easing>, 10> cases{{
+    const std::array<std::pair<const char*, Easing>, 11> cases{{
         {"linear", Easing::linear()},
         {"ease-in", Easing::easeIn()},
         {"ease-out", Easing::easeOut()},
@@ -77,6 +77,7 @@ int main() {
         {"bounce-out", Easing::bounceOut()},
         {"elastic-out", Easing::elasticOut()},
         {"expo-out", Easing::expoOut()},
+        {"circ-out", Easing::circOut()},
         {"steps", Easing::steps(5)},
     }};
     for (const auto& [name, easing] : cases) checkTrackParity(name, easing);

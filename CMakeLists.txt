@@ -358,6 +358,23 @@ if(CHRONONMOTION_BUILD_TESTS)
         add_test(NAME chrononmotion_renderplan_easing_parity COMMAND chrononmotion_renderplan_easing_parity)
 
         get_filename_component(_chronon3d_root "${CHRONON3D_INCLUDE_DIR}" DIRECTORY)
+        add_executable(chrononmotion_projection_parity tests/motion_projection_parity.cpp
+            "${_chronon3d_root}/src/scene/camera/camera_projection_source.cpp")
+        target_link_libraries(chrononmotion_projection_parity PRIVATE chrononmotion_chronon3d_adapter)
+        target_compile_options(chrononmotion_projection_parity PRIVATE -Wall -Wextra)
+        if(CHRONONMOTION_WERROR)
+            target_compile_options(chrononmotion_projection_parity PRIVATE -Werror)
+        endif()
+        add_test(NAME chrononmotion_projection_parity COMMAND chrononmotion_projection_parity)
+
+        add_executable(chrononmotion_camera_bake_roundtrip tests/motion_camera_bake_roundtrip.cpp)
+        target_link_libraries(chrononmotion_camera_bake_roundtrip PRIVATE chrononmotion_chronon3d_adapter)
+        target_compile_options(chrononmotion_camera_bake_roundtrip PRIVATE -Wall -Wextra)
+        if(CHRONONMOTION_WERROR)
+            target_compile_options(chrononmotion_camera_bake_roundtrip PRIVATE -Werror)
+        endif()
+        add_test(NAME chrononmotion_camera_bake_roundtrip COMMAND chrononmotion_camera_bake_roundtrip)
+
         add_test(NAME chrononmotion_renderplan_camera_parity
                 COMMAND ${CMAKE_COMMAND}
                 -DCHRONON3D_ROOT=${_chronon3d_root}

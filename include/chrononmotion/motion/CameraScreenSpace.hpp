@@ -37,6 +37,26 @@ namespace chrononmotion::motion {
         float fovDegrees{60.f};
     };
 
+    /// The single pinhole kernel of this tree. Every world-to-screen path —
+    /// `projectToScreen` below and `PerspectiveView::project` — routes through
+    /// these two functions, so the projection law exists exactly once no matter
+    /// how many entry points the engine grows.
+    [[nodiscard]] inline float pinholeFocal(float viewportHeight, float fovDegrees) {
+        const float tangent =
+            std::tan(fovDegrees * 0.5f * 3.14159265358979323846f / 180.f);
+        return tangent > 1e-6f ? (viewportHeight * 0.5f) / tangent : 0.f;
+    }
+
+    /// Perspective divide of a view-space point (`depthZ` positive in front of
+    /// the camera) into y-down viewport pixels.
+    [[nodiscard]] inline Vector2 pinholePixels(float viewX, float viewY, float depthZ,
+                                               float focalPixels, const Vector2& viewport) {
+        const float z = std::max(depthZ, 1e-6f);
+        const float scale = focalPixels / z;
+        return Vector2(viewX * scale + viewport.x * 0.5f,
+                       viewport.y * 0.5f - viewY * scale);
+    }
+
     /// Depth of `worldPoint` along the pose's view axis (its -Z in view space,
     /// three.js convention: the camera looks down its local -Z). Positive
     /// values are in front of the camera. The orientation quaternion is
@@ -65,17 +85,9 @@ namespace chrononmotion::motion {
         rel.sub(pose.position);
         rel.applyQuaternion(q.clone().invert());
 
-        // The camera looks down its local -Z: flip to the +Z-forward view
-        // space before the perspective divide.
-        const float z = std::max(-rel.z, 1e-6f);
-        const float f = 1.f / std::tan(intrinsics.fovDegrees * 0.5f * 3.14159265358979323846f / 180.f);
-        const float aspect = intrinsics.viewport.x / std::max(intrinsics.viewport.y, 1e-6f);
-
-        const float ndcX = (f * rel.x / z) / aspect;
-        const float ndcY = f * rel.y / z;
-
-        return Vector2((ndcX + 1.f) * 0.5f * intrinsics.viewport.x,
-                       (1.f - ndcY) * 0.5f * intrinsics.viewport.y);
+        // The camera looks down its local -Z: depth is the flipped view-space Z.
+        const float focal = pinholeFocal(intrinsics.viewport.y, intrinsics.fovDegrees);
+        return pinholePixels(rel.x, rel.y, -rel.z, focal, intrinsics.viewport);
     }
 
     /// Move a pose so that a world point lands on an exact screen position.

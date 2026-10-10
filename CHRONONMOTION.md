@@ -495,6 +495,40 @@ an opaque fingerprint, not a font.
 (The only hit in the whole tree before the comment-stripping pass was the word
 "rasterizes" in one `Material` comment.)
 
+## Pinned deduplication guarantees (Motion vs Chronon3D)
+
+Three overlaps with the renderer were audited. In each case both sides keep
+their own code — deleting either would break the boundary — and a test pins
+that they cannot drift apart silently:
+
+1. **Easing.** `motion::Easing` (11 kinds) evaluates; `chronon3d::Easing`
+   (25 GLM-backed tokens) evaluates hand-authored plans. They meet only in
+   the bake: `lowerToRenderPlan` samples Motion tracks at integer frames and
+   emits dense `linear` keys, so no curve is ever re-spelled. Pinned by
+   `tests/motion_renderplan_easing_parity.cpp`, which covers all 11 Motion
+   kinds (including `circOut`) sample-for-sample against the lowered plan.
+2. **Projection.** `motion::projectToScreen` (authoring: safe area, framing)
+   and the renderer `project_world_point` contract (pixels) share the
+   vertical-FOV pinhole law; the deliberate difference is the forward axis
+   (-Z Motion, +Z render plan, mirrored by the lowering). Pinned by
+   `tests/motion_projection_parity.cpp`, which compares both on identical
+   translation-only poses with mirrored depth across viewports, FOVs, depths
+   and points (< 0.02 px). Rotation-convention parity (quaternion vs euler
+   order) is owned by the camera lowering's `chrononCameraEuler`, which
+   serializes the inverse of Chronon3D's `glm::quat(euler)` constructor.
+3. **Camera bake.** The rig-to-track bake is the only passage from the Motion
+   camera to the renderer; nothing is re-derived downstream. Pinned by
+   `tests/motion_camera_bake_roundtrip.cpp`: baked tracks equal rig samples
+   (mirrored Z, FOV), a pure dolly keeps rotation constant, and lowering
+   twice is bit-deterministic.
+
+Two writers emit the same schema with different contracts, and that is
+intentional: `RenderPlanLowering::lowerToRenderPlan` bakes drivers, per-key
+easings and camera motion into linear samples, while
+`RenderPlanEmission::renderPlanToJson` refuses what it cannot spell
+(drivers, per-key easing) instead of baking. Use the lowering for Motion
+scenes; use the emission writer for hand-authored typed plans.
+
 ## Deliberately not done yet
 
 1. **Mesh layers and real 3D objects.** The model stops at text planes, image

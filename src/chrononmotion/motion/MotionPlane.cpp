@@ -1,4 +1,5 @@
 #include "chrononmotion/motion/MotionPlane.hpp"
+#include "chrononmotion/motion/CameraScreenSpace.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
 
@@ -116,10 +117,7 @@ namespace chrononmotion::motion {
 
     float PerspectiveView::focalPixels() const {
 
-        const float halfFov = math::degToRad(camera_->getEffectiveFOV()) * 0.5f;
-        const float tangent = std::tan(halfFov);
-
-        return tangent > 1e-6f ? (viewport_.y * 0.5f) / tangent : 0.f;
+        return pinholeFocal(viewport_.y, camera_->getEffectiveFOV());
     }
 
     float PerspectiveView::pixelsPerUnit(float distance) const {
@@ -148,11 +146,21 @@ namespace chrononmotion::motion {
         const float distance = -cameraSpace.z;
         if (distance <= camera_->nearPlane) return false;
 
-        ndc = world;
-        ndc.project(*camera_);
-
-        pixels.set((ndc.x * 0.5f + 0.5f) * viewport_.x,
-                   (0.5f - ndc.y * 0.5f) * viewport_.y);
+        // Single pinhole kernel (CameraScreenSpace): the view matrix stays the
+        // only authority for the world-to-view transform, the kernel owns the
+        // divide. NDC x/y are the exact inverse pixel mapping; NDC z is the
+        // closed form of the perspective depth mapping over [near, far].
+        pixels = pinholePixels(cameraSpace.x, cameraSpace.y, distance,
+                               focalPixels(), viewport_);
+        ndc.set(pixels.x / viewport_.x * 2.f - 1.f,
+                1.f - pixels.y / viewport_.y * 2.f,
+                0.f);
+        const float near = camera_->nearPlane;
+        const float far = camera_->farPlane;
+        if (far > near) {
+            ndc.z = -(far + near) / (near - far) +
+                    2.f * far * near / ((near - far) * distance);
+        }
 
         return true;
     }
