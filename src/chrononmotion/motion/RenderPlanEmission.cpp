@@ -146,6 +146,85 @@ namespace chrononmotion::motion {
             writer.endObject();
         }
 
+        void writePathCommands(detail::Writer& writer, const std::vector<ShapePathCommandPlan>& commands);
+        void writeField(detail::Writer& writer, const chronon3d::graphics::Field2D& field);
+        void writeGradientDefinition(detail::Writer& writer,
+                                     const chronon3d::graphics::GradientDefinition& gradient);
+
+        void writeMaskTrack(detail::Writer& writer, const AnimationTrackPlan& track) {
+            writer.beginObject();
+            writer.key("easing"); writer.text(track.easing);
+            writer.key("keyframes"); writeKeyframes(writer, track.keyframes, true);
+            writer.endObject();
+        }
+
+        template<class Tracks>
+        void writeEffectParameterTracks(detail::Writer& writer, const Tracks& tracks) {
+            writer.beginArray();
+            for (const auto& item : tracks) {
+                writer.item(); writer.beginObject();
+                writer.key("effect_id"); writer.text(item.effect_id);
+                writer.key("param"); writer.text(item.param);
+                writer.key("easing"); writer.text(item.track.easing);
+                writer.key("keyframes"); writeKeyframes(writer, item.track.keyframes, true);
+                writer.endObject();
+            }
+            writer.endArray();
+        }
+
+        void writeMask(detail::Writer& writer, const LayerPlan::PathMaskPlan& mask,
+                       bool legacyPathMask) {
+            writer.beginObject();
+            writer.key("type"); writer.text(mask.type);
+            if (!legacyPathMask) { writer.key("mode"); writer.text(mask.mode); }
+            if (mask.type == "text") { writer.key("source"); writer.text(mask.text_source); }
+            if (!mask.path.empty()) { writer.key("path"); writePathCommands(writer, mask.path); }
+            if (!mask.morph_target.empty()) {
+                writer.key("target_path"); writePathCommands(writer, mask.morph_target);
+                if (mask.morph_animation) { writer.key("animation"); writeMaskTrack(writer, *mask.morph_animation); }
+            }
+            if (mask.field) { writer.key("field"); writeField(writer, *mask.field); }
+            if (mask.type != "path" && mask.type != "text") {
+                const std::array<float, 2> position{mask.position[0], mask.position[1]};
+                writer.key("position"); writeFloats(writer, position, position.size());
+                const std::array<float, 2> size{mask.size[0], mask.size[1]};
+                writer.key("size"); writeFloats(writer, size, size.size());
+            }
+            if (mask.type == "rounded_rect") { writer.key("radius"); writer.number(mask.radius); }
+            if (mask.feather != 0.f) { writer.key("feather"); writer.number(mask.feather); }
+            if (mask.expansion != 0.f) { writer.key("expansion"); writer.number(mask.expansion); }
+            if (mask.opacity != 1.f) { writer.key("opacity"); writer.number(mask.opacity); }
+            if (mask.feather_track) { writer.key("feather_track"); writeMaskTrack(writer, *mask.feather_track); }
+            if (mask.expansion_track) { writer.key("expansion_track"); writeMaskTrack(writer, *mask.expansion_track); }
+            if (mask.opacity_track) { writer.key("opacity_track"); writeMaskTrack(writer, *mask.opacity_track); }
+            if (mask.inverted) { writer.key("inverted"); writer.boolean(true); }
+            writer.endObject();
+        }
+
+        void writeTrackMatte(detail::Writer& writer,
+                             const chronon3d::render_plan::TrackMattePlan& matte) {
+            const char* type = "alpha";
+            switch (matte.type) {
+                case chronon3d::render_plan::TrackMatteTypePlan::Alpha: type = "alpha"; break;
+                case chronon3d::render_plan::TrackMatteTypePlan::AlphaInverted: type = "alpha_inverted"; break;
+                case chronon3d::render_plan::TrackMatteTypePlan::Luma: type = "luma"; break;
+                case chronon3d::render_plan::TrackMatteTypePlan::LumaInverted: type = "luma_inverted"; break;
+            }
+            writer.beginObject(); writer.key("source"); writer.text(matte.source);
+            writer.key("type"); writer.token(type); writer.endObject();
+        }
+
+        void writeLayerMasks(detail::Writer& writer, const LayerPlan& layer) {
+            if (layer.path_mask) {
+                writer.key("mask"); writeMask(writer, *layer.path_mask, true);
+            }
+            if (!layer.masks.empty()) {
+                writer.key("masks"); writer.beginArray();
+                for (const auto& mask : layer.masks) { writer.item(); writeMask(writer, mask, false); }
+                writer.endArray();
+            }
+        }
+
         void writeTextAnimators(detail::Writer& writer,
                                 const std::vector<chronon3d::render_plan::TextAnimatorPlan>& animators) {
             writer.beginArray();
@@ -214,7 +293,6 @@ namespace chrononmotion::motion {
         }
 
         void writeAnimation(detail::Writer& writer, const AnimationPlan& animation) {
-
             writer.beginObject();
             writer.key("tracks");
             writer.beginArray();
@@ -234,7 +312,6 @@ namespace chrononmotion::motion {
         }
 
         void writeStyle(detail::Writer& writer, const LayerStylePlan& style) {
-
             writer.beginObject();
             writer.key("font");
             writer.text(style.font);
@@ -309,6 +386,18 @@ namespace chrononmotion::motion {
                         writer.key("radius"); writer.number(effect.radius);
                         writer.key("softness"); writer.number(effect.softness);
                         writer.key("color"); writeFloats(writer, effect.effect_color, effect.effect_color.size());
+                        break;
+                    case LayerPlan::EffectKindPlan::Glow:
+                        writer.key("type"); writer.token("glow");
+                        writer.key("radius"); writer.number(effect.radius);
+                        writer.key("intensity"); writer.number(effect.glow_intensity);
+                        writer.key("color"); writeFloats(writer, effect.effect_color, effect.effect_color.size());
+                        break;
+                    case LayerPlan::EffectKindPlan::Bloom:
+                        writer.key("type"); writer.token("bloom");
+                        writer.key("threshold"); writer.number(effect.bloom_threshold);
+                        writer.key("radius"); writer.number(effect.radius);
+                        writer.key("intensity"); writer.number(effect.bloom_intensity);
                         break;
                     default:
                         throw std::invalid_argument("writeEffects: effect was not validated");
@@ -881,6 +970,9 @@ namespace chrononmotion::motion {
                 writer.endObject();
             }
 
+            writeLayerMasks(writer, layer);
+            if (layer.track_matte) { writer.key("track_matte"); writeTrackMatte(writer, *layer.track_matte); }
+
             if (layer.style && layer.style->background &&
                 (layer.type == LayerType::Image || layer.type == LayerType::Video)) {
                 writer.key("style");
@@ -953,6 +1045,11 @@ namespace chrononmotion::motion {
                 writeInlineMesh(writer, *layer.inline_mesh);
             }
 
+            if (!layer.effect_param_tracks.empty()) {
+                writer.key("effect_param_tracks");
+                writeEffectParameterTracks(writer, layer.effect_param_tracks);
+            }
+
             writer.endObject();
         }
 
@@ -1003,6 +1100,10 @@ namespace chrononmotion::motion {
                 writer.token(cameraPropertyName(track.property));
                 writer.key("easing");
                 writer.text(track.easing);
+                if (track.bezier_curve) {
+                    writer.key("bezier_curve");
+                    writeFloats(writer, track.bezier_curve->data(), track.bezier_curve->size());
+                }
                 writer.key("keyframes");
                 writeKeyframes(writer, track.keyframes, true);
                 writer.endObject();
@@ -1077,6 +1178,30 @@ namespace chrononmotion::motion {
         if (plan.camera_animation) {
             writer.key("camera_animation");
             writeCameraAnimation(writer, *plan.camera_animation);
+        }
+
+        if (plan.lighting_rig) {
+            writer.key("lighting_rig");
+            writer.beginObject();
+            writer.key("key_direction");
+            writeFloats(writer, plan.lighting_rig->key_direction.data(), plan.lighting_rig->key_direction.size());
+            writer.key("key_color");
+            writeFloats(writer, plan.lighting_rig->key_color.data(), plan.lighting_rig->key_color.size());
+            writer.key("key_intensity");
+            writer.number(plan.lighting_rig->key_intensity);
+            writer.key("ambient_color");
+            writeFloats(writer, plan.lighting_rig->ambient_color.data(), plan.lighting_rig->ambient_color.size());
+            writer.key("ambient_intensity");
+            writer.number(plan.lighting_rig->ambient_intensity);
+            writer.key("rim_enabled");
+            writer.boolean(plan.lighting_rig->rim_enabled);
+            writer.key("rim_color");
+            writeFloats(writer, plan.lighting_rig->rim_color.data(), plan.lighting_rig->rim_color.size());
+            writer.key("rim_intensity");
+            writer.number(plan.lighting_rig->rim_intensity);
+            writer.key("rim_power");
+            writer.number(plan.lighting_rig->rim_power);
+            writer.endObject();
         }
 
         writer.key("layers");

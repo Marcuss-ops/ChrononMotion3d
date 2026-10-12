@@ -17,6 +17,7 @@
 #include "JsonWriter.hpp"
 
 #include <chronon3d/render_plan/color_utils.hpp>
+#include <chronon3d/effects/effect_param_animation.hpp>
 
 #include <algorithm>
 #include <array>
@@ -27,6 +28,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace chrononmotion::motion {
@@ -141,8 +143,10 @@ namespace chrononmotion::motion {
         [[nodiscard]] std::string effectProblem(const LayerPlan& layer) {
             const std::string owner = layerOwner(layer);
             if (layer.effects.size() > 64) return owner + " exceeds the 64-effect layer limit";
-            if (!layer.effect_param_tracks.empty())
-                return owner + " carries effect parameter tracks, which this emitter does not write";
+            if (!layer.masks.empty() && layer.path_mask)
+                return owner + " carries both legacy mask and ordered masks";
+            if (layer.masks.size() > 16)
+                return owner + " exceeds the 16-mask stack limit";
             for (const auto& effect : layer.effects) {
                 if (effect.posterize_fps || effect.time_curve)
                     return owner + " carries an effect time control, which this emitter does not write";
@@ -175,6 +179,20 @@ namespace chrononmotion::motion {
                                 return !std::isfinite(v) || v < 0.f || v > 1.f;
                             }))
                             return owner + " carries vignette values outside [0, 1]";
+                        break;
+                    case LayerPlan::EffectKindPlan::Glow:
+                        if (!std::isfinite(effect.radius) || effect.radius < 0.f || effect.radius > 256.f ||
+                            !std::isfinite(effect.glow_intensity) || effect.glow_intensity < 0.f || effect.glow_intensity > 4.f ||
+                            std::any_of(effect.effect_color.begin(), effect.effect_color.end(), [](float v) {
+                                return !std::isfinite(v) || v < 0.f || v > 1.f;
+                            }))
+                            return owner + " carries glow values outside supported ranges";
+                        break;
+                    case LayerPlan::EffectKindPlan::Bloom:
+                        if (!std::isfinite(effect.bloom_threshold) || effect.bloom_threshold < 0.f || effect.bloom_threshold > 1.f ||
+                            !std::isfinite(effect.radius) || effect.radius < 0.f || effect.radius > 256.f ||
+                            !std::isfinite(effect.bloom_intensity) || effect.bloom_intensity < 0.f || effect.bloom_intensity > 4.f)
+                            return owner + " carries bloom values outside supported ranges";
                         break;
                     default:
                         return owner + " carries an effect type this emitter does not write";
@@ -214,6 +232,58 @@ namespace chrononmotion::motion {
             for (const AnimationTrackPlan& track : animation.tracks) {
                 const std::string problem = trackProblem(owner + " track '" + track.property + "'", track);
                 if (!problem.empty()) return problem;
+            }
+            return {};
+        }
+
+        [[nodiscard]] std::string effectParameterProblem(const LayerPlan& layer) {
+            const std::string owner = layerOwner(layer);
+            if (layer.effect_param_tracks.size() > 256)
+                return owner + " exceeds the 256 effect-parameter-track limit";
+            std::vector<std::string> identities;
+            for (const auto& item : layer.effect_param_tracks) {
+                if (item.effect_id.empty() || item.effect_id.size() > 128 || item.param.empty() || item.param.size() > 64)
+                    return owner + " carries an invalid effect parameter track identity";
+                const auto identity = item.effect_id + "." + item.param;
+                if (std::find(identities.begin(), identities.end(), identity) != identities.end())
+                    return owner + " carries a duplicate effect parameter track '" + identity + "'";
+                identities.push_back(identity);
+                const auto* definition = chronon3d::effects::find_animatable_effect_param(item.effect_id, item.param);
+                if (!definition)
+                    return owner + " carries a non-animatable effect parameter '" + identity + "'";
+                const auto effectId = [](const LayerPlan::EffectPlan& effect) -> std::string_view {
+                    switch (effect.kind) {
+                        case LayerPlan::EffectKindPlan::Catalog: return effect.canonical_effect_id;
+                        case LayerPlan::EffectKindPlan::Noise: return chronon3d::effects::ids::GenerateNoise;
+                        case LayerPlan::EffectKindPlan::Vignette: return chronon3d::effects::ids::ColorVignette;
+                        case LayerPlan::EffectKindPlan::Glow: return chronon3d::effects::ids::LightGlow;
+                        case LayerPlan::EffectKindPlan::Bloom: return chronon3d::effects::ids::LightBloom;
+                        default: break;
+                    }
+                    return {};
+                };
+                const bool targetExists = std::any_of(layer.effects.begin(), layer.effects.end(), [&](const auto& effect) {
+                    return effectId(effect) == item.effect_id;
+                });
+                if (!targetExists)
+                    return owner + " has an effect parameter track without a matching effect '" + item.effect_id + "'";
+                const std::string trackProblemText = trackProblem(owner + " effect parameter track", item.track);
+                if (!trackProblemText.empty()) return trackProblemText;
+                if (item.track.keyframes.empty() || item.track.keyframes.size() > 65'536 ||
+                    item.track.easing != "linear" || item.track.loop_mode != "none")
+                    return owner + " effect parameter tracks require bounded baked linear keyframes";
+                std::vector<std::int64_t> frames;
+                frames.reserve(item.track.keyframes.size());
+                for (const auto& key : item.track.keyframes) {
+                    if (key.frame.integral() < 0 || key.frame.integral() > 1'000'000 ||
+                        key.value.size() != 1 || !std::isfinite(key.value.front()) ||
+                        key.value.front() < definition->minimum || key.value.front() > definition->maximum)
+                        return owner + " has effect parameter keyframes outside the declared range";
+                    frames.push_back(key.frame.integral());
+                }
+                std::sort(frames.begin(), frames.end());
+                if (std::adjacent_find(frames.begin(), frames.end()) != frames.end())
+                    return owner + " has duplicate effect parameter keyframe frames";
             }
             return {};
         }
@@ -494,7 +564,15 @@ namespace chrononmotion::motion {
             }
 
             if (layer.parent) return owner + " is parented; the plan contract already flattens hierarchy";
-            if (layer.track_matte) return owner + " carries a track matte";
+            if (layer.track_matte && (layer.track_matte->source.empty() || layer.track_matte->source.size() > 256))
+                return owner + " carries a track matte with an invalid source layer id";
+            if (layer.track_matte && schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                return owner + " carries a track matte, which requires RenderPlan v3";
+            if (layer.track_matte && layer.track_matte->type != chronon3d::render_plan::TrackMatteTypePlan::Alpha &&
+                layer.track_matte->type != chronon3d::render_plan::TrackMatteTypePlan::AlphaInverted &&
+                layer.track_matte->type != chronon3d::render_plan::TrackMatteTypePlan::Luma &&
+                layer.track_matte->type != chronon3d::render_plan::TrackMatteTypePlan::LumaInverted)
+                return owner + " carries an unknown track-matte type";
             if (layer.time_remap) {
                 if (schema != chronon3d::render_plan::kRenderPlanSchemaV3)
                     return owner + " carries a time remap, which requires RenderPlan v3";
@@ -521,6 +599,11 @@ namespace chrononmotion::motion {
                     }
                 }
             }
+            if (!layer.effect_param_tracks.empty() && schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                return owner + " carries effect parameter tracks, which require RenderPlan v3";
+            if ((layer.path_mask || !layer.masks.empty() || layer.transition_in || layer.transition_out) &&
+                schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                return owner + " carries masks or transitions, which require RenderPlan v3";
             if (!layer.text_spans.empty() && schema != chronon3d::render_plan::kRenderPlanSchemaV3)
                 return owner + " carries text spans, which require RenderPlan v3";
             std::size_t previousTextSpanEnd = 0;
@@ -950,8 +1033,91 @@ namespace chrononmotion::motion {
                     std::abs(decoded->g - color.g) > 1e-6f || std::abs(decoded->b - color.b) > 1e-6f)
                     return owner + " has a light color that cannot be represented without quantization";
             }
-            if (layer.path_mask || !layer.masks.empty()) return owner + " carries a mask";
+            const auto maskProblem = [&](const LayerPlan::PathMaskPlan& mask) -> std::string {
+                if (mask.type != "path" && mask.type != "rect" && mask.type != "rounded_rect" &&
+                    mask.type != "ellipse" && mask.type != "field" && mask.type != "text")
+                    return owner + " carries an unsupported mask type";
+                if (mask.mode != "add" && mask.mode != "subtract" && mask.mode != "intersect" &&
+                    mask.mode != "difference")
+                    return owner + " carries an unsupported mask combination mode";
+                if (!std::isfinite(mask.feather) || mask.feather < 0.f || mask.feather > 1'000'000.f ||
+                    !std::isfinite(mask.expansion) || std::abs(mask.expansion) > 1'000'000.f ||
+                    !std::isfinite(mask.opacity) || mask.opacity < 0.f || mask.opacity > 1.f ||
+                    !std::isfinite(mask.radius) || mask.radius < 0.f || mask.radius > 500'000.f)
+                    return owner + " carries mask parameters outside RenderPlan bounds";
+                const auto checkTrack = [&](const std::optional<AnimationTrackPlan>& track, float low, float high) {
+                    if (!track) return std::string{};
+                    if (track->keyframes.empty() || track->keyframes.size() > 65'536 || track->easing != "linear")
+                        return owner + " carries a mask parameter track outside the linear keyframe contract";
+                    for (const auto& key : track->keyframes)
+                        if (key.frame.integral() < 0 || key.frame.integral() > 1'000'000 ||
+                            key.value.size() != 1 || !std::isfinite(key.value.front()) ||
+                            key.value.front() < low || key.value.front() > high)
+                            return owner + " carries mask parameter keyframes outside bounds";
+                    return std::string{};
+                };
+                for (const auto& [track, low, high] : {
+                    std::tuple{&mask.feather_track, 0.f, 1'000'000.f},
+                    std::tuple{&mask.expansion_track, -1'000'000.f, 1'000'000.f},
+                    std::tuple{&mask.opacity_track, 0.f, 1.f}}) {
+                    const std::string problem = checkTrack(*track, low, high);
+                    if (!problem.empty()) return problem;
+                }
+                if (mask.type == "path") {
+                    if (mask.path.empty() || mask.path.size() > 65'536 || mask.path.front().type != ShapePathCommandTypePlan::MoveTo ||
+                        mask.path.back().type != ShapePathCommandTypePlan::Close)
+                        return owner + " carries a path mask without a bounded closed path";
+                    if (!mask.morph_target.empty() && (mask.morph_target.size() != mask.path.size() || !mask.morph_animation))
+                        return owner + " carries an incomplete path mask morph";
+                    for (const auto& point : mask.morph_target)
+                        for (float value : {point.point[0], point.point[1], point.control1[0], point.control1[1], point.control2[0], point.control2[1]})
+                            if (!std::isfinite(value) || std::abs(value) > 1'000'000.f)
+                                return owner + " carries non-finite or out-of-bounds mask morph coordinates";
+                    if (mask.size[0] != 0.f || mask.size[1] != 0.f || mask.radius != 0.f || mask.field)
+                        return owner + " carries geometric fields invalid for a path mask";
+                    for (const auto& point : mask.path)
+                        for (float value : {point.point[0], point.point[1], point.control1[0], point.control1[1], point.control2[0], point.control2[1]})
+                            if (!std::isfinite(value) || std::abs(value) > 1'000'000.f)
+                                return owner + " carries non-finite or out-of-bounds mask path coordinates";
+                } else if (mask.type == "text") {
+                    if (mask.text_source.empty() || mask.text_source.size() > 256 || !mask.path.empty() ||
+                        !mask.morph_target.empty() || mask.field || mask.size[0] != 0.f || mask.size[1] != 0.f ||
+                        mask.radius != 0.f || mask.position[0] != 0.f || mask.position[1] != 0.f)
+                        return owner + " carries invalid fields on a text mask";
+                } else {
+                    if (!std::isfinite(mask.position[0]) || !std::isfinite(mask.position[1]) ||
+                        std::abs(mask.position[0]) > 1'000'000.f || std::abs(mask.position[1]) > 1'000'000.f ||
+                        !std::isfinite(mask.size[0]) || !std::isfinite(mask.size[1]) ||
+                        mask.size[0] <= 0.f || mask.size[1] <= 0.f ||
+                        mask.size[0] > 1'000'000.f || mask.size[1] > 1'000'000.f)
+                        return owner + " carries mask geometry outside RenderPlan bounds";
+                    if (mask.type == "rounded_rect" && mask.radius > std::min(mask.size[0], mask.size[1]) * 0.5f)
+                        return owner + " has a rounded mask radius larger than half its smaller dimension";
+                    if (mask.type == "ellipse" && mask.radius != 0.f)
+                        return owner + " carries radius on an ellipse mask";
+                    if (mask.type == "rect" && mask.radius != 0.f)
+                        return owner + " carries radius on a rectangular mask";
+                    if (mask.type == "field" && !mask.field)
+                        return owner + " carries a field mask without a field definition";
+                    if (mask.type != "field" && mask.field)
+                        return owner + " carries a field definition on a non-field mask";
+                }
+                if (mask.morph_animation) {
+                    const std::string problem = checkTrack(mask.morph_animation, 0.f, 1.f);
+                    if (!problem.empty()) return problem;
+                }
+                return {};
+            };
+            if (layer.path_mask) {
+                const std::string problem = maskProblem(*layer.path_mask);
+                if (!problem.empty()) return problem;
+            }
+            for (const auto& mask : layer.masks) {
+                const std::string problem = maskProblem(mask);
+                if (!problem.empty()) return problem;
+            }
             if (const std::string effect = effectProblem(layer); !effect.empty()) return effect;
+            if (const std::string tracks = effectParameterProblem(layer); !tracks.empty()) return tracks;
             if (layer.flow_layout || layer.grid_layout) return owner + " carries a layout group";
             if (layer.follow_path) return owner + " carries a follow-path driver";
             // The plan contract has no layer-level auto-orient: `auto_orient`
@@ -961,7 +1127,40 @@ namespace chrononmotion::motion {
             // false), so a Motion scene could be lowered and never rendered.
             if (layer.auto_orient) return owner + " carries an auto-orient flag, which the plan expresses only inside a follow-path driver";
             if (layer.skew_angle_deg != 0.f || layer.skew_axis_deg != 0.f) return owner + " carries a skew";
-            if (layer.transition_in || layer.transition_out) return owner + " carries a transition";
+            const auto transitionProblem = [&](const std::optional<chronon3d::render_plan::TransitionPlan>& transition) {
+                if (!transition) return std::string{};
+                static constexpr std::array<std::string_view, 11> kinds{
+                    "none", "crossfade", "slide", "zoom", "wipe_linear", "smooth_wipe",
+                    "circle_iris", "flash", "procedural_remotion", "remotion", "fly_under_fade"};
+                if (std::find(kinds.begin(), kinds.end(), transition->kind) == kinds.end() ||
+                    transition->duration_frames.integral() < 1 || transition->duration_frames.integral() > 1'000'000 ||
+                    transition->delay_frames.integral() < 0 || transition->delay_frames.integral() > 1'000'000 ||
+                    transition->id.size() > 256 || !isKnownEasing(transition->easing))
+                    return owner + " carries an invalid transition identity, timing, or easing";
+                if ((transition->kind == "slide" && !oneOf(transition->direction, {"left", "right", "up", "down"})) ||
+                    (transition->kind == "zoom" && !oneOf(transition->direction, {"in", "out"})))
+                    return owner + " carries a transition with an invalid direction";
+                const auto unit = [](float value) { return std::isfinite(value) && value >= 0.f && value <= 1.f; };
+                if (!std::isfinite(transition->distance) || transition->distance < 0.f || transition->distance > 4.f ||
+                    !std::isfinite(transition->zoom_amount) || transition->zoom_amount < 0.f || transition->zoom_amount > 1.f ||
+                    !std::isfinite(transition->feather) || transition->feather < 0.f || transition->feather > 1.f ||
+                    !unit(transition->center[0]) || !unit(transition->center[1]) ||
+                    !std::isfinite(transition->seed) || !std::isfinite(transition->speed) || transition->speed <= 0.f ||
+                    !std::isfinite(transition->remotion_direction) || !std::isfinite(transition->angle) ||
+                    !std::isfinite(transition->dip_px) || transition->dip_px < 0.f || transition->dip_px > 4096.f)
+                    return owner + " carries transition parameters outside RenderPlan bounds";
+                for (const auto* color : {&transition->color, &transition->inner_color,
+                                           &transition->mid_color, &transition->outer_color})
+                    if (std::any_of(color->begin(), color->end(), [&](float c) { return !unit(c); }))
+                        return owner + " carries a transition color outside [0, 1]";
+                return std::string{};
+            };
+            for (const auto* transition : {&layer.transition_in, &layer.transition_out}) {
+                const std::string problem = transitionProblem(*transition);
+                if (!problem.empty()) return problem;
+            }
+            if (layer.transition_in || layer.transition_out)
+                return owner + " carries a transition: the current Chronon3D V3 schema declares the field but its validator/consumer is not aligned";
             if (layer.fill_gradient_animation) return owner + " carries a gradient animation";
             const std::string textAnimators = textAnimatorProblem(layer, schema);
             if (!textAnimators.empty()) return textAnimators;
@@ -1067,7 +1266,26 @@ namespace chrononmotion::motion {
                 if (!camera.empty()) return camera;
             }
             if (plan.camera_shake) return "the plan carries camera shake";
-            if (plan.lighting_rig) return "the plan carries a lighting rig";
+            if (plan.lighting_rig) {
+                if (plan.schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                    return "lighting rig requires RenderPlan V3";
+                const auto& rig = *plan.lighting_rig;
+                const auto finite_range = [](float val, float low, float high) {
+                    return std::isfinite(val) && val >= low && val <= high;
+                };
+                if (!std::all_of(rig.key_direction.begin(), rig.key_direction.end(),
+                        [](float v) { return std::isfinite(v) && std::abs(v) <= 1.0f; }) ||
+                    std::sqrt(rig.key_direction[0]*rig.key_direction[0] + rig.key_direction[1]*rig.key_direction[1] + rig.key_direction[2]*rig.key_direction[2]) < 1e-6f ||
+                    !std::all_of(rig.key_color.begin(), rig.key_color.end(), [](float v) { return std::isfinite(v) && v >= 0.f && v <= 1.f; }) ||
+                    !std::all_of(rig.ambient_color.begin(), rig.ambient_color.end(), [](float v) { return std::isfinite(v) && v >= 0.f && v <= 1.f; }) ||
+                    !std::all_of(rig.rim_color.begin(), rig.rim_color.end(), [](float v) { return std::isfinite(v) && v >= 0.f && v <= 1.f; }) ||
+                    !finite_range(rig.key_intensity, 0.0f, 16.0f) ||
+                    !finite_range(rig.ambient_intensity, 0.0f, 16.0f) ||
+                    !finite_range(rig.rim_intensity, 0.0f, 16.0f) ||
+                    !finite_range(rig.rim_power, 1e-6f, 32.0f)) {
+                    return "lighting rig values are outside supported finite ranges";
+                }
+            }
             if (plan.audio) return "the plan carries an audio mix";
             if (plan.prepared_overlay_package) return "the plan carries a prepared overlay package";
 
@@ -1081,7 +1299,11 @@ namespace chrononmotion::motion {
                                "' declares easing '" + track.easing +
                                "', which the plan contract does not define";
                     }
-                    if (track.bezier_curve) return "a camera track carries a bezier curve";
+                    if (track.bezier_curve) {
+                        for (float c : *track.bezier_curve) {
+                            if (!std::isfinite(c)) return "a camera track carries non-finite bezier curve values";
+                        }
+                    }
                     for (const AnimationKeyframePlan& key : track.keyframes) {
                         if (key.easing || key.interpolation || key.easing_xy || key.bezier_curve || key.spring ||
                             key.roving || key.temporal_in_dx || key.temporal_in_dy ||

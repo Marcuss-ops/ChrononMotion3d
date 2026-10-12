@@ -6,6 +6,9 @@
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
 #include <chronon3d/render_plan/effect_presets.hpp>
 
+using chronon3d::render_plan::TrackMattePlan;
+using chronon3d::render_plan::TrackMatteTypePlan;
+
 #include <nlohmann/json.hpp>
 #endif
 
@@ -1019,6 +1022,126 @@ void testTypedChronon3dLowering() {
           "text animators fail closed under the frozen V2 contract");
     check(renderPlanToJson(slowedVideo) == slowedJson,
           "time-remap JSON emission is byte-for-byte deterministic");
+
+    auto bridgePlan = slowedVideo;
+    auto& bridgeLayer = bridgePlan.layers.front();
+    bridgeLayer.time_remap.reset();
+    bridgeLayer.effects.clear();
+    bridgeLayer.effects.push_back(LayerPlan::EffectPlan{});
+    bridgeLayer.effects.back().kind = LayerPlan::EffectKindPlan::Catalog;
+    bridgeLayer.effects.back().canonical_effect_id = "color.saturation";
+    bridgeLayer.effects.back().canonical_params.push_back({"value", 1.f});
+    auto exposureEffect = LayerPlan::EffectPlan{};
+    exposureEffect.kind = LayerPlan::EffectKindPlan::Catalog;
+    exposureEffect.canonical_effect_id = "color.contrast";
+    exposureEffect.canonical_params.push_back({"value", 1.f});
+    bridgeLayer.effects.push_back(exposureEffect);
+    LayerPlan::PathMaskPlan mask;
+    mask.type = "rounded_rect";
+    mask.mode = "intersect";
+    mask.position = {12.f, 18.f};
+    mask.size = {320.f, 180.f};
+    mask.radius = 14.f;
+    mask.feather = 2.f;
+    mask.opacity_track = chronon3d::render_plan::AnimationTrackPlan{};
+    mask.opacity_track->property = "mask_opacity";
+    mask.opacity_track->easing = "linear";
+    mask.opacity_track->keyframes = {{chronon3d::Frame{0}, {0.f}},
+                                     {chronon3d::Frame{8}, {1.f}}};
+    bridgeLayer.masks.push_back(mask);
+    bridgeLayer.track_matte = TrackMattePlan{"matte-layer", TrackMatteTypePlan::AlphaInverted};
+    LayerPlan::EffectParamTrackPlan saturationTrack;
+    saturationTrack.effect_id = "color.saturation";
+    saturationTrack.param = "value";
+    saturationTrack.track.property = "opacity";
+    saturationTrack.track.easing = "linear";
+    saturationTrack.track.keyframes = {{chronon3d::Frame{0}, {0.7f}},
+                                        {chronon3d::Frame{8}, {1.2f}}};
+    bridgeLayer.effect_param_tracks.push_back(saturationTrack);
+    LayerPlan::EffectParamTrackPlan exposureTrack;
+    exposureTrack.effect_id = "color.contrast";
+    exposureTrack.param = "value";
+    exposureTrack.track.property = "opacity";
+    exposureTrack.track.easing = "linear";
+    exposureTrack.track.keyframes = {{chronon3d::Frame{0}, {0.5f}},
+                                     {chronon3d::Frame{8}, {2.f}}};
+    bridgeLayer.effect_param_tracks.push_back(exposureTrack);
+    check(renderPlanEmissionProblem(bridgePlan).empty(),
+          "V3 bridge accepts canonical animated mask, track matte, and effect parameter data");
+    const auto bridgeJsonText = renderPlanToJson(bridgePlan);
+    const auto bridgeJson = nlohmann::json::parse(bridgeJsonText);
+    const auto& bridgeJsonLayer = bridgeJson.at("layers").at(0);
+    check(bridgeJsonLayer.at("masks").at(0).at("type") == "rounded_rect",
+          "V3 JSON preserves mask geometry");
+    check(bridgeJsonLayer.at("masks").at(0).at("opacity_track").at("keyframes").size() == 2,
+          "V3 JSON preserves animated mask parameters");
+    check(bridgeJsonLayer.at("track_matte").at("type") == "alpha_inverted",
+          "V3 JSON preserves track matte type");
+    check(bridgeJsonLayer.at("effect_param_tracks").at(0).at("effect_id") == "color.saturation" &&
+          std::abs(bridgeJsonLayer.at("effect_param_tracks").at(0).at("keyframes").at(1).at("value").get<float>() - 1.2f) < 1e-6f,
+          "V3 JSON preserves effect parameter tracks");
+    check(renderPlanToJson(bridgePlan) == bridgeJsonText &&
+          bridgeJsonText.find("\"effect_param_tracks\"") ==
+              bridgeJsonText.rfind("\"effect_param_tracks\""),
+          "mask, matte and effect-track emission is byte deterministic with one effect-track field");
+    auto invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].effect_param_tracks[0].param = "not_animatable";
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "non-animatable effect parameter tracks fail closed before JSON emission");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].masks[0].size[0] = -1.f;
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "malformed mask geometry fails closed before JSON emission");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].track_matte->source.clear();
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "track mattes without a source layer id fail closed before JSON emission");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].effect_param_tracks[0].effect_id = "color.brightness";
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "effect parameter tracks without a matching layer effect fail closed");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].effect_param_tracks.push_back(
+        invalidBridgePlan.layers[0].effect_param_tracks.front());
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "duplicate effect parameter tracks fail closed before JSON emission");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].masks[0].opacity_track->keyframes[1].value[0] = 1.5f;
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "out-of-range animated mask opacity fails closed before JSON emission");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].masks[0].type = "unknown_geometry";
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "unsupported V3 mask geometry fails closed before JSON emission");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].effect_param_tracks[1].track.keyframes[1].value[0] = 25.0f;
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "out-of-range animated effect parameters fail closed before JSON emission");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].effect_param_tracks[0].track.keyframes[1].frame =
+        invalidBridgePlan.layers[0].effect_param_tracks[0].track.keyframes[0].frame;
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "duplicate effect keyframe frames fail closed before JSON emission");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty(),
+          "V3 mask payloads fail closed when V2 is selected");
+    invalidBridgePlan = bridgePlan;
+    invalidBridgePlan.layers[0].transition_in = chronon3d::render_plan::TransitionPlan{};
+    check(!renderPlanEmissionProblem(invalidBridgePlan).empty() &&
+          throwsInvalid([&] { (void)renderPlanToJson(invalidBridgePlan); }),
+          "transition fields stay fail-closed while the Chronon3D schema consumer is misaligned");
+    check(renderPlanEmissionProblem(slowedVideo).empty(),
+          "V3 adapter continues to accept canonical video content plans");
 
     MotionScene remappedVideoScene("animated time remap", 30.f);
     auto& remappedVideo = remappedVideoScene.addContent(

@@ -12,15 +12,17 @@
 // only place a plan becomes bytes.
 //
 // What it writes is deliberately the same subset `lowerToRenderPlan` emits, plus
-// the caller-supplied content identity it passes through for text layers and
-// the schema-defined V2/V3 camera depth-of-field payload:
+// caller-supplied content identity for text layers and the supported V2/V3 camera
+// depth-of-field payload. V3 additionally carries ordered/legacy masks, track
+// mattes and validated effect-parameter tracks:
 //
 //   root     schema, version, job_id, canvas, budget (only when the caller
 //            expressed one), camera, camera_animation, layers, output
 //   layer    id, type, asset, source, color, size, position, scale, rotation,
 //            enable_3d, blend_mode, opacity, start_frame, duration_frames, text,
-//            style, animation, V3 video time_remap, static indexed inline_mesh,
-//            path/procedural shapes, particle emitters, and per-layer lights
+//            style, animation, V3 video time_remap, masks, track matte, effect
+//            parameter tracks, static indexed inline_mesh, path/procedural shapes,
+//            particle emitters, and per-layer lights
 //   camera   type, position, rotation_deg, fov_deg, near, far, zoom, optional dof
 //   style    text font/size/fill/glow and media background frame/color/padding
 //   effects  catalog saturation/contrast, seeded noise, and vignette
@@ -31,8 +33,9 @@
 // drop it — a plan that loses a mask or an effect on the way out would render
 // as a different composition, which is worse than no file. The unsupported
 // families are the ones with no producer side here yet: hierarchy that is not
-// already flattened, track mattes, masks, transitions, effect types outside
-// the listed native subset and effect parameter tracks, shape gradients/fields/imported subpaths, path
+// already flattened, transitions (the current Chronon3D validator/consumer
+// projection is not aligned with its V3 transition declaration), effect types
+// outside the listed native subset, shape gradients/fields/imported subpaths, path
 // operators other than trim, non-schema shape fields, emissive mesh materials,
 // global lighting rigs,
 // audio mixes, prepared overlay packages, fill-gradient animation, and a layer-level `auto_orient` (the plan
