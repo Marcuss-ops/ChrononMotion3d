@@ -779,6 +779,59 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     return plan;
 }
 
+void applyRigGeometryFrame(chronon3d::render_plan::LayerPlan& layer,
+                           const RigFrameGeometry& geometry,
+                           std::span<const std::uint32_t> indices) {
+    using namespace chronon3d::render_plan;
+    if (layer.type != LayerType::Mesh || !layer.inline_mesh)
+        throw std::invalid_argument("applyRigGeometryFrame: target must be an inline mesh layer");
+    auto& mesh = *layer.inline_mesh;
+    if (geometry.positions.size() != mesh.vertices.size() || geometry.positions.size() < 3 ||
+        geometry.positions.size() > kInlineMeshMaxVertices || indices.size() != mesh.indices.size() ||
+        indices.size() < 3 || indices.size() > kInlineMeshMaxIndices || indices.size() % 3 != 0 ||
+        !std::equal(indices.begin(), indices.end(), mesh.indices.begin()))
+        throw std::invalid_argument("applyRigGeometryFrame: baked geometry topology does not match inline mesh");
+
+    for (const auto& position : geometry.positions) {
+        for (const float component : {position.x, position.y, position.z})
+            if (!std::isfinite(component) || std::abs(component) > 1'000'000.f)
+                throw std::invalid_argument("applyRigGeometryFrame: baked position exceeds the finite mesh contract");
+    }
+    for (const auto index : indices)
+        if (index >= geometry.positions.size())
+            throw std::invalid_argument("applyRigGeometryFrame: triangle index is outside baked geometry");
+
+    // Preserve authored UV/material data, replace positions, and regenerate
+    // normals from the deformed triangles so lit meshes do not retain stale
+    // rest-pose shading.
+    std::vector<Vector3> normals(geometry.positions.size());
+    for (std::size_t triangle = 0; triangle < indices.size(); triangle += 3) {
+        const auto a = indices[triangle];
+        const auto b = indices[triangle + 1];
+        const auto c = indices[triangle + 2];
+        const Vector3 edge1 = geometry.positions[b] - geometry.positions[a];
+        const Vector3 edge2 = geometry.positions[c] - geometry.positions[a];
+        const Vector3 faceNormal = edge1.clone().cross(edge2);
+        if (!std::isfinite(faceNormal.lengthSq()))
+            throw std::invalid_argument("applyRigGeometryFrame: deformed triangle normal overflow");
+        normals[a] += faceNormal;
+        normals[b] += faceNormal;
+        normals[c] += faceNormal;
+    }
+    for (std::size_t vertex = 0; vertex < mesh.vertices.size(); ++vertex) {
+        const float lengthSq = normals[vertex].lengthSq();
+        if (!std::isfinite(lengthSq))
+            throw std::invalid_argument("applyRigGeometryFrame: deformed vertex normal overflow");
+        if (lengthSq > 1e-20f) normals[vertex] /= std::sqrt(lengthSq);
+        else normals[vertex].set(0.f, 0.f, 1.f);
+        mesh.vertices[vertex].position = {geometry.positions[vertex].x,
+                                          geometry.positions[vertex].y,
+                                          geometry.positions[vertex].z};
+        mesh.vertices[vertex].normal = {normals[vertex].x, normals[vertex].y,
+                                        normals[vertex].z};
+    }
+}
+
 CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPlane) {
     ensureFinite(pose.position.x, "camera position");
     ensureFinite(pose.position.y, "camera position");

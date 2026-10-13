@@ -4,6 +4,7 @@
 #if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)
 #include "chrononmotion/motion/RenderPlanEmission.hpp"
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
+#include "chrononmotion/motion/RigBaking.hpp"
 #include <chronon3d/render_plan/effect_presets.hpp>
 
 using chronon3d::render_plan::TrackMattePlan;
@@ -1400,6 +1401,55 @@ void testTypedChronon3dLowering() {
     unsupportedMorph[1][1].point.x += 0.5f;
     check(throwsInvalid([&] { applyBakedPathMorph(morphShape, unsupportedMorph, 4); }),
           "morph adapter rejects baked intermediate samples not representable by linear endpoint morphing");
+
+    chronon3d::render_plan::LayerPlan riggedMesh;
+    riggedMesh.id = "rigged-triangle";
+    riggedMesh.type = chronon3d::render_plan::LayerType::Mesh;
+    riggedMesh.inline_mesh = triangle;
+    RigFrameGeometry rigFrame{1, {{-1.f, -1.f, 0.f}, {1.f, -1.f, 0.f}, {0.f, 1.f, 1.f}}};
+    applyRigGeometryFrame(riggedMesh, rigFrame, std::array<std::uint32_t, 3>{0, 1, 2});
+    check(riggedMesh.inline_mesh->vertices[2].position == std::array<float, 3>{0.f, 1.f, 1.f},
+          "rig geometry bake replaces the target frame's mesh positions");
+    check(riggedMesh.inline_mesh->vertices[2].uv == std::array<float, 2>{0.5f, 1.f} &&
+          riggedMesh.inline_mesh->material->base_color == triangle.material->base_color,
+          "rig geometry bake retains authored texture coordinates and material");
+    check(riggedMesh.inline_mesh->vertices[0].normal[2] > 0.f,
+          "rig geometry bake regenerates normals from deformed triangles");
+    auto riggedFramePlan = inlineMeshPlan;
+    riggedFramePlan.layers[0] = riggedMesh;
+    check(renderPlanEmissionProblem(riggedFramePlan).empty(),
+          "one deformed rig frame is eligible for canonical V3 RenderPlan emission");
+    const auto riggedFrameJson = renderPlanToJson(riggedFramePlan);
+    check(renderPlanToJson(riggedFramePlan) == riggedFrameJson,
+          "deformed rig mesh frame serialization is deterministic");
+    auto secondRigFrame = rigFrame;
+    secondRigFrame.positions[2].z = 2.f;
+    applyRigGeometryFrame(riggedMesh, secondRigFrame, std::array<std::uint32_t, 3>{0, 1, 2});
+    auto secondRigFramePlan = inlineMeshPlan;
+    secondRigFramePlan.layers[0] = riggedMesh;
+    check(renderPlanToJson(secondRigFramePlan) != riggedFrameJson,
+          "different baked rig geometry produces a distinct frame payload");
+    applyRigGeometryFrame(riggedMesh, rigFrame, std::array<std::uint32_t, 3>{0, 1, 2});
+    auto badRigFrame = rigFrame;
+    badRigFrame.positions.pop_back();
+    check(throwsInvalid([&] { applyRigGeometryFrame(riggedMesh, badRigFrame,
+              std::array<std::uint32_t, 3>{0, 1, 2}); }),
+          "rig geometry lowering rejects mismatched baked topology");
+    badRigFrame = rigFrame;
+    badRigFrame.positions[0].x = std::numeric_limits<float>::infinity();
+    check(throwsInvalid([&] { applyRigGeometryFrame(riggedMesh, badRigFrame,
+              std::array<std::uint32_t, 3>{0, 1, 2}); }),
+          "rig geometry lowering rejects non-finite baked vertices");
+    auto animatedRiggedMesh = riggedMesh;
+    animatedRiggedMesh.animation = chronon3d::render_plan::AnimationPlan{};
+    chronon3d::render_plan::AnimationTrackPlan illegalMeshTrack;
+    illegalMeshTrack.property = "opacity";
+    illegalMeshTrack.keyframes.push_back({chronon3d::Frame{0}, {1.f}});
+    animatedRiggedMesh.animation->tracks.push_back(illegalMeshTrack);
+    auto animatedRiggedFramePlan = riggedFramePlan;
+    animatedRiggedFramePlan.layers[0] = animatedRiggedMesh;
+    check(!renderPlanEmissionProblem(animatedRiggedFramePlan).empty(),
+          "V3 mesh contract is kept fail-closed for animation on inline geometry");
     bool missingContentRejected = false;
     try { RenderPlanLoweringOptions empty; (void)lowerToRenderPlan(scene, empty); }
     catch (const std::invalid_argument&) { missingContentRejected = true; }

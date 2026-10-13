@@ -9,6 +9,7 @@
 #include "chrononmotion/motion/CompiledScene.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
 #include "chrononmotion/motion/OfflineBaking.hpp"
+#include "chrononmotion/motion/RigBaking.hpp"
 
 // boundary-guardrail: allowed — this optional offline adapter is the explicit
 // conversion boundary into Chronon3D typed RenderPlan authoring data.
@@ -55,6 +56,14 @@ namespace chrononmotion::motion {
     /// contract; physical focal-length/f-stop lens optics remain unrepresentable.
     [[nodiscard]] chronon3d::render_plan::CameraPlan lowerCameraPose(
         const CameraPose& pose, float nearPlane = 1.f, float farPlane = 10000.f);
+
+    /// Replace the positions in a mesh layer with one baked RigProgram geometry
+    /// frame. Existing UVs, normals and material are retained when topology
+    /// matches; callers supply the unchanged triangle indices. This emits one
+    /// static frame payload, not a vertex-animation track.
+    void applyRigGeometryFrame(chronon3d::render_plan::LayerPlan& layer,
+                               const RigFrameGeometry& geometry,
+                               std::span<const std::uint32_t> indices);
 
     /// Convert baked cubic paths to the exact ShapePathCommandPlan vocabulary
     /// shared with the Chronon3D v3 schema.

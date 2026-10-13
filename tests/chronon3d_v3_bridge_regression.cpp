@@ -49,8 +49,7 @@ RenderPlan makeBridgePlan() {
     effect.canonical_effect_id = "color.saturation";
     effect.canonical_params.push_back({"value", 1.f});
     image.effects.push_back(effect);
-    effect.canonical_effect_id = "color.exposure";
-    effect.canonical_params.front().param = "exposure";
+    effect.canonical_effect_id = "color.contrast";
     image.effects.push_back(effect);
     LayerPlan::EffectParamTrackPlan saturation;
     saturation.effect_id = "color.saturation";
@@ -60,8 +59,8 @@ RenderPlan makeBridgePlan() {
     saturation.track.keyframes = {{chronon3d::Frame{0}, {0.7f}},
                                   {chronon3d::Frame{8}, {1.2f}}};
     LayerPlan::EffectParamTrackPlan exposure;
-    exposure.effect_id = "color.exposure";
-    exposure.param = "exposure";
+    exposure.effect_id = "color.contrast";
+    exposure.param = "value";
     exposure.track.property = "opacity";
     exposure.track.easing = "linear";
     exposure.track.keyframes = {{chronon3d::Frame{0}, {0.f}},
@@ -130,4 +129,7 @@ TEST_CASE("ChrononMotion V3 bridge passes canonical Chronon3D validation and dec
     invalid = plan;
     invalid.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
     CHECK_FALSE(renderPlanEmissionProblem(invalid).empty());
+
+    // Rig-to-mesh frame transport is covered in Motion authoring tests;
+    // consumer pixel proof remains explicitly blocked in the bridge checklist.
 }
