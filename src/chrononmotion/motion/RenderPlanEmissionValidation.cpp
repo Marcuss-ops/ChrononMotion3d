@@ -703,7 +703,7 @@ namespace chrononmotion::motion {
                     bool warpSeen = false;
                     for (const auto& op : field.operators) {
                         using chronon3d::graphics::Field2DOperatorKind;
-                        if (op.kind == Field2DOperatorKind::Warp) {
+                        if (op.kind == Field2DOperatorKind::Warp || op.kind == Field2DOperatorKind::DomainWarp) {
                             if (scalarOperatorSeen || warpSeen || !std::isfinite(op.amount) ||
                                 op.amount < 0.f || op.amount > 1.f)
                                 return owner + " carries an invalid Field2D warp operator";
@@ -718,7 +718,10 @@ namespace chrononmotion::motion {
                                 (op.kind == Field2DOperatorKind::Smoothstep &&
                                  (!std::isfinite(op.edge) || op.edge < 0.f || op.edge > 1.f ||
                                   !std::isfinite(op.softness) || op.softness <= 0.f || op.softness > 1.f)) ||
-                                op.kind == Field2DOperatorKind::DomainWarp || op.kind == Field2DOperatorKind::Translate ||
+                                (op.kind == Field2DOperatorKind::Quantize &&
+                                 (!std::isfinite(op.scalar) || op.scalar < 2.f || op.scalar > 256.f ||
+                                  std::floor(op.scalar) != op.scalar)) ||
+                                op.kind == Field2DOperatorKind::Translate ||
                                 op.kind == Field2DOperatorKind::Scale || op.kind == Field2DOperatorKind::Rotate ||
                                 op.kind == Field2DOperatorKind::Repeat || op.kind == Field2DOperatorKind::Add ||
                                 op.kind == Field2DOperatorKind::Subtract || op.kind == Field2DOperatorKind::Multiply ||

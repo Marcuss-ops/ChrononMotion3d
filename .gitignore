@@ -20,3 +20,6 @@ plans/
 
 # Render output
 /out/
+
+CMakeFiles/
+.tmp/
