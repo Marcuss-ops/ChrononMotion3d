@@ -431,6 +431,25 @@ namespace chrononmotion::motion {
                 writer.unsignedInteger(index);
             }
             writer.endArray();
+            if (!mesh.animation.empty()) {
+                writer.key("animation");
+                writer.beginArray();
+                for (const auto& sample : mesh.animation) {
+                    writer.item();
+                    writer.beginObject();
+                    writer.key("frame");
+                    writer.integer(sample.frame);
+                    writer.key("positions");
+                    writer.beginArray();
+                    for (const auto& position : sample.positions) {
+                        writer.item();
+                        writeFloats(writer, position, position.size());
+                    }
+                    writer.endArray();
+                    writer.endObject();
+                }
+                writer.endArray();
+            }
             if (mesh.material) {
                 const auto& material = *mesh.material;
                 writer.key("material");

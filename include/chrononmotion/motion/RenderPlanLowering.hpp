@@ -58,12 +58,27 @@ namespace chrononmotion::motion {
         const CameraPose& pose, float nearPlane = 1.f, float farPlane = 10000.f);
 
     /// Replace the positions in a mesh layer with one baked RigProgram geometry
-    /// frame. Existing UVs, normals and material are retained when topology
-    /// matches; callers supply the unchanged triangle indices. This emits one
-    /// static frame payload, not a vertex-animation track.
+    /// frame. Existing UVs and material are retained when topology matches;
+    /// normals are regenerated from the deformed triangles.
     void applyRigGeometryFrame(chronon3d::render_plan::LayerPlan& layer,
                                const RigFrameGeometry& geometry,
                                std::span<const std::uint32_t> indices);
+
+    /// Append one topology-compatible baked geometry sample to a V3 inline mesh.
+    /// Samples must be supplied in strictly increasing absolute output-frame
+    /// order; UVs, indices and material remain the authored base mesh data.
+    void appendRigGeometrySample(chronon3d::render_plan::LayerPlan& layer,
+                                 const RigFrameGeometry& geometry,
+                                 std::span<const std::uint32_t> indices,
+                                 std::int64_t frame);
+
+    /// Lower one geometry channel from a baked RigProgram over its full sampled
+    /// interval. The requested geometry id must occur exactly once per frame.
+    void applyRigGeometryBake(chronon3d::render_plan::LayerPlan& layer,
+                              const BakedRigProgram& bake,
+                              std::uint32_t geometryId,
+                              std::span<const std::uint32_t> indices,
+                              std::int64_t firstFrame);
 
     /// Convert baked cubic paths to the exact ShapePathCommandPlan vocabulary
     /// shared with the Chronon3D v3 schema.

@@ -1,5 +1,5 @@
 {
-  "contract_version": 1,
+  "contract_version": 2,
   "type_enum_value": "mesh",
   "inline_mesh": {
     "type": "object",
@@ -21,7 +21,19 @@
           }
         }
       },
-      "indices": { "type": "array", "minItems": 3, "maxItems": 750000, "items": { "type": "integer", "minimum": 0, "maximum": 249999 } }
+      "indices": { "type": "array", "minItems": 3, "maxItems": 750000, "items": { "type": "integer", "minimum": 0, "maximum": 249999 } },
+      "animation": {
+        "type": "array", "minItems": 1, "maxItems": 4096,
+        "items": { "type": "object", "additionalProperties": false,
+          "required": ["frame", "positions"],
+          "properties": {
+            "frame": {"type": "integer", "minimum": 0, "maximum": 1000000},
+            "positions": {"type": "array", "minItems": 3, "maxItems": 250000,
+              "items": {"type": "array", "minItems": 3, "maxItems": 3,
+                "items": {"type": "number", "minimum": -1000000, "maximum": 1000000}}}
+          }
+        }
+      }
     }
   },
   "mesh_layer_contract": {
@@ -39,8 +51,10 @@
     "position_component_abs_max": 1000000,
     "normal_component_abs_max": 1,
     "uv_component_abs_max": 1000000,
-    "primitive": "static indexed or expanded TRIANGLES",
+    "maximum_animation_samples": 4096,
+    "primitive": "indexed or expanded TRIANGLES; V1/V2 static, V3 may carry baked per-frame positions",
     "coordinates": "mesh-local right-handed XYZ; UV VEC2; optional float normals VEC3",
-    "material": "one caller-authored flat layer color; no textures, groups, skinning, morph targets, or material graph"
+    "material": "one caller-authored flat layer color or V3 base RGBA; no source texture sampling, groups, or material graph",
+    "animation": "V3 bounded baked positions only; immutable topology/UV/material; samples linearly interpolated and normals regenerated; no runtime skinning or solver evaluation"
   }
 }

@@ -832,6 +832,63 @@ void applyRigGeometryFrame(chronon3d::render_plan::LayerPlan& layer,
     }
 }
 
+void appendRigGeometrySample(chronon3d::render_plan::LayerPlan& layer,
+                             const RigFrameGeometry& geometry,
+                             std::span<const std::uint32_t> indices,
+                             std::int64_t frame) {
+    using namespace chronon3d::render_plan;
+    if (frame < 0 || frame > 1'000'000)
+        throw std::invalid_argument("appendRigGeometrySample: frame is outside [0, 1000000]");
+    if (layer.type != LayerType::Mesh || !layer.inline_mesh)
+        throw std::invalid_argument("appendRigGeometrySample: target must be an inline mesh layer");
+    auto& mesh = *layer.inline_mesh;
+    if (!mesh.animation.empty() && frame <= mesh.animation.back().frame)
+        throw std::invalid_argument("appendRigGeometrySample: frames must be strictly increasing");
+    if (geometry.positions.size() != mesh.vertices.size() || indices.size() != mesh.indices.size() ||
+        !std::equal(indices.begin(), indices.end(), mesh.indices.begin()))
+        throw std::invalid_argument("appendRigGeometrySample: baked geometry topology does not match inline mesh");
+    if (mesh.animation.size() >= kInlineMeshMaxAnimationSamples)
+        throw std::invalid_argument("appendRigGeometrySample: sample count exceeds 4096");
+    InlineMeshFrameSamplePlan sample;
+    sample.frame = frame;
+    sample.positions.reserve(geometry.positions.size());
+    for (const auto& position : geometry.positions) {
+        for (const float component : {position.x, position.y, position.z})
+            if (!std::isfinite(component) || std::abs(component) > 1'000'000.f)
+                throw std::invalid_argument("appendRigGeometrySample: position exceeds finite mesh bounds");
+        sample.positions.push_back({position.x, position.y, position.z});
+    }
+    mesh.animation.push_back(std::move(sample));
+}
+
+void applyRigGeometryBake(chronon3d::render_plan::LayerPlan& layer,
+                          const BakedRigProgram& bake,
+                          std::uint32_t geometryId,
+                          std::span<const std::uint32_t> indices,
+                          std::int64_t firstFrame) {
+    if (bake.frames.empty())
+        throw std::invalid_argument("applyRigGeometryBake: bake has no frames");
+    if (layer.type != chronon3d::render_plan::LayerType::Mesh || !layer.inline_mesh)
+        throw std::invalid_argument("applyRigGeometryBake: target must be an inline mesh layer");
+    if (firstFrame < 0 || firstFrame > 1'000'000 ||
+        bake.frames.size() > static_cast<std::size_t>(1'000'001 - firstFrame))
+        throw std::invalid_argument("applyRigGeometryBake: output frame range exceeds [0, 1000000]");
+    auto candidate = layer;
+    candidate.inline_mesh->animation.clear();
+    for (std::size_t sampleIndex = 0; sampleIndex < bake.frames.size(); ++sampleIndex) {
+        const auto& frame = bake.frames[sampleIndex];
+        const auto geometry = std::find_if(frame.geometry.begin(), frame.geometry.end(),
+            [geometryId](const RigFrameGeometry& item) { return item.id == geometryId; });
+        if (geometry == frame.geometry.end() ||
+            std::find_if(std::next(geometry), frame.geometry.end(),
+                [geometryId](const RigFrameGeometry& item) { return item.id == geometryId; }) != frame.geometry.end())
+            throw std::invalid_argument("applyRigGeometryBake: geometry id is missing or duplicated in a bake frame");
+        appendRigGeometrySample(candidate, *geometry, indices,
+            firstFrame + static_cast<std::int64_t>(sampleIndex));
+    }
+    layer = std::move(candidate);
+}
+
 CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPlane) {
     ensureFinite(pose.position.x, "camera position");
     ensureFinite(pose.position.y, "camera position");

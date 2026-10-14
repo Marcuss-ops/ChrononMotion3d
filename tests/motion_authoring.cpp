@@ -6,6 +6,7 @@
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
 #include "chrononmotion/motion/RigBaking.hpp"
 #include <chronon3d/render_plan/effect_presets.hpp>
+#include <chronon3d/render_plan/render_plan.hpp>
 
 using chronon3d::render_plan::TrackMattePlan;
 using chronon3d::render_plan::TrackMatteTypePlan;
@@ -1429,6 +1430,36 @@ void testTypedChronon3dLowering() {
     secondRigFramePlan.layers[0] = riggedMesh;
     check(renderPlanToJson(secondRigFramePlan) != riggedFrameJson,
           "different baked rig geometry produces a distinct frame payload");
+    BakedRigProgram geometryBake;
+    geometryBake.frames = {
+        RigProgramFrame{{}, {rigFrame}},
+        RigProgramFrame{{}, {secondRigFrame}}
+    };
+    auto animatedRigPlan = inlineMeshPlan;
+    animatedRigPlan.layers[0] = riggedMesh;
+    applyRigGeometryBake(animatedRigPlan.layers[0], geometryBake, 1,
+                         std::array<std::uint32_t, 3>{0, 1, 2}, 4);
+    check(animatedRigPlan.layers[0].inline_mesh->animation.size() == 2 &&
+          animatedRigPlan.layers[0].inline_mesh->animation[1].frame == 5 &&
+          animatedRigPlan.layers[0].inline_mesh->animation[1].positions[2][2] == 2.f,
+          "RigProgram bake lowers all frame geometry to a V3 baked vertex sample sequence");
+    check(animatedRigPlan.layers[0].inline_mesh->vertices[2].uv == triangle.vertices[2].uv &&
+          animatedRigPlan.layers[0].inline_mesh->material->base_color == triangle.material->base_color,
+          "animated RigProgram lowering keeps authored UV and alpha-bearing material unchanged");
+    animatedRigPlan.canvas.duration = chronon3d::Frame{6};
+    check(renderPlanEmissionProblem(animatedRigPlan).empty(),
+          "animated rig geometry passes producer validation for V3 emission");
+    const auto animatedRigJson = nlohmann::json::parse(renderPlanToJson(animatedRigPlan));
+    check(animatedRigJson.at("layers").at(0).at("inline_mesh").at("animation").size() == 2 &&
+          animatedRigJson.at("layers").at(0).at("inline_mesh").at("animation")[1].at("frame") == 5,
+          "V3 emission writes baked rig sample times and deformed positions");
+    auto rejectedBake = geometryBake;
+    rejectedBake.frames[1].geometry.clear();
+    const auto previousSamples = animatedRigPlan.layers[0].inline_mesh->animation;
+    check(throwsInvalid([&] { applyRigGeometryBake(animatedRigPlan.layers[0], rejectedBake, 1,
+              std::array<std::uint32_t, 3>{0, 1, 2}, 4); }) &&
+          animatedRigPlan.layers[0].inline_mesh->animation.size() == previousSamples.size(),
+          "failed RigProgram lowering leaves prior RenderPlan samples unchanged");
     applyRigGeometryFrame(riggedMesh, rigFrame, std::array<std::uint32_t, 3>{0, 1, 2});
     auto badRigFrame = rigFrame;
     badRigFrame.positions.pop_back();
@@ -1449,7 +1480,7 @@ void testTypedChronon3dLowering() {
     auto animatedRiggedFramePlan = riggedFramePlan;
     animatedRiggedFramePlan.layers[0] = animatedRiggedMesh;
     check(!renderPlanEmissionProblem(animatedRiggedFramePlan).empty(),
-          "V3 mesh contract is kept fail-closed for animation on inline geometry");
+          "mesh transform animation remains rejected instead of being silently ignored");
     bool missingContentRejected = false;
     try { RenderPlanLoweringOptions empty; (void)lowerToRenderPlan(scene, empty); }
     catch (const std::invalid_argument&) { missingContentRejected = true; }

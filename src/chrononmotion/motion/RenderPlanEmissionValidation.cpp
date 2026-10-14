@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cmath>
 #include <cstddef>
 #include <initializer_list>
@@ -560,7 +561,7 @@ namespace chrononmotion::motion {
                 return owner + " is a mesh layer with an asset/source reference; the plan requires inline geometry";
             }
             if (layer.type == LayerType::Mesh && layer.animation && !layer.animation->tracks.empty()) {
-                return owner + " carries per-vertex animation tracks, which the inline mesh contract does not support";
+                return owner + " carries transform tracks; use V3 inline_mesh baked geometry samples";
             }
 
             if (layer.parent) return owner + " is parented; the plan contract already flattens hierarchy";
@@ -972,6 +973,31 @@ namespace chrononmotion::motion {
                 for (const std::uint32_t index : mesh.indices)
                     if (index >= mesh.vertices.size())
                         return owner + " has an inline mesh index outside its vertex array";
+                if (!mesh.animation.empty()) {
+                    if (schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                        return owner + " carries animated inline geometry, which requires RenderPlan V3";
+                    if (mesh.animation.size() > chronon3d::render_plan::kInlineMeshMaxAnimationSamples)
+                        return owner + " exceeds the 4096 baked mesh animation sample limit";
+                    std::int64_t previousFrame = -1;
+                    std::uint64_t animationBytes = 0;
+                    for (const auto& sample : mesh.animation) {
+                        if (sample.frame < 0 || sample.frame > 1'000'000 ||
+                            sample.frame <= previousFrame || sample.positions.size() != mesh.vertices.size())
+                            return owner + " has a mesh sample outside the timeline, unsorted, or with mismatched topology";
+                        previousFrame = sample.frame;
+                        constexpr std::uint64_t bytesPerPosition = sizeof(std::array<float, 3>);
+                        if (sample.positions.size() >
+                                chronon3d::render_plan::kInlineMeshMaxAggregateBytes / bytesPerPosition ||
+                            animationBytes > chronon3d::render_plan::kInlineMeshMaxAggregateBytes -
+                                sample.positions.size() * bytesPerPosition)
+                            return owner + " exceeds the inline mesh animation byte budget";
+                        animationBytes += sample.positions.size() * bytesPerPosition;
+                        for (const auto& position : sample.positions)
+                            for (const float component : position)
+                                if (!std::isfinite(component) || std::abs(component) > 1'000'000.f)
+                                    return owner + " has animated mesh positions outside the finite contract range";
+                    }
+                }
                 if (mesh.material) {
                     const auto& material = *mesh.material;
                     if (!std::isfinite(material.diffuse) || material.diffuse < 0.f || material.diffuse > 1.f ||
