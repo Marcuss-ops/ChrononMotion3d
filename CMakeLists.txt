@@ -19,6 +19,7 @@ endif()
 option(CHRONONMOTION_BUILD_TESTS "Build the ChrononMotion smoke tests" ${PROJECT_IS_TOP_LEVEL})
 option(CHRONONMOTION_BUILD_BENCHMARKS "Build the standalone evaluation benchmark" OFF)
 option(CHRONONMOTION_WERROR "Turn compiler warnings into errors" OFF)
+option(CHRONONMOTION_BUILD_RENDER "Build the offscreen GL render module" ${PROJECT_IS_TOP_LEVEL})
 set(CHRONON3D_INCLUDE_DIR "" CACHE PATH "Optional sibling Chronon3D include root for building the offline RenderPlan adapter")
 set(CHRONON3D_DEPENDENCY_INCLUDE_DIR "" CACHE PATH "Optional Chronon3D dependency include root")
 
@@ -381,4 +382,9 @@ if(CHRONONMOTION_BUILD_TESTS)
                 -DMOTION_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_renderplan_camera_parity.cmake)
     endif()
+endif()
+
+# Offscreen GL render module (separate library; the core stays renderer-free).
+if(CHRONONMOTION_BUILD_RENDER)
+    add_subdirectory(render)
 endif()

@@ -62,6 +62,12 @@ file(GLOB_RECURSE _sources
         "${SOURCE_DIR}/tests/*.cmake"
         "${SOURCE_DIR}/*.txt")
 list(FILTER _sources EXCLUDE REGEX "${SOURCE_DIR}/build/.*")
+# The offscreen GL render sibling (render/) is deliberately out of scope: it is
+# a separate static library whose whole job is pixels (GL renderer, image
+# decoders, windowing for headless contexts). The guardrail pins the CORE
+# motion library (include/, src/, tests/); render/ is where content-adjacent
+# machinery is allowed to live, fed only by Motion-baked data.
+list(FILTER _sources EXCLUDE REGEX "${SOURCE_DIR}/render/.*")
 
 # This script names every forbidden token it looks for, so it would trivially
 # fail on itself.

@@ -622,7 +622,6 @@ keeps the plan, validation report, MP4 and decoded-frame hashes for inspection.
 
 Three items this file used to list as open are now landed and pinned, so they are
 recorded here instead of above:
-
 * **`ContentMetrics` is fingerprinted** (`ContentMetrics::fingerprint`,
   `ContentRef::measured`, `ContentRef::measurementState`). An un-fingerprinted
   ref reports `Unknown`, never a silent `Current`.
@@ -631,3 +630,16 @@ recorded here instead of above:
   the pivot, and the aspect ratio of a `fitted` plane with it.
 * **The namespace and include prefix are `chrononmotion/`**, not `threepp/`, so
   the public names no longer advertise a fork that this tree is not.
+
+## Offscreen render sibling (render/)
+
+The GL renderer, materials, lights, textures, GLTF/Image/Texture loaders and
+the headless canvas were reintroduced from upstream threepp at the pinned
+revision — not into the core library, but as the separate `render/` module
+(`chrononmotion_render`, `threepp::` namespace, own third-party deps).
+The core stays dependency-free and renderer-free; the boundary guardrail
+explicitly scopes `render/` out while still pinning `include/`/`src/`/`tests/`.
+Dropped on re-entry: stale mixer/action sources, Vulkan-coupled objects,
+window icon stub. Proven by the headless textured-cube spike
+(`chrononmotion_render_spike`); GLB proof and the Motion→threepp bridge are
+next. See `render/README.md`.

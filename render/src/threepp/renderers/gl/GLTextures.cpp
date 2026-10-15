@@ -1,0 +1,849 @@
+
+#include "threepp/renderers/gl/GLTextures.hpp"
+
+#include "threepp/renderers/gl/GLCapabilities.hpp"
+#include "threepp/renderers/gl/GLUtils.hpp"
+
+#include "threepp/textures/CubeTexture.hpp"
+#include "threepp/textures/DataTexture3D.hpp"
+
+#ifdef __EMSCRIPTEN__
+#include <GLES3/gl32.h>
+#endif
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <iomanip>
+#include <iostream>
+
+using namespace threepp;
+
+namespace {
+
+    std::unordered_map<TextureWrapping, int> wrappingToGL{
+            {TextureWrapping::Repeat, GL_REPEAT},
+            {TextureWrapping::ClampToEdge, GL_CLAMP_TO_EDGE},
+            {TextureWrapping::MirroredRepeat, GL_MIRRORED_REPEAT}};
+
+    std::unordered_map<Filter, int> filterToGL{
+            {Filter::Nearest, GL_NEAREST},
+            {Filter::NearestMipmapNearest, GL_NEAREST_MIPMAP_NEAREST},
+            {Filter::NearestMipmapLinear, GL_NEAREST_MIPMAP_LINEAR},
+
+            {Filter::Linear, GL_LINEAR},
+            {Filter::LinearMipmapNearest, GL_LINEAR_MIPMAP_NEAREST},
+            {Filter::LinearMipmapLinear, GL_LINEAR_MIPMAP_LINEAR}};
+
+    bool textureNeedsGenerateMipmaps(const Texture& texture) {
+
+        return texture.generateMipmaps &&
+               texture.minFilter != Filter::Nearest && texture.minFilter != Filter::Linear;
+    }
+
+    // GLuint filterFallback(Filter f) {
+    //
+    //     if (f == Filter::Nearest || f == Filter::NearestMipmapNearest || f == Filter::NearestMipmapLinear) {
+    //
+    //         return GL_NEAREST;
+    //     }
+    //
+    //     return GL_LINEAR;
+    // }
+
+    GLint getInternalFormat(GLuint glFormat, GLuint glType) {
+
+        GLint internalFormat = glFormat;
+
+        if (glFormat == GL_RED) {
+
+            if (glType == GL_FLOAT) internalFormat = GL_R32F;
+            if (glType == GL_HALF_FLOAT) internalFormat = GL_R16F;
+            if (glType == GL_UNSIGNED_BYTE) internalFormat = GL_R8;
+        }
+
+        if (glFormat == GL_RG) {
+
+            if (glType == GL_FLOAT) internalFormat = GL_RG32F;
+            if (glType == GL_HALF_FLOAT) internalFormat = GL_RG16F;
+            if (glType == GL_UNSIGNED_BYTE) internalFormat = GL_RG8;
+        }
+
+        if (glFormat == GL_RGB) {
+
+            if (glType == GL_FLOAT) internalFormat = GL_RGB32F;
+            if (glType == GL_HALF_FLOAT) internalFormat = GL_RGB16F;
+            if (glType == GL_UNSIGNED_BYTE) internalFormat = GL_RGB8;
+        }
+
+        if (glFormat == GL_RGBA) {
+
+            if (glType == GL_FLOAT) internalFormat = GL_RGBA32F;
+            if (glType == GL_HALF_FLOAT) internalFormat = GL_RGBA16F;
+            if (glType == GL_UNSIGNED_BYTE) internalFormat = GL_RGBA8;
+        }
+
+        return internalFormat;
+    }
+
+    // Sized internal format for a target's depth (or depth-stencil) attachment.
+    //
+    // Both sides of a multisampled target are allocated from here, and that is
+    // the point: resolving is a glBlitFramebuffer, and a depth blit is only
+    // legal when the read and draw attachments carry the *same* format. It is
+    // also why the stencil case names GL_DEPTH24_STENCIL8 rather than the
+    // unsized GL_DEPTH_STENCIL — unsized leaves the pick to the driver, and
+    // there is no guarantee it picks the same thing for a renderbuffer as for
+    // a multisampled one.
+    GLint depthRenderbufferFormat(const GLRenderTarget* renderTarget) {
+
+        if (renderTarget->depthTexture) {
+
+            // Match whatever setupDepthTexture attached, so the resolve blit is legal.
+            if (renderTarget->depthTexture->format == Format::DepthStencil) return GL_DEPTH24_STENCIL8;
+
+            switch (renderTarget->depthTexture->type) {
+                case Type::Float: return GL_DEPTH_COMPONENT32F;
+                case Type::UnsignedInt: return GL_DEPTH_COMPONENT24;
+                default: return GL_DEPTH_COMPONENT16;
+            }
+        }
+
+        return renderTarget->stencilBuffer ? GL_DEPTH24_STENCIL8 : GL_DEPTH_COMPONENT16;
+    }
+
+}// namespace
+
+gl::GLTextures::GLTextures(gl::GLState& state, gl::GLProperties& properties, gl::GLInfo& info)
+    : maxTextures(GLCapabilities::instance().maxTextures),
+      maxCubemapSize(GLCapabilities::instance().maxCubemapSize),
+      maxTextureSize(GLCapabilities::instance().maxTextureSize),
+      maxSamples(GLCapabilities::instance().maxSamples),
+      info(&info),
+      state(&state),
+      properties(&properties),
+      onTextureDispose_(this),
+      onRenderTargetDispose_(this) {}
+
+void gl::GLTextures::generateMipmap(GLuint target, Texture& texture, GLuint width, GLuint height) {
+
+    glGenerateMipmap(target);
+
+    auto textureProperties = properties->textureProperties.get(&texture);
+
+    textureProperties->maxMipLevel = static_cast<int>(std::log2(std::max(width, height)));
+}
+
+void gl::GLTextures::setTextureParameters(GLuint textureType, Texture& texture) {
+
+    glTexParameteri(textureType, GL_TEXTURE_WRAP_S, wrappingToGL.at(texture.wrapS));
+    glTexParameteri(textureType, GL_TEXTURE_WRAP_T, wrappingToGL.at(texture.wrapT));
+
+    if (textureType == GL_TEXTURE_3D || textureType == GL_TEXTURE_2D_ARRAY) {
+
+        glTexParameteri(textureType, GL_TEXTURE_WRAP_R, wrappingToGL.at(dynamic_cast<DataTexture3D*>(&texture)->wrapR));
+    }
+
+    glTexParameteri(textureType, GL_TEXTURE_MAG_FILTER, filterToGL[texture.magFilter]);
+
+    // A mipmap min filter on a texture that will never get a mip chain
+    // (generateMipmaps off, no baked mipmaps) makes the texture INCOMPLETE in
+    // GL — every sample returns black. Fall back to the non-mip equivalent.
+    Filter minFilter = texture.minFilter;
+    if (minFilter != Filter::Nearest && minFilter != Filter::Linear &&
+        !texture.generateMipmaps && texture.mipmaps().empty()) {
+        minFilter = (minFilter == Filter::NearestMipmapNearest ||
+                     minFilter == Filter::NearestMipmapLinear)
+                            ? Filter::Nearest
+                            : Filter::Linear;
+    }
+    glTexParameteri(textureType, GL_TEXTURE_MIN_FILTER, filterToGL[minFilter]);
+
+    if (texture.anisotropy > 1 || properties->textureProperties.get(&texture)->currentAnisotropy) {
+
+        glTexParameterf(textureType, GL_TEXTURE_MAX_ANISOTROPY_EXT, std::min(texture.anisotropy, GLCapabilities::instance().maxAnisotropy));
+        properties->textureProperties.get(&texture)->currentAnisotropy = texture.anisotropy;
+    }
+}
+
+void gl::GLTextures::uploadTexture(TextureProperties* textureProperties, Texture& texture, GLuint slot) {
+
+    if (texture.images().empty()) return;
+
+    GLint textureType = GL_TEXTURE_2D;
+
+    auto dataTexture3D = dynamic_cast<DataTexture3D*>(&texture);
+    if (dataTexture3D) {
+        textureType = GL_TEXTURE_3D;
+    }
+
+    initTexture(textureProperties, texture);
+
+    state->activeTexture(GL_TEXTURE0 + slot);
+    state->bindTexture(textureType, textureProperties->glTexture);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, texture.unpackAlignment);
+
+    auto& image = texture.image();
+
+    GLuint glFormat = toGLFormat(texture.format);
+
+    GLuint glType = toGLType(texture.type);
+    auto glInternalFormat = getInternalFormat(glFormat, glType);
+
+    setTextureParameters(textureType, texture);
+
+    auto& mipmaps = texture.mipmaps();
+
+    if (dynamic_cast<DepthTexture*>(&texture)) {
+
+        if (texture.type == Type::Float) {
+
+            glInternalFormat = GL_DEPTH_COMPONENT32F;
+
+        } else if (texture.type == Type::UnsignedInt) {
+
+            glInternalFormat = GL_DEPTH_COMPONENT24;
+
+        } else if (texture.type == Type::UnsignedInt248) {
+
+            glInternalFormat = GL_DEPTH24_STENCIL8;
+
+        } else {
+
+#ifdef __EMSCRIPTEN__
+            glInternalFormat = GL_DEPTH_COMPONENT16;
+#else
+            glInternalFormat = GL_DEPTH_COMPONENT24;
+#endif
+
+        }
+
+        //
+
+        state->texImage2D(GL_TEXTURE_2D, 0, glInternalFormat, image.width(), image.height(), glFormat, glType, nullptr);
+
+    } else if (dataTexture3D) {
+
+        state->texImage3D(GL_TEXTURE_3D, 0, glInternalFormat,
+                          static_cast<int>(image.width()),
+                          static_cast<int>(image.height()),
+                          static_cast<int>(image.depth()),
+                          glFormat, glType, image.data().data());
+        textureProperties->maxMipLevel = 0;
+
+    } else {
+
+        // regular Texture (image, video, canvas)
+
+        // use manually created mipmaps if available
+        // if there are no manual mipmaps
+        // set 0 level mipmap and then use GL to generate other mipmap levels
+
+        if (image.compressedFormat.has_value()) {
+
+            // GPU-native compressed texture (e.g. DDS/BCn).
+            // Level 0 is the base image; additional mip levels are in mipmaps().
+            const GLuint compFmt = static_cast<GLuint>(*image.compressedFormat);
+            auto uploadCompressed = [&](int level, Image& img) {
+                const auto& buf = img.data();
+                state->texCompressedImage2D(GL_TEXTURE_2D, level, compFmt,
+                        static_cast<int>(img.width()), static_cast<int>(img.height()),
+                        static_cast<int>(buf.size()), buf.data());
+            };
+            uploadCompressed(0, image);
+            for (unsigned i = 0; i < mipmaps.size(); ++i) {
+                uploadCompressed(static_cast<int>(i + 1), mipmaps[i]);
+            }
+            texture.generateMipmaps = false;
+            textureProperties->maxMipLevel = static_cast<int>(mipmaps.size());
+
+        } else if (!mipmaps.empty()) {
+
+            for (unsigned i = 0; i < mipmaps.size(); ++i) {
+
+                auto& mipmap = mipmaps[i];
+                state->texImage2D(GL_TEXTURE_2D, i, glInternalFormat,
+                                  static_cast<int>(mipmap.width()), static_cast<int>(mipmap.height()),
+                                  glFormat, glType, mipmap.data().data());
+            }
+
+            texture.generateMipmaps = false;
+            textureProperties->maxMipLevel = static_cast<int>(mipmaps.size()) - 1;
+
+        } else {
+
+            if (glType == GL_UNSIGNED_BYTE) {
+                state->texImage2D(GL_TEXTURE_2D, 0, glInternalFormat,
+                                  static_cast<int>(image.width()), static_cast<int>(image.height()),
+                                  glFormat, glType, texture.image().data().data());
+            } else if (glType == GL_FLOAT) {
+                state->texImage2D(GL_TEXTURE_2D, 0, glInternalFormat,
+                                  static_cast<int>(image.width()), static_cast<int>(image.height()),
+                                  glFormat, glType, texture.image().data<float>().data());
+            } else if (glType == GL_HALF_FLOAT) {
+                // Type::HalfFloat with CPU data: the buffer is raw half bits
+                // (see threepp/extras/DataUtils.hpp), and getInternalFormat has
+                // already picked the matching R/RG/RGB/RGBA 16F.
+                state->texImage2D(GL_TEXTURE_2D, 0, glInternalFormat,
+                                  static_cast<int>(image.width()), static_cast<int>(image.height()),
+                                  glFormat, glType, texture.image().data<std::uint16_t>().data());
+            } else {
+
+                std::cerr << "Unnsupported gltype=" << glType << std::endl;
+            }
+            textureProperties->maxMipLevel = 0;
+        }
+    }
+
+    if (textureNeedsGenerateMipmaps(texture)) {
+
+        generateMipmap(textureType, texture, image.width(), image.height());
+    }
+
+    textureProperties->version = texture.version();
+}
+
+void gl::GLTextures::initTexture(TextureProperties* textureProperties, Texture& texture) {
+
+    if (!textureProperties->glInit) {
+
+        textureProperties->glInit = true;
+
+        texture.addEventListener("dispose", onTextureDispose_);
+
+        GLuint glTexture;
+        glGenTextures(1, &glTexture);
+        textureProperties->glTexture = glTexture;
+
+        info->memory.textures++;
+    }
+}
+
+void gl::GLTextures::deallocateTexture(Texture* texture) {
+
+    if (!properties) return;
+
+    auto textureProperties = properties->textureProperties.get(texture);
+
+    if (!textureProperties->glInit) return;
+
+    const auto glTexture = textureProperties->glTexture.value();
+
+    glDeleteTextures(1, &textureProperties->glTexture.value());
+
+    // The name is free for reuse the moment it is deleted — drop it from the
+    // bind cache or the next texture to be handed the same name is skipped.
+    state->purgeTexture(static_cast<int>(glTexture));
+
+    properties->textureProperties.remove(texture);
+}
+
+void gl::GLTextures::deallocateRenderTarget(GLRenderTarget* renderTarget) {
+
+    if (!renderTarget) return;
+
+    const auto& texture = renderTarget->texture;
+
+    auto renderTargetProperties = properties->renderTargetProperties.get(renderTarget);
+    const auto& textureProperties = properties->textureProperties.get(texture.get());
+
+    if (textureProperties->glTexture) {
+
+        const auto glTexture = textureProperties->glTexture.value();
+
+        glDeleteTextures(1, &textureProperties->glTexture.value());
+
+        state->purgeTexture(static_cast<int>(glTexture));
+
+        info->memory.textures--;
+    }
+
+    if (renderTarget->depthTexture) {
+
+        renderTarget->depthTexture->dispose();
+    }
+
+    if (renderTargetProperties->glCubeFramebuffers) {
+        glDeleteFramebuffers(6, renderTargetProperties->glCubeFramebuffers->data());
+    } else if (renderTargetProperties->glFramebuffer) {
+        glDeleteFramebuffers(1, &renderTargetProperties->glFramebuffer.value());
+    }
+    if (renderTargetProperties->glDepthbuffer) glDeleteRenderbuffers(1, &renderTargetProperties->glDepthbuffer.value());
+
+    if (renderTargetProperties->glMultisampledFramebuffer) glDeleteFramebuffers(1, &renderTargetProperties->glMultisampledFramebuffer.value());
+    if (renderTargetProperties->glColorRenderbuffer) glDeleteRenderbuffers(1, &renderTargetProperties->glColorRenderbuffer.value());
+    if (renderTargetProperties->glDepthRenderbuffer) glDeleteRenderbuffers(1, &renderTargetProperties->glDepthRenderbuffer.value());
+
+    properties->textureProperties.remove(texture.get());
+    properties->renderTargetProperties.remove(renderTarget);
+}
+
+void gl::GLTextures::resetTextureUnits() {
+
+    textureUnits = 0;
+}
+
+int gl::GLTextures::allocateTextureUnit() {
+
+    int textureUnit = textureUnits;
+
+    if (textureUnit >= maxTextures) {
+
+        std::cerr << "THREE.GLTextures: Trying to use " << textureUnit << " texture units while this GPU supports only " << maxTextures << std::endl;
+    }
+
+    textureUnits += 1;
+
+    return textureUnit;
+}
+
+void gl::GLTextures::setTexture2D(Texture& texture, GLuint slot) {
+
+    const auto textureProperties = properties->textureProperties.get(&texture);
+
+    // Upload on first use (glInit==false) or when the CPU-side texture has
+    // been marked dirty via needsUpdate(). A freshly-created Texture has
+    // version()==0 — without the glInit branch we'd fall through to
+    // bindTexture() on an uninitialized glTexture handle.
+    const bool needsUpload = !textureProperties->glInit ||
+                             textureProperties->version != texture.version();
+
+    if (needsUpload) {
+
+        const auto& image = texture.images();
+
+        if (image.empty()) {
+
+            std::cerr << "THREE.GLRenderer: Texture marked for update but image is undefined" << std::endl;
+
+        } else {
+
+            uploadTexture(textureProperties, texture, slot);
+            return;
+        }
+    }
+
+    state->activeTexture(GL_TEXTURE0 + slot);
+    state->bindTexture(GL_TEXTURE_2D, textureProperties->glTexture);
+}
+
+void gl::GLTextures::setTexture2DArray(Texture& texture, GLuint slot) {
+
+    auto textureProperties = properties->textureProperties.get(&texture);
+
+    if (!textureProperties->glInit || textureProperties->version != texture.version()) {
+
+        uploadTexture(textureProperties, texture, slot);
+        return;
+    }
+
+    state->activeTexture(GL_TEXTURE0 + slot);
+    state->bindTexture(GL_TEXTURE_2D_ARRAY, textureProperties->glTexture);
+}
+
+void gl::GLTextures::setTexture3D(Texture& texture, GLuint slot) {
+
+    auto textureProperties = properties->textureProperties.get(&texture);
+
+    if (!textureProperties->glInit || textureProperties->version != texture.version()) {
+
+        uploadTexture(textureProperties, texture, slot);
+        return;
+    }
+
+    state->activeTexture(GL_TEXTURE0 + slot);
+    state->bindTexture(GL_TEXTURE_3D, textureProperties->glTexture);
+}
+
+void gl::GLTextures::setTextureCube(Texture& texture, GLuint slot) {
+
+    auto textureProperties = properties->textureProperties.get(&texture);
+
+    if (!textureProperties->glInit || textureProperties->version != texture.version()) {
+
+        uploadCubeTexture(textureProperties, texture, slot);
+        return;
+    }
+
+    state->activeTexture(GL_TEXTURE0 + slot);
+    state->bindTexture(GL_TEXTURE_CUBE_MAP, textureProperties->glTexture);
+}
+
+void gl::GLTextures::uploadCubeTexture(TextureProperties* textureProperties, Texture& texture, GLuint slot) {
+
+    initTexture(textureProperties, texture);
+
+    state->activeTexture(GL_TEXTURE0 + slot);
+    state->bindTexture(GL_TEXTURE_CUBE_MAP, textureProperties->glTexture);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, texture.unpackAlignment);
+
+    GLuint glFormat = toGLFormat(texture.format);
+    GLuint glType = toGLType(texture.type);
+    auto glInternalFormat = getInternalFormat(glFormat, glType);
+    setTextureParameters(GL_TEXTURE_CUBE_MAP, texture);
+
+    auto& images = texture.images();
+    auto& mipmaps = texture.mipmaps();
+    for (int i = 0; i < 6; i++) {
+        auto& image = images[i];
+        state->texImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, glInternalFormat, image.width(), image.height(), glFormat, glType, image.data().data());
+
+        for (unsigned j = 0; j < mipmaps.size(); j++) {
+            state->texImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, j + 1, glInternalFormat, image.width(), image.height(), glFormat, glType, mipmaps[j].data().data());
+        }
+    }
+
+    textureProperties->maxMipLevel = static_cast<int>(mipmaps.size());
+
+    if (textureNeedsGenerateMipmaps(texture)) {
+        generateMipmap(GL_TEXTURE_CUBE_MAP, texture, images.front().width(), images.front().height());
+    }
+
+    textureProperties->version = texture.version();
+}
+
+void gl::GLTextures::setupFrameBufferTexture(
+        unsigned int framebuffer,
+        GLRenderTarget* renderTarget,
+        Texture& texture, GLuint attachment, GLuint textureTarget) {
+
+    const auto glFormat = toGLFormat(texture.format);
+    const auto glType = toGLType(texture.type);
+    const auto glInternalFormat = getInternalFormat(/*texture.internalFormat,*/ glFormat, glType);
+
+    if (textureTarget == GL_TEXTURE_3D || textureTarget == GL_TEXTURE_2D_ARRAY) {
+
+        state->texImage3D(textureTarget, 0, glInternalFormat, renderTarget->width, renderTarget->height, renderTarget->depth, glFormat, glType, nullptr);
+
+    } else {
+
+        state->texImage2D(textureTarget, 0, glInternalFormat, renderTarget->width, renderTarget->height, glFormat, glType, nullptr);
+    }
+
+    state->bindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, textureTarget, *properties->textureProperties.get(&texture)->glTexture, 0);
+    state->bindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void gl::GLTextures::setupRenderBufferStorage(unsigned int renderbuffer, GLRenderTarget* renderTarget, bool isMultisample) {
+
+    glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer);
+
+    const int samples = isMultisample ? getRenderTargetSamples(renderTarget) : 0;
+
+    if (renderTarget->depthBuffer) {
+
+        const GLint glInternalFormat = depthRenderbufferFormat(renderTarget);
+
+        if (samples > 0) {
+            glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, glInternalFormat, renderTarget->width, renderTarget->height);
+        } else {
+            glRenderbufferStorage(GL_RENDERBUFFER, glInternalFormat, renderTarget->width, renderTarget->height);
+        }
+
+        const GLenum attachment = renderTarget->stencilBuffer ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, attachment, GL_RENDERBUFFER, renderbuffer);
+
+    } else {
+
+        // Use the first texture for MRT so far
+        const auto texture = renderTarget->texture;
+
+        const auto glFormat = toGLFormat(texture->format);
+        const auto glType = toGLType(texture->type);
+        const auto glInternalFormat = getInternalFormat(glFormat, glType);
+
+        if (samples > 0) {
+            glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, glInternalFormat, renderTarget->width, renderTarget->height);
+        } else {
+            glRenderbufferStorage(GL_RENDERBUFFER, glInternalFormat, renderTarget->width, renderTarget->height);
+        }
+    }
+
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+}
+
+void gl::GLTextures::setupDepthTexture(unsigned int framebuffer, GLRenderTarget* renderTarget) {
+
+    state->bindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+
+    // upload an empty depth texture with framebuffer size
+    if (!properties->textureProperties.get(renderTarget->depthTexture.get())->glTexture ||
+        renderTarget->depthTexture->image().width() != renderTarget->width ||
+        renderTarget->depthTexture->image().height() != renderTarget->height) {
+
+        renderTarget->depthTexture->image() = Image(std::vector<unsigned char>{}, renderTarget->width, renderTarget->height);
+        renderTarget->depthTexture->needsUpdate();
+    }
+
+    setTexture2D(*renderTarget->depthTexture, 0);
+
+    const auto glDepthTexture = properties->textureProperties.get(renderTarget->depthTexture.get())->glTexture;
+
+    if (renderTarget->depthTexture->format == Format::Depth) {
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, *glDepthTexture, 0);
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::cerr << "GLTextures: Depth texture framebuffer (depth) incomplete: 0x" << std::hex << status << std::dec << std::endl;
+        }
+    } else if (renderTarget->depthTexture->format == Format::DepthStencil) {
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, *glDepthTexture, 0);
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE) {
+            std::cerr << "GLTextures: Depth texture framebuffer (stencil) incomplete: 0x" << std::hex << status << std::dec << std::endl;
+        }
+    } else {
+
+        throw std::runtime_error("Unknown depthTexture format");
+    }
+}
+
+void gl::GLTextures::setupDepthRenderbuffer(GLRenderTarget* renderTarget) {
+
+    const auto renderTargetProperties = properties->renderTargetProperties.get(renderTarget);
+
+    if (renderTarget->depthTexture) {
+
+        setupDepthTexture(*renderTargetProperties->glFramebuffer, renderTarget);
+
+    } else {
+
+        state->bindFramebuffer(GL_FRAMEBUFFER, renderTargetProperties->glFramebuffer.value());
+        GLuint glDepthbuffer;
+        glGenRenderbuffers(1, &glDepthbuffer);
+        renderTargetProperties->glDepthbuffer = glDepthbuffer;
+        setupRenderBufferStorage(*renderTargetProperties->glDepthbuffer, renderTarget);
+    }
+
+
+    state->bindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void gl::GLTextures::setupRenderTarget(GLRenderTarget* renderTarget) {
+
+    const auto& texture = renderTarget->texture;
+
+    auto renderTargetProperties = properties->renderTargetProperties.get(renderTarget);
+    auto textureProperties = properties->textureProperties.get(texture.get());
+
+    renderTarget->addEventListener("dispose", onRenderTargetDispose_);
+
+    GLuint glTexture;
+    glGenTextures(1, &glTexture);
+    textureProperties->glTexture = glTexture;
+    textureProperties->glInit = true;
+    textureProperties->version = texture->version();
+    info->memory.textures++;
+
+    // Handles WebGL2 RGBFormat fallback - #18858
+    if (texture->format == Format::RGB && (texture->type == Type::Float || texture->type == Type::HalfFloat)) {
+        texture->format = Format::RGBA;
+        std::cerr << "THREE.GLRenderer: Rendering to textures with RGB format is not supported. Using RGBA format instead." << std::endl;
+    }
+
+    const bool isCube = dynamic_cast<CubeTexture*>(texture.get()) != nullptr;
+
+    if (isCube) {
+
+        // Allocate a single GL_TEXTURE_CUBE_MAP with storage for all 6 faces.
+        const GLuint glFormat = toGLFormat(texture->format);
+        const GLuint glType = toGLType(texture->type);
+        const auto glInternalFormat = getInternalFormat(glFormat, glType);
+
+        state->bindTexture(GL_TEXTURE_CUBE_MAP, glTexture);
+        setTextureParameters(GL_TEXTURE_CUBE_MAP, *texture);
+
+        for (int i = 0; i < 6; i++) {
+            state->texImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, glInternalFormat,
+                              renderTarget->width, renderTarget->height, glFormat, glType, nullptr);
+        }
+
+        // Create one FBO per face and attach the corresponding cube face.
+        std::array<GLuint, 6> fbos{};
+        glGenFramebuffers(6, fbos.data());
+        renderTargetProperties->glCubeFramebuffers = {fbos[0], fbos[1], fbos[2], fbos[3], fbos[4], fbos[5]};
+        renderTargetProperties->glFramebuffer = fbos[0];// face 0 is the "default"
+
+        for (int i = 0; i < 6; i++) {
+            state->bindFramebuffer(GL_FRAMEBUFFER, fbos[i]);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                   GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, glTexture, 0);
+        }
+
+        // Shared depth renderbuffer across all faces.
+        if (renderTarget->depthBuffer) {
+            GLuint glDepthbuffer;
+            glGenRenderbuffers(1, &glDepthbuffer);
+            renderTargetProperties->glDepthbuffer = glDepthbuffer;
+
+            glBindRenderbuffer(GL_RENDERBUFFER, glDepthbuffer);
+            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16,
+                                  renderTarget->width, renderTarget->height);
+            glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+            for (int i = 0; i < 6; i++) {
+                state->bindFramebuffer(GL_FRAMEBUFFER, fbos[i]);
+                glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                         GL_RENDERBUFFER, glDepthbuffer);
+            }
+        }
+
+        state->bindFramebuffer(GL_FRAMEBUFFER, 0);
+        state->bindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+    } else {
+
+        // Standard 2D render target.
+
+        GLuint glFramebuffer;
+        glGenFramebuffers(1, &glFramebuffer);
+        renderTargetProperties->glFramebuffer = glFramebuffer;
+
+        auto glTextureType = GL_TEXTURE_2D;
+
+        state->bindTexture(glTextureType, textureProperties->glTexture);
+        setTextureParameters(glTextureType, *texture);
+        setupFrameBufferTexture(*renderTargetProperties->glFramebuffer, renderTarget, *texture, GL_COLOR_ATTACHMENT0, glTextureType);
+
+        if (textureNeedsGenerateMipmaps(*texture)) {
+            generateMipmap(GL_TEXTURE_2D, *texture, renderTarget->width, renderTarget->height);
+        }
+
+        state->bindTexture(GL_TEXTURE_2D, 0);
+
+        if (renderTarget->depthBuffer) {
+            setupDepthRenderbuffer(renderTarget);
+        }
+
+        // Multisampled target: a second framebuffer with multisampled
+        // renderbuffers for colour (and depth) is what actually gets drawn
+        // into. The texture-backed framebuffer built above stays as the resolve
+        // destination — see updateMultisampleRenderTarget.
+        if (getRenderTargetSamples(renderTarget) > 0) {
+
+            GLuint glMultisampledFramebuffer;
+            glGenFramebuffers(1, &glMultisampledFramebuffer);
+            renderTargetProperties->glMultisampledFramebuffer = glMultisampledFramebuffer;
+
+            GLuint glColorRenderbuffer;
+            glGenRenderbuffers(1, &glColorRenderbuffer);
+            renderTargetProperties->glColorRenderbuffer = glColorRenderbuffer;
+
+            const auto glFormat = toGLFormat(texture->format);
+            const auto glType = toGLType(texture->type);
+            const auto glInternalFormat = getInternalFormat(glFormat, glType);
+
+            glBindRenderbuffer(GL_RENDERBUFFER, glColorRenderbuffer);
+            glRenderbufferStorageMultisample(GL_RENDERBUFFER, getRenderTargetSamples(renderTarget),
+                                             glInternalFormat, renderTarget->width, renderTarget->height);
+
+            state->bindFramebuffer(GL_FRAMEBUFFER, glMultisampledFramebuffer);
+            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, glColorRenderbuffer);
+            glBindRenderbuffer(GL_RENDERBUFFER, 0);
+
+            if (renderTarget->depthBuffer) {
+
+                GLuint glDepthRenderbuffer;
+                glGenRenderbuffers(1, &glDepthRenderbuffer);
+                renderTargetProperties->glDepthRenderbuffer = glDepthRenderbuffer;
+                setupRenderBufferStorage(glDepthRenderbuffer, renderTarget, true);
+            }
+
+            const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+            if (status != GL_FRAMEBUFFER_COMPLETE) {
+                std::cerr << "GLTextures: multisampled framebuffer incomplete: 0x"
+                          << std::hex << status << std::dec << std::endl;
+            }
+
+            state->bindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+    }
+}
+
+int gl::GLTextures::getRenderTargetSamples(const GLRenderTarget* renderTarget) const {
+
+    if (!renderTarget || renderTarget->samples == 0) return 0;
+
+    // A cube target renders six faces through six framebuffers; there is no
+    // resolve path for those, so the request is ignored rather than half-honoured.
+    if (dynamic_cast<CubeTexture*>(renderTarget->texture.get())) return 0;
+
+    return std::min(maxSamples, static_cast<int>(renderTarget->samples));
+}
+
+void gl::GLTextures::updateMultisampleRenderTarget(GLRenderTarget* renderTarget) {
+
+    if (getRenderTargetSamples(renderTarget) == 0) return;
+
+    const auto renderTargetProperties = properties->renderTargetProperties.get(renderTarget);
+    if (!renderTargetProperties->glMultisampledFramebuffer) return;
+
+    const auto width = static_cast<int>(renderTarget->width);
+    const auto height = static_cast<int>(renderTarget->height);
+
+    GLbitfield mask = GL_COLOR_BUFFER_BIT;
+    if (renderTarget->depthBuffer) mask |= GL_DEPTH_BUFFER_BIT;
+    if (renderTarget->stencilBuffer) mask |= GL_STENCIL_BUFFER_BIT;
+
+    // Deliberately not going through GLState here. Its cache is keyed by bind
+    // target, so a READ/DRAW split recorded in it would linger as two entries
+    // that disagree with the single GL_FRAMEBUFFER entry every other call site
+    // uses — the next bind could then be skipped as redundant while the driver
+    // still has the split in effect. Splitting the binding raw and putting it
+    // back together before returning leaves the cache true as written.
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, *renderTargetProperties->glMultisampledFramebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, *renderTargetProperties->glFramebuffer);
+
+    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, mask, GL_NEAREST);
+
+    // The target may still be the current one — restore it as a whole, which is
+    // what GLState already believes is bound.
+    glBindFramebuffer(GL_FRAMEBUFFER, *renderTargetProperties->glMultisampledFramebuffer);
+}
+
+void gl::GLTextures::updateRenderTargetMipmap(GLRenderTarget* renderTarget) {
+
+    const auto texture = renderTarget->texture;
+
+    if (textureNeedsGenerateMipmaps(*texture)) {
+
+        const auto isCube = dynamic_cast<CubeTexture*>(texture.get()) != nullptr;
+        const auto target = isCube ? GL_TEXTURE_CUBE_MAP : GL_TEXTURE_2D;
+        const auto glTexture = properties->textureProperties.get(texture.get())->glTexture;
+
+        state->bindTexture(target, *glTexture);
+        generateMipmap(target, *texture, renderTarget->width, renderTarget->height);
+        state->bindTexture(target, 0);
+    }
+}
+
+std::optional<unsigned int> gl::GLTextures::getGlTexture(Texture& texture) const {
+
+    const auto textureProperties = properties->textureProperties.get(&texture);
+
+    return textureProperties->glTexture;
+}
+
+void gl::GLTextures::TextureEventListener::onEvent(Event& event) {
+
+    const auto texture = std::any_cast<Texture*>(event.target);
+
+    texture->removeEventListener("dispose", *this);
+
+    scope_->deallocateTexture(texture);
+
+    --scope_->info->memory.textures;
+}
+
+void gl::GLTextures::RenderTargetEventListener::onEvent(Event& event) {
+
+    const auto renderTarget = std::any_cast<GLRenderTarget*>(event.target);
+
+    renderTarget->removeEventListener("dispose", *this);
+
+    scope_->deallocateRenderTarget(renderTarget);
+}

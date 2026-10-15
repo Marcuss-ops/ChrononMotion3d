@@ -1,8 +1,15 @@
 # Third-party software and assets
 
-ChrononMotion carries **no vendored third-party code and no bundled assets**, and
+ChrononMotion core carries **no vendored third-party code and no bundled assets**, and
 fetches nothing at configure or build time. Everything it builds is derived from
 threepp / three.js source, plus the standard library.
+
+Exception: the **offscreen render sibling in `render/`** (separate static
+library, outside the boundary guardrail) vendors upstream threepp sources at
+the pinned revision plus its build dependencies (glad, glfw, stb, nlohmann/json,
+meshoptimizer, quickhull, libwebp decoder subset). Each keeps its own license
+file/headers (MIT for threepp/glad/glfw/stb/nlohmann/meshoptimizer; libwebp
+BSD-style COPYING + PATENTS); see `render/README.md` and `render/THIRD_PARTY.md`.
 
 The index below is kept for the parts that still apply; the machinery it used to
 describe (vendored GLFW/glad/libwebp/meshoptimizer/miniaudio/nlohmann/pugixml/
