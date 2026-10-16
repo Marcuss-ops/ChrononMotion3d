@@ -24,6 +24,7 @@ using chronon3d::render_plan::ShapeContentTypePlan;
                 case LayerType::Light: return "light";
                 case LayerType::Adjustment: return "adjustment";
                 case LayerType::Mesh: return "mesh";
+                case LayerType::Null: return "null";
             }
             return "unknown";
         }
@@ -108,10 +109,15 @@ using chronon3d::render_plan::ShapeContentTypePlan;
                 case CameraPropertyPlan::RotationX: return "camera_rotation_x";
                 case CameraPropertyPlan::RotationY: return "camera_rotation_y";
                 case CameraPropertyPlan::RotationZ: return "camera_rotation_z";
+                case CameraPropertyPlan::TargetX: return "camera_target_x";
+                case CameraPropertyPlan::TargetY: return "camera_target_y";
+                case CameraPropertyPlan::TargetZ: return "camera_target_z";
                 case CameraPropertyPlan::FovDeg: return "camera_fov_deg";
                 case CameraPropertyPlan::Zoom: return "camera_zoom";
+                case CameraPropertyPlan::FocalLengthMM: return "camera_focal_length_mm";
                 case CameraPropertyPlan::FocusDistance: return "camera_focus_distance";
                 case CameraPropertyPlan::Aperture: return "camera_aperture";
+                case CameraPropertyPlan::FStop: return "camera_f_stop";
                 case CameraPropertyPlan::MaxBlur: return "camera_max_blur";
             }
             return "camera_position_z";
