@@ -13,6 +13,8 @@
 #include "chrononmotion/motion/MotionScene.hpp"
 #include "chrononmotion/motion/RigBaking.hpp"
 
+#include "threepp/animation/AnimationClip.hpp"
+#include "threepp/animation/AnimationMixer.hpp"
 #include "threepp/cameras/PerspectiveCamera.hpp"
 #include "threepp/core/BufferGeometry.hpp"
 #include "threepp/core/Object3D.hpp"
@@ -45,48 +47,48 @@ namespace threepp::motion {
     /// BufferGeometry (e.g. a subdivided PlaneGeometry for an image mesh) so
     /// they can be bound to a RigGeometryBinding or DeformerStack.
     [[nodiscard]] std::vector<chrononmotion::Vector3> extractGeometryPositions(
-        const chrononmotion::BufferGeometry& source);
+            const chrononmotion::BufferGeometry& source);
 
     /// Convert a data-only ChrononMotion BufferGeometry into a GPU-uploadable
     /// threepp::BufferGeometry. Copies vertex attributes (position, normal, uv,
     /// color) and optional triangle indices/groups.
     [[nodiscard]] std::shared_ptr<BufferGeometry> toThreeppGeometry(
-        const chrononmotion::BufferGeometry& source);
+            const chrononmotion::BufferGeometry& source);
 
     /// Update the vertex positions of a threepp::BufferGeometry in-place from a
     /// deformed vertex array (e.g. RigFrameGeometry::positions or
     /// DeformerStack::evaluate), flagging the GPU buffer for glBufferSubData
     /// upload and optionally recomputing vertex normals.
     void updateGeometryPositions(
-        BufferGeometry& geometry,
-        std::span<const chrononmotion::Vector3> positions,
-        bool recomputeNormals = true);
+            BufferGeometry& geometry,
+            std::span<const chrononmotion::Vector3> positions,
+            bool recomputeNormals = true);
 
     /// Convert a data-only ChrononMotion MaterialDescriptor into a concrete
     /// threepp::Material (MeshBasicMaterial for Unlit, MeshLambertMaterial for
-    /// Lambert/Emissive), combining descriptor opacity with evaluated world
-    /// opacity and optional bound texture map.
+    /// Lambert/Emissive, MeshStandardMaterial for PBR), combining descriptor
+    /// opacity with evaluated world opacity and an optional bound base-color map.
     [[nodiscard]] std::shared_ptr<Material> toThreeppMaterial(
-        const chrononmotion::MaterialDescriptor& descriptor,
-        float worldOpacity = 1.f,
-        const std::shared_ptr<Texture>& map = nullptr);
+            const chrononmotion::MaterialDescriptor& descriptor,
+            float worldOpacity = 1.f,
+            const std::shared_ptr<Texture>& map = nullptr);
 
     /// Apply a sampled ChrononMotion CameraPose (and optional parent world
     /// matrix) onto a threepp::PerspectiveCamera.
     void applyCameraPose(
-        const chrononmotion::motion::CameraPose& pose,
-        PerspectiveCamera& camera,
-        const chrononmotion::Matrix4* parentWorld = nullptr,
-        float nearPlane = 0.1f,
-        float farPlane = 2000.f);
+            const chrononmotion::motion::CameraPose& pose,
+            PerspectiveCamera& camera,
+            const chrononmotion::Matrix4* parentWorld = nullptr,
+            float nearPlane = 0.1f,
+            float farPlane = 2000.f);
 
     /// Sample and apply a ChrononMotion CameraRig at the scene's last evaluated
     /// timestamp, respecting parent layer world matrices when the rig's layer is
     /// parented inside `scene`.
     void applyCameraRig(
-        const chrononmotion::motion::CameraRig& rig,
-        const chrononmotion::motion::MotionScene& scene,
-        PerspectiveCamera& camera);
+            const chrononmotion::motion::CameraRig& rig,
+            const chrononmotion::motion::MotionScene& scene,
+            PerspectiveCamera& camera);
 
     /// Stateful bridge from ChrononMotion's evaluated `CompiledScene` /
     /// `MotionScene` into a renderable `threepp::Scene` + `PerspectiveCamera`.
@@ -97,10 +99,10 @@ namespace threepp::motion {
     class MotionSceneBridge {
     public:
         explicit MotionSceneBridge(
-            float defaultFov = 45.f,
-            float aspect = 1.f,
-            float nearPlane = 0.1f,
-            float farPlane = 2000.f);
+                float defaultFov = 45.f,
+                float aspect = 1.f,
+                float nearPlane = 0.1f,
+                float farPlane = 2000.f);
 
         [[nodiscard]] std::shared_ptr<Scene> scene() const { return scene_; }
         [[nodiscard]] std::shared_ptr<PerspectiveCamera> camera() const { return camera_; }
@@ -114,8 +116,18 @@ namespace threepp::motion {
         /// Bind a pre-built threepp Object3D directly to a Motion layer id.
         void bindLayerObject(chrononmotion::motion::Layer::Id layerId, std::shared_ptr<Object3D> node);
 
+        /// Bind an imported threepp animation clip to a top-level Motion mesh
+        /// layer. The bridge samples it at CompiledScene.frame / fps during every
+        /// sync, so Chronon remains the absolute timeline authority and frame
+        /// seeks are deterministic. The layer must resolve to an Object3D subtree.
+        void bindLayerAnimation(chrononmotion::motion::Layer::Id layerId,
+                                std::shared_ptr<AnimationClip> clip);
+
         /// Bind a threepp Texture to a ChrononMotion MaterialDescriptor id.
         void bindMaterialTexture(std::uint32_t materialId, std::shared_ptr<Texture> texture);
+
+        /// Bind a threepp tangent-space normal map to a ChrononMotion PBR material id.
+        void bindMaterialNormalMap(std::uint32_t materialId, std::shared_ptr<Texture> texture);
 
         /// Bind a threepp Texture (e.g. an image loaded via TextureLoader) directly
         /// to a Motion mesh layer id.
@@ -127,22 +139,22 @@ namespace threepp::motion {
         /// Evaluate `motionScene` at `frame`, compile its snapshot, synchronize
         /// all layers and lights, and optionally apply `cameraRig`.
         void evaluateAndSync(
-            chrononmotion::motion::MotionScene& motionScene,
-            int frame,
-            const chrononmotion::motion::CameraRig* cameraRig = nullptr);
+                chrononmotion::motion::MotionScene& motionScene,
+                int frame,
+                const chrononmotion::motion::CameraRig* cameraRig = nullptr);
 
         /// Apply deformed vertex positions (from DeformerStack or RigProgram) to
         /// the materialized mesh of `layerId` for the current frame.
         void applyDeformedGeometry(
-            chrononmotion::motion::Layer::Id layerId,
-            std::span<const chrononmotion::Vector3> positions,
-            bool recomputeNormals = true);
+                chrononmotion::motion::Layer::Id layerId,
+                std::span<const chrononmotion::Vector3> positions,
+                bool recomputeNormals = true);
 
         /// Apply a baked/evaluated RigFrameGeometry to `layerId`.
         void applyRigFrame(
-            chrononmotion::motion::Layer::Id layerId,
-            const chrononmotion::motion::RigFrameGeometry& frameGeometry,
-            bool recomputeNormals = true);
+                chrononmotion::motion::Layer::Id layerId,
+                const chrononmotion::motion::RigFrameGeometry& frameGeometry,
+                bool recomputeNormals = true);
 
         /// Retrieve the threepp node driven by `layerId` (nullptr if not materialized).
         [[nodiscard]] std::shared_ptr<Object3D> layerNode(chrononmotion::motion::Layer::Id layerId) const;
@@ -154,12 +166,18 @@ namespace threepp::motion {
             std::shared_ptr<Object3D> target{};
         };
 
+        struct AnimationEntry {
+            std::shared_ptr<AnimationClip> clip{};
+            std::shared_ptr<Object3D> root{};
+            std::unique_ptr<AnimationMixer> mixer{};
+        };
+
         void syncSceneGraph(
-            const chrononmotion::motion::CompiledScene& compiled,
-            const Matrix4& rootTransform,
-            float rootOpacity,
-            bool rootVisible,
-            const std::string& scopePrefix);
+                const chrononmotion::motion::CompiledScene& compiled,
+                const Matrix4& rootTransform,
+                float rootOpacity,
+                bool rootVisible,
+                const std::string& scopePrefix);
 
         std::shared_ptr<Scene> scene_;
         std::shared_ptr<PerspectiveCamera> camera_;
@@ -167,13 +185,15 @@ namespace threepp::motion {
         std::unordered_map<std::string, std::shared_ptr<Object3D>> assetPrototypes_;
         std::unordered_map<chrononmotion::motion::Layer::Id, std::shared_ptr<Object3D>> boundLayerObjects_;
         std::unordered_map<std::uint32_t, std::shared_ptr<Texture>> materialTextures_;
+        std::unordered_map<std::uint32_t, std::shared_ptr<Texture>> materialNormalMaps_;
         std::unordered_map<chrononmotion::motion::Layer::Id, std::shared_ptr<Texture>> layerTextures_;
 
         std::unordered_map<std::string, std::shared_ptr<Object3D>> layerNodes_;
         std::unordered_map<unsigned int, std::shared_ptr<BufferGeometry>> geometryCache_;
         std::unordered_map<std::string, LightEntry> lightNodes_;
+        std::unordered_map<chrononmotion::motion::Layer::Id, AnimationEntry> animations_;
     };
 
-} // namespace threepp::motion
+}// namespace threepp::motion
 
-#endif // THREEPP_MOTION_BRIDGE_HPP
+#endif// THREEPP_MOTION_BRIDGE_HPP

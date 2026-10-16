@@ -173,3 +173,8 @@ void SkinnedMesh::boneTransform(size_t index, Vector3& target) {
 
     target.applyMatrix4(this->bindMatrixInverse);
 }
+
+std::shared_ptr<Object3D> SkinnedMesh::createDefault() {
+
+    return std::make_shared<SkinnedMesh>(nullptr, nullptr);
+}

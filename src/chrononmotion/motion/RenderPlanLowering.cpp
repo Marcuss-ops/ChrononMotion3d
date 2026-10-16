@@ -452,10 +452,11 @@ RenderPlan lowerSamplesToRenderPlan(
                     // software mesh path; preserve the authored native tint there.
                     output.color = {renderPlanColor.r, renderPlanColor.g,
                                     renderPlanColor.b, descriptor.opacity};
-                } else if (descriptor.kind == MaterialKind::Lambert) {
+                } else if (descriptor.kind == MaterialKind::Lambert || descriptor.kind == MaterialKind::PBR) {
                     // RenderPlan has a compact Phong-like contract rather than
-                    // ChrononMotion's material zoo. Map the shared fields and
-                    // reject emissive below instead of dropping its contribution.
+                    // ChrononMotion's material zoo. PBR roughness/metalness are
+                    // approximated by shininess/specular here; the threepp bridge
+                    // remains the physically based path. Reject emissive below.
                     chronon3d::render_plan::InlineMeshMaterialPlan material;
                     material.diffuse = 1.f;
                     material.specular = descriptor.metalness;
@@ -723,15 +724,20 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: camera track exceeds the 65536 keyframe contract");
         std::vector<chronon3d::render_plan::AnimationKeyframePlan> positionX, positionY, positionZ;
         std::vector<chronon3d::render_plan::AnimationKeyframePlan> rotationX, rotationY, rotationZ;
-        std::vector<chronon3d::render_plan::AnimationKeyframePlan> focusDistance, aperture, maxBlur;
+        std::vector<AnimationKeyframePlan> focusDistance, aperture, maxBlur;
+        std::vector<AnimationKeyframePlan> focalLength, fStop;
         positionX.reserve(last + 1); positionY.reserve(last + 1); positionZ.reserve(last + 1);
         rotationX.reserve(last + 1); rotationY.reserve(last + 1); rotationZ.reserve(last + 1);
         const bool animateFocus = !options.cameraRig->focusDistanceTrack().empty();
         const bool animateAperture = !options.cameraRig->apertureTrack().empty();
         const bool animateMaxBlur = !options.cameraRig->maxBlurTrack().empty();
+        const bool animateFocalLength = !options.cameraRig->focalLengthTrack().empty();
+        const bool animateFStop = !options.cameraRig->fStopTrack().empty();
         if (animateFocus) focusDistance.reserve(last + 1);
         if (animateAperture) aperture.reserve(last + 1);
         if (animateMaxBlur) maxBlur.reserve(last + 1);
+        if (animateFocalLength) focalLength.reserve(last + 1);
+        if (animateFStop) fStop.reserve(last + 1);
         bool dofEnabled = resolvedOptions.camera->dof_enabled;
         for (std::size_t frame = 0; frame <= last; ++frame) {
             CameraPose pose = options.cameraRig->sample(static_cast<float>(frame) / scene.fps());
@@ -752,8 +758,12 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
                 aperture.push_back(makePlanKeyframe(keyFrame, {camera.dof_aperture}));
             if (animateMaxBlur)
                 maxBlur.push_back(makePlanKeyframe(keyFrame, {camera.dof_max_blur}));
+            if (animateFocalLength)
+                focalLength.push_back(makePlanKeyframe(keyFrame, {camera.focal_length_mm}));
+            if (animateFStop)
+                fStop.push_back(makePlanKeyframe(keyFrame, {camera.f_stop}));
         }
-        const bool sequenceUsesDof = dofEnabled || animateFocus || animateAperture || animateMaxBlur;
+        const bool sequenceUsesDof = dofEnabled || animateFocus || animateAperture || animateMaxBlur || animateFStop;
         if (plan.camera) plan.camera->dof_enabled = sequenceUsesDof;
         plan.camera_animation = std::vector<chronon3d::render_plan::CameraTrackPlan>{};
         auto& tracks = *plan.camera_animation;
@@ -775,6 +785,10 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::Aperture, std::move(aperture), "linear", std::nullopt});
         if (animateMaxBlur)
             tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::MaxBlur, std::move(maxBlur), "linear", std::nullopt});
+        if (animateFocalLength)
+            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::FocalLengthMM, std::move(focalLength), "linear", std::nullopt});
+        if (animateFStop)
+            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::FStop, std::move(fStop), "linear", std::nullopt});
     }
     return plan;
 }
@@ -909,20 +923,24 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     ensureFinite(pose.focusDistance, "camera focus distance");
     ensureFinite(pose.maxBlur, "camera maximum blur");
     ensureFinite(pose.fStop, "camera f-stop");
+    ensureFinite(pose.highlightGain, "camera highlight gain");
     ensureFinite(pose.roll, "camera roll");
     if (pose.hasTarget || pose.roll != 0.f)
         throw std::invalid_argument(
             "lowerCameraPose: resolve look-at and roll into orientation before lowering; RenderPlan has no target/roll metadata channels");
-    if (pose.focalLength != 0.f || pose.fStop != 0.f)
-        throw std::invalid_argument(
-            "lowerCameraPose: Chronon3D RenderPlan does not represent authored focal length or f-stop lens values");
+    if ((pose.focalLength != 0.f && (pose.focalLength < 12.f || pose.focalLength > 200.f)) ||
+        (pose.fStop != 0.f && (pose.fStop < 0.7f || pose.fStop > 32.f)) ||
+        pose.irisBlades < 0 || pose.irisBlades > 12 ||
+        pose.highlightGain < 0.f || pose.highlightGain > 8.f)
+        throw std::invalid_argument("lowerCameraPose: physical lens/iris settings are outside the RenderPlan contract");
     if (!std::isfinite(pose.aperture) || pose.aperture < 0.f || pose.aperture > 1.f ||
         !std::isfinite(pose.focusDistance) || pose.focusDistance < 0.f || pose.focusDistance > 10'000'000.f ||
         pose.maxBlur < 0.f || pose.maxBlur > 256.f)
         throw std::invalid_argument(
             "lowerCameraPose: depth-of-field values are outside the RenderPlan contract");
-    const bool depthOfFieldAuthored = pose.aperture != 0.f || pose.focusDistance != 0.f || pose.maxBlur != 0.f;
-    const bool depthOfFieldEnabled = pose.aperture > 0.f;
+    const bool depthOfFieldAuthored = pose.aperture != 0.f || pose.focusDistance != 0.f || pose.maxBlur != 0.f ||
+                                      pose.fStop != 0.f || pose.irisBlades != 0 || pose.highlightGain != 0.f;
+    const bool depthOfFieldEnabled = pose.aperture > 0.f || pose.fStop > 0.f;
     if (depthOfFieldEnabled && pose.focusDistance <= 0.f)
         throw std::invalid_argument(
             "lowerCameraPose: depth of field with an aperture requires a positive focus distance");
@@ -967,11 +985,17 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     camera.fov_deg = pose.fov;
     camera.near = nearPlane;
     camera.far = farPlane;
+    camera.focal_length_mm = pose.focalLength;
+    camera.f_stop = pose.fStop;
+    camera.iris_blades = pose.irisBlades;
     if (depthOfFieldAuthored) {
         camera.dof_enabled = depthOfFieldEnabled;
         camera.dof_aperture = pose.aperture;
         if (pose.focusDistance > 0.f) camera.dof_focus_distance = renderPlanFocusPlane;
         if (pose.maxBlur > 0.f) camera.dof_max_blur = pose.maxBlur;
+        camera.dof_f_stop = pose.fStop;
+        camera.dof_iris_blades = pose.irisBlades;
+        camera.dof_highlight_gain = pose.highlightGain;
     }
     return camera;
 }

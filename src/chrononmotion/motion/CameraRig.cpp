@@ -114,6 +114,22 @@ namespace chrononmotion::motion {
         return *this;
     }
 
+    CameraRig& CameraRig::setIrisBlades(int blades) {
+        if (blades < 0 || blades > 12) {
+            throw std::invalid_argument("CameraRig::setIrisBlades: blade count must be in [0, 12]");
+        }
+        irisBlades_ = blades;
+        return *this;
+    }
+
+    CameraRig& CameraRig::setHighlightGain(float gain) {
+        if (!std::isfinite(gain) || gain < 0.f || gain > 8.f) {
+            throw std::invalid_argument("CameraRig::setHighlightGain: gain must be finite and in [0, 8]");
+        }
+        highlightGain_ = gain;
+        return *this;
+    }
+
     CameraRig& CameraRig::setParent(Layer::Id parentId) {
 
         layer_.parentId = parentId;
@@ -296,6 +312,8 @@ namespace chrononmotion::motion {
         pose.focusDistance = focusDistanceTrack_.empty() ? focusDistance_ : focusDistanceTrack_.sample(seconds);
         pose.maxBlur = maxBlurTrack_.empty() ? maxBlur_ : maxBlurTrack_.sample(seconds);
         pose.fStop = fStopTrack_.empty() ? fStop_ : fStopTrack_.sample(seconds);
+        pose.irisBlades = irisBlades_;
+        pose.highlightGain = highlightGain_;
 
         if (pose.hasTarget) {
             lookAtPose(pose, pose.target);

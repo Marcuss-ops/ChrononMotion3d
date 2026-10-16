@@ -1387,6 +1387,20 @@ namespace threepp {
                     const size_t numMorphTargets =
                             prim.contains("targets") ? prim["targets"].size() : 0;
                     if (numMorphTargets > 0) {
+                        // Material shader variants must opt in to the morph
+                        // attributes; weights alone otherwise animate while the
+                        // rendered geometry silently stays in its bind pose.
+                        bool hasNormalTargets = false;
+                        for (const auto& target : prim["targets"]) {
+                            hasNormalTargets = hasNormalTargets || target.contains("NORMAL");
+                        }
+                        for (const auto& material : mesh->materials()) {
+                            if (!material) continue;
+                            if (auto* morph = dynamic_cast<MaterialWithMorphTargets*>(material.get())) {
+                                morph->morphTargets = true;
+                                morph->morphNormals = hasNormalTargets;
+                            }
+                        }
                         auto& influences = mesh->morphTargetInfluences();
                         influences.assign(numMorphTargets, 0.0f);
                         // Initial weights live on the mesh, not the primitive.
