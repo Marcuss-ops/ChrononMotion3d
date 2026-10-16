@@ -1,0 +1,10 @@
+Portrait source: “MrBeast 2023 (cropped).jpg”
+Author: Steven Khan
+Source: https://commons.wikimedia.org/wiki/File:MrBeast_2023_(cropped).jpg
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+
+Changes made: background removed to create mrbeast_cutout.png; the cutout is
+used in a lightly animated 2.5D composition. Attribution is required if the
+image is shared or published. Wikimedia Commons also notes personality rights
+may affect some kinds of reuse.
