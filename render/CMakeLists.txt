@@ -197,10 +197,64 @@ target_link_libraries(chrononmotion_render_spike PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_glb spike/glb.cpp)
 target_include_directories(chrononmotion_render_glb PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb")
 target_link_libraries(chrononmotion_render_glb PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_glb_certification spike/glb_certification.cpp)
+target_include_directories(chrononmotion_render_glb_certification PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_glb_certification PRIVATE chrononmotion_render)
+
+# Keep CUDA/FFmpeg interop optional for build hosts without the NVIDIA SDK,
+# but never substitute a CPU encoder in the certification runner. Such hosts
+# can build ChrononMotion3D; T06/T14 then reports that the GPU route is absent.
+find_path(CHRONON_CUDA_INCLUDE_DIR cuda_gl_interop.h)
+find_library(CHRONON_CUDART_LIBRARY NAMES cudart)
+find_package(PkgConfig QUIET)
+if (PkgConfig_FOUND)
+    pkg_check_modules(CHRONON_FFMPEG QUIET IMPORTED_TARGET libavcodec libavformat libavutil)
+endif ()
+if (CHRONON_CUDA_INCLUDE_DIR AND CHRONON_CUDART_LIBRARY AND TARGET PkgConfig::CHRONON_FFMPEG)
+    target_include_directories(chrononmotion_render_glb_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
+    target_link_libraries(chrononmotion_render_glb_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
+    target_compile_definitions(chrononmotion_render_glb_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
+    message(STATUS "threepp certification: enabling GL PBO -> CUDA -> NVENC path")
+else ()
+    message(STATUS "threepp certification: CUDA/FFmpeg interop unavailable; GPU certification runner will refuse to render")
+endif ()
+
+add_executable(chrononmotion_render_alpha_handoff spike/alpha_handoff.cpp)
+target_include_directories(chrononmotion_render_alpha_handoff PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_alpha_handoff PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_bridge spike/bridge.cpp)
 target_link_libraries(chrononmotion_render_bridge PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_image_mesh spike/image_mesh.cpp)
 target_link_libraries(chrononmotion_render_image_mesh PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_animation_certification spike/animation_certification.cpp)
+target_include_directories(chrononmotion_render_animation_certification PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_animation_certification PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_pbr_certification spike/pbr_certification.cpp)
+target_include_directories(chrononmotion_render_pbr_certification PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_pbr_certification PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_postprocessing spike/postprocessing.cpp)
+target_include_directories(chrononmotion_render_postprocessing PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_postprocessing PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_dof_certification spike/dof_certification.cpp)
+target_include_directories(chrononmotion_render_dof_certification PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_dof_certification PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_shadow_certification spike/shadow_certification.cpp)
+target_include_directories(chrononmotion_render_shadow_certification PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_shadow_certification PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_portrait_mesh spike/portrait_mesh.cpp)
 target_link_libraries(chrononmotion_render_portrait_mesh PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_mrbeast_rig spike/mrbeast_rig.cpp)

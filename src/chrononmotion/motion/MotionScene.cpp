@@ -1249,7 +1249,12 @@ namespace chrononmotion::motion {
             }
 
             state.position.setFromMatrixPosition(state.world);
-            state.direction.set(0.f, 0.f, -1.f).transformDirection(state.world);
+            state.direction.copy(state.sample.direction);
+            if (state.sample.parentId != Layer::kRoot) {
+                state.direction.transformDirection(states_[indexOf(state.sample.parentId)].world);
+            } else {
+                state.direction.normalize();
+            }
 
             if (state.sample.targetId != Layer::kRoot) {
                 const Layer* target = findLayer(state.sample.targetId);

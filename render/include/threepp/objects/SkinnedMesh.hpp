@@ -54,6 +54,7 @@ namespace threepp {
         const Sphere& posedBoundingSphere();
 
     protected:
+        std::shared_ptr<Object3D> createDefault() override;
         const Sphere* raycastBoundingSphere() override;
         const Box3* raycastBoundingBox() override;
 

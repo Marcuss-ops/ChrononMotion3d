@@ -7,12 +7,58 @@
 #include "threepp/materials/MeshBasicMaterial.hpp"
 #include "threepp/materials/MeshLambertMaterial.hpp"
 #include "threepp/materials/MeshStandardMaterial.hpp"
+#include "threepp/objects/SkinnedMesh.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace threepp::motion {
+
+    namespace {
+
+        std::shared_ptr<Object3D> cloneAssetTree(const std::shared_ptr<Object3D>& source) {
+            if (!source) return nullptr;
+            std::unordered_map<const Object3D*, std::shared_ptr<Object3D>> clones;
+            std::function<std::shared_ptr<Object3D>(Object3D&)> cloneNode;
+            cloneNode = [&](Object3D& original) {
+                auto clone = original.clone(false);
+                if (!clone) throw std::runtime_error("MotionSceneBridge: failed to clone asset node");
+                clones.emplace(&original, clone);
+                for (const auto& child : original.children) {
+                    clone->add(cloneNode(*child));
+                }
+                return clone;
+            };
+            auto root = cloneNode(*source);
+
+            // Skin joints are often siblings of the SkinnedMesh in a glTF scene.
+            // Reconnect each cloned skin after the complete node map exists;
+            // copying only the mesh would leave it bound to the prototype bones.
+            for (const auto& [original, clone] : clones) {
+                const auto* sourceSkin = dynamic_cast<const SkinnedMesh*>(original);
+                auto* clonedSkin = dynamic_cast<SkinnedMesh*>(clone.get());
+                if (!sourceSkin || !clonedSkin || !sourceSkin->skeleton) continue;
+                std::vector<std::shared_ptr<Bone>> bones;
+                bones.reserve(sourceSkin->skeleton->bones.size());
+                for (const auto& sourceBone : sourceSkin->skeleton->bones) {
+                    const auto it = clones.find(sourceBone.get());
+                    if (it == clones.end()) {
+                        throw std::runtime_error("MotionSceneBridge: skin joint is outside the cloned asset subtree");
+                    }
+                    auto clonedBone = std::dynamic_pointer_cast<Bone>(it->second);
+                    if (!clonedBone) throw std::runtime_error("MotionSceneBridge: cloned skin joint lost its Bone type");
+                    bones.push_back(std::move(clonedBone));
+                }
+                auto skeleton = Skeleton::create(bones, sourceSkin->skeleton->boneInverses);
+                clonedSkin->bind(skeleton, sourceSkin->bindMatrix);
+            }
+            return root;
+        }
+
+    }// namespace
 
     Vector3 toThreeppVector3(const chrononmotion::Vector3& v) {
         return Vector3(v.x, v.y, v.z);
@@ -33,7 +79,7 @@ namespace threepp::motion {
     }
 
     std::vector<chrononmotion::Vector3> extractGeometryPositions(
-        const chrononmotion::BufferGeometry& source) {
+            const chrononmotion::BufferGeometry& source) {
 
         const auto* posAttr = source.getAttribute<float>("position");
         if (!posAttr || posAttr->itemSize() < 3) {
@@ -56,7 +102,7 @@ namespace threepp::motion {
             if (!attrPtr) continue;
             if (const auto* floatAttr = source.getAttribute<float>(name)) {
                 auto copied = FloatBufferAttribute::create(
-                    floatAttr->array(), floatAttr->itemSize(), floatAttr->normalized());
+                        floatAttr->array(), floatAttr->itemSize(), floatAttr->normalized());
                 dst->setAttribute(name, std::move(copied));
             }
         }
@@ -77,9 +123,9 @@ namespace threepp::motion {
     }
 
     void updateGeometryPositions(
-        BufferGeometry& geometry,
-        std::span<const chrononmotion::Vector3> positions,
-        bool recomputeNormals) {
+            BufferGeometry& geometry,
+            std::span<const chrononmotion::Vector3> positions,
+            bool recomputeNormals) {
 
         auto* posAttr = geometry.getAttribute<float>("position");
         if (!posAttr || posAttr->itemSize() != 3) {
@@ -112,9 +158,10 @@ namespace threepp::motion {
     }
 
     std::shared_ptr<Material> toThreeppMaterial(
-        const chrononmotion::MaterialDescriptor& descriptor,
-        float worldOpacity,
-        const std::shared_ptr<Texture>& map) {
+            const chrononmotion::MaterialDescriptor& descriptor,
+            float worldOpacity,
+            const std::shared_ptr<Texture>& map,
+            const std::shared_ptr<Texture>& normalMap = nullptr) {
 
         descriptor.validate();
         const float effectiveOpacity = std::clamp(descriptor.opacity * worldOpacity, 0.f, 1.f);
@@ -139,14 +186,28 @@ namespace threepp::motion {
                 mat->transparent = isTransparent;
                 return mat;
             }
+            case chrononmotion::MaterialKind::PBR: {
+                auto mat = MeshStandardMaterial::create();
+                mat->name = descriptor.name;
+                mat->color = toThreeppColor(descriptor.baseColor);
+                mat->map = map;
+                mat->normalMap = normalMap;
+                mat->roughness = descriptor.roughness;
+                mat->metalness = descriptor.metalness;
+                mat->emissive = toThreeppColor(descriptor.emissiveColor);
+                mat->emissiveIntensity = descriptor.emissiveStrength;
+                mat->opacity = effectiveOpacity;
+                mat->transparent = isTransparent;
+                return mat;
+            }
             case chrononmotion::MaterialKind::Emissive: {
                 auto mat = MeshLambertMaterial::create();
                 mat->name = descriptor.name;
                 mat->color = toThreeppColor(descriptor.baseColor);
                 mat->emissive = Color(
-                    descriptor.emissiveColor.r * descriptor.emissiveStrength,
-                    descriptor.emissiveColor.g * descriptor.emissiveStrength,
-                    descriptor.emissiveColor.b * descriptor.emissiveStrength);
+                        descriptor.emissiveColor.r * descriptor.emissiveStrength,
+                        descriptor.emissiveColor.g * descriptor.emissiveStrength,
+                        descriptor.emissiveColor.b * descriptor.emissiveStrength);
                 mat->map = map;
                 mat->opacity = effectiveOpacity;
                 mat->transparent = isTransparent;
@@ -157,11 +218,11 @@ namespace threepp::motion {
     }
 
     void applyCameraPose(
-        const chrononmotion::motion::CameraPose& pose,
-        PerspectiveCamera& camera,
-        const chrononmotion::Matrix4* parentWorld,
-        float nearPlane,
-        float farPlane) {
+            const chrononmotion::motion::CameraPose& pose,
+            PerspectiveCamera& camera,
+            const chrononmotion::Matrix4* parentWorld,
+            float nearPlane,
+            float farPlane) {
 
         chrononmotion::Matrix4 local;
         local.compose(pose.position, pose.orientation, chrononmotion::Vector3(1.f, 1.f, 1.f));
@@ -195,9 +256,9 @@ namespace threepp::motion {
     }
 
     void applyCameraRig(
-        const chrononmotion::motion::CameraRig& rig,
-        const chrononmotion::motion::MotionScene& scene,
-        PerspectiveCamera& camera) {
+            const chrononmotion::motion::CameraRig& rig,
+            const chrononmotion::motion::MotionScene& scene,
+            PerspectiveCamera& camera) {
 
         const float seconds = scene.hasEvaluated() ? scene.lastEvaluatedPts() : 0.f;
         const auto pose = rig.sample(seconds);
@@ -213,10 +274,10 @@ namespace threepp::motion {
     }
 
     MotionSceneBridge::MotionSceneBridge(
-        float defaultFov,
-        float aspect,
-        float nearPlane,
-        float farPlane)
+            float defaultFov,
+            float aspect,
+            float nearPlane,
+            float farPlane)
         : scene_(Scene::create()),
           camera_(PerspectiveCamera::create(defaultFov, aspect, nearPlane, farPlane)) {}
 
@@ -226,15 +287,27 @@ namespace threepp::motion {
     }
 
     void MotionSceneBridge::bindLayerObject(
-        chrononmotion::motion::Layer::Id layerId,
-        std::shared_ptr<Object3D> node) {
+            chrononmotion::motion::Layer::Id layerId,
+            std::shared_ptr<Object3D> node) {
         if (layerId == chrononmotion::motion::Layer::kRoot || !node) return;
         boundLayerObjects_[layerId] = std::move(node);
     }
 
+    void MotionSceneBridge::bindLayerAnimation(
+            chrononmotion::motion::Layer::Id layerId,
+            std::shared_ptr<AnimationClip> clip) {
+        if (layerId == chrononmotion::motion::Layer::kRoot || !clip) {
+            throw std::invalid_argument("MotionSceneBridge::bindLayerAnimation: valid layer id and clip required");
+        }
+        auto& entry = animations_[layerId];
+        entry.clip = std::move(clip);
+        entry.root.reset();
+        entry.mixer.reset();
+    }
+
     void MotionSceneBridge::bindMaterialTexture(
-        std::uint32_t materialId,
-        std::shared_ptr<Texture> texture) {
+            std::uint32_t materialId,
+            std::shared_ptr<Texture> texture) {
         if (!texture) {
             materialTextures_.erase(materialId);
             return;
@@ -242,9 +315,19 @@ namespace threepp::motion {
         materialTextures_[materialId] = std::move(texture);
     }
 
+    void MotionSceneBridge::bindMaterialNormalMap(
+            std::uint32_t materialId,
+            std::shared_ptr<Texture> texture) {
+        if (!texture) {
+            materialNormalMaps_.erase(materialId);
+            return;
+        }
+        materialNormalMaps_[materialId] = std::move(texture);
+    }
+
     void MotionSceneBridge::bindLayerTexture(
-        chrononmotion::motion::Layer::Id layerId,
-        std::shared_ptr<Texture> texture) {
+            chrononmotion::motion::Layer::Id layerId,
+            std::shared_ptr<Texture> texture) {
         if (!texture) {
             layerTextures_.erase(layerId);
             return;
@@ -253,15 +336,15 @@ namespace threepp::motion {
     }
 
     std::shared_ptr<Object3D> MotionSceneBridge::layerNode(
-        chrononmotion::motion::Layer::Id layerId) const {
+            chrononmotion::motion::Layer::Id layerId) const {
         const auto it = layerNodes_.find(std::to_string(layerId));
         return it != layerNodes_.end() ? it->second : nullptr;
     }
 
     void MotionSceneBridge::applyDeformedGeometry(
-        chrononmotion::motion::Layer::Id layerId,
-        std::span<const chrononmotion::Vector3> positions,
-        bool recomputeNormals) {
+            chrononmotion::motion::Layer::Id layerId,
+            std::span<const chrononmotion::Vector3> positions,
+            bool recomputeNormals) {
 
         auto node = layerNode(layerId);
         if (!node) {
@@ -283,19 +366,19 @@ namespace threepp::motion {
     }
 
     void MotionSceneBridge::applyRigFrame(
-        chrononmotion::motion::Layer::Id layerId,
-        const chrononmotion::motion::RigFrameGeometry& frameGeometry,
-        bool recomputeNormals) {
+            chrononmotion::motion::Layer::Id layerId,
+            const chrononmotion::motion::RigFrameGeometry& frameGeometry,
+            bool recomputeNormals) {
         applyDeformedGeometry(layerId, frameGeometry.positions, recomputeNormals);
     }
 
     namespace {
 
         void applySubtreeOpacityAndShadows(
-            Object3D& root,
-            float opacity,
-            bool castShadow,
-            bool receiveShadow) {
+                Object3D& root,
+                float opacity,
+                bool castShadow,
+                bool receiveShadow) {
 
             const float clamped = std::clamp(opacity, 0.f, 1.f);
             root.traverse([&](Object3D& node) {
@@ -313,15 +396,15 @@ namespace threepp::motion {
             });
         }
 
-    } // namespace
+    }// namespace
 
     void MotionSceneBridge::sync(const chrononmotion::motion::CompiledScene& compiled) {
         for (auto& [key, node] : layerNodes_) {
-            (void)key;
+            (void) key;
             if (node) node->visible = false;
         }
         for (auto& [key, entry] : lightNodes_) {
-            (void)key;
+            (void) key;
             if (entry.light) entry.light->visible = false;
         }
 
@@ -330,20 +413,35 @@ namespace threepp::motion {
 
         if (compiled.camera) {
             applyCameraPose(
-                *compiled.camera,
-                *camera_,
-                nullptr,
-                compiled.cameraNearPlane,
-                compiled.cameraFarPlane);
+                    *compiled.camera,
+                    *camera_,
+                    nullptr,
+                    compiled.cameraNearPlane,
+                    compiled.cameraFarPlane);
+        }
+
+        if (!std::isfinite(compiled.fps) || compiled.fps <= 0.f) {
+            throw std::invalid_argument("MotionSceneBridge::sync: compiled fps must be finite and positive");
+        }
+        const float timelineSeconds = std::max(0.f, static_cast<float>(compiled.frame) / compiled.fps);
+        for (auto& [layerId, animation] : animations_) {
+            auto root = layerNode(layerId);
+            if (!root || !animation.clip) continue;
+            if (animation.root != root || !animation.mixer) {
+                animation.mixer = std::make_unique<AnimationMixer>(*root);
+                animation.mixer->clipAction(animation.clip)->play();
+                animation.root = std::move(root);
+            }
+            animation.mixer->setTime(timelineSeconds);
         }
 
         scene_->updateMatrixWorld(true);
     }
 
     void MotionSceneBridge::evaluateAndSync(
-        chrononmotion::motion::MotionScene& motionScene,
-        int frame,
-        const chrononmotion::motion::CameraRig* cameraRig) {
+            chrononmotion::motion::MotionScene& motionScene,
+            int frame,
+            const chrononmotion::motion::CameraRig* cameraRig) {
 
         motionScene.evaluate(frame);
         auto compiled = motionScene.compile();
@@ -355,11 +453,11 @@ namespace threepp::motion {
     }
 
     void MotionSceneBridge::syncSceneGraph(
-        const chrononmotion::motion::CompiledScene& compiled,
-        const Matrix4& rootTransform,
-        float rootOpacity,
-        bool rootVisible,
-        const std::string& scopePrefix) {
+            const chrononmotion::motion::CompiledScene& compiled,
+            const Matrix4& rootTransform,
+            float rootOpacity,
+            bool rootVisible,
+            const std::string& scopePrefix) {
 
         std::unordered_map<chrononmotion::motion::Layer::Id, const chrononmotion::motion::CompiledTransform*> transformsById;
         transformsById.reserve(compiled.transforms.size());
@@ -396,6 +494,11 @@ namespace threepp::motion {
             } else if (const auto matTexIt = materialTextures_.find(meshDesc.material.id); matTexIt != materialTextures_.end()) {
                 boundTex = matTexIt->second;
             }
+            std::shared_ptr<Texture> boundNormalMap;
+            if (const auto normalMapIt = materialNormalMaps_.find(meshDesc.material.id);
+                normalMapIt != materialNormalMaps_.end()) {
+                boundNormalMap = normalMapIt->second;
+            }
 
             if (!wrapper) {
                 if (const auto boundIt = boundLayerObjects_.find(meshDesc.layerId);
@@ -407,14 +510,14 @@ namespace threepp::motion {
                 } else if (!meshDesc.assetId.empty() && assetPrototypes_.contains(meshDesc.assetId)) {
                     auto group = Group::create();
                     group->name = meshDesc.name;
-                    group->add(assetPrototypes_.at(meshDesc.assetId)->clone(true));
+                    group->add(cloneAssetTree(assetPrototypes_.at(meshDesc.assetId)));
                     wrapper = std::move(group);
                 } else if (meshDesc.geometry) {
                     auto& cachedGeom = geometryCache_[meshDesc.geometry->id];
                     if (!cachedGeom) {
                         cachedGeom = toThreeppGeometry(*meshDesc.geometry);
                     }
-                    auto mat = toThreeppMaterial(meshDesc.material, 1.f, boundTex);
+                    auto mat = toThreeppMaterial(meshDesc.material, 1.f, boundTex, boundNormalMap);
                     auto meshNode = Mesh::create(cachedGeom, mat);
                     meshNode->name = meshDesc.name;
                     wrapper = std::move(meshNode);
@@ -475,17 +578,17 @@ namespace threepp::motion {
                     }
                     case chrononmotion::motion::LightKind::Point: {
                         entry.light = PointLight::create(
-                            lightColor, intensity, lightState.sample.range, lightState.sample.decay);
+                                lightColor, intensity, lightState.sample.range, lightState.sample.decay);
                         break;
                     }
                     case chrononmotion::motion::LightKind::Spot: {
                         auto spot = SpotLight::create(
-                            lightColor,
-                            intensity,
-                            lightState.sample.range,
-                            lightState.sample.angle,
-                            lightState.sample.penumbra,
-                            lightState.sample.decay);
+                                lightColor,
+                                intensity,
+                                lightState.sample.range,
+                                lightState.sample.angle,
+                                lightState.sample.penumbra,
+                                lightState.sample.decay);
                         entry.target = Object3D::create();
                         spot->setTarget(*entry.target);
                         scene_->add(entry.target);
@@ -504,6 +607,12 @@ namespace threepp::motion {
             entry.light->intensity = intensity;
             entry.light->visible = rootVisible && lightState.visible && (intensity > 0.f);
             entry.light->castShadow = lightState.sample.castsShadow;
+            if (auto* shadowedLight = dynamic_cast<LightWithShadow*>(entry.light.get());
+                shadowedLight && shadowedLight->shadow) {
+                shadowedLight->shadow->bias = lightState.sample.shadowBias;
+                shadowedLight->shadow->normalBias = lightState.sample.shadowNormalBias;
+                shadowedLight->shadow->radius = lightState.sample.shadowRadius;
+            }
 
             Vector3 worldPos = toThreeppVector3(lightState.position);
             worldPos.applyMatrix4(rootTransform);
@@ -541,4 +650,4 @@ namespace threepp::motion {
         }
     }
 
-} // namespace threepp::motion
+}// namespace threepp::motion

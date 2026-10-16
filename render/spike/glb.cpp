@@ -6,7 +6,7 @@
 //      Synthesizes a deterministic binary GLB 2.0 (24-vertex indexed cube with
 //      POSITION, NORMAL, TEXCOORD_0, node rotation, and an embedded 64x64 PNG
 //      checkerboard texture in the GLB BIN chunk), loads it via GLTFLoader,
-//      renders it offscreen with Lambert lighting, verifies pixel coverage and
+//      renders it offscreen with the imported PBR material plus direct lights, verifies pixel coverage and
 //      texture variation, and writes out.ppm.
 //   2. External GLB file:
 //        chrononmotion_render_glb <model.glb> <out.ppm> [w h]
@@ -30,7 +30,6 @@
 #include "threepp/lights/AmbientLight.hpp"
 #include "threepp/lights/DirectionalLight.hpp"
 #include "threepp/loaders/GLTFLoader.hpp"
-#include "threepp/materials/MeshLambertMaterial.hpp"
 #include "threepp/materials/MeshStandardMaterial.hpp"
 #include "threepp/objects/Mesh.hpp"
 #include "threepp/renderers/GLRenderer.hpp"
@@ -241,35 +240,31 @@ int main(int argc, char** argv) {
     renderer.setRenderTarget(target.get());
 
     auto scene = result->scene;
-    // glTF defaults to metallic PBR, which renders dark without an environment
-    // map. Swap lit PBR for Lambert keeping the loaded baseColor + texture map,
-    // so the proof verifies geometry + UVs + embedded texture + lights.
+    // Preserve GLTFLoader's imported materials and textures. This proof is meant
+    // to exercise the actual imported PBR path rather than replacing it with a
+    // simpler material for a brighter screenshot.
     int meshCount = 0;
-    int swapped = 0;
+    int standardMaterials = 0;
     int textured = 0;
     scene->traverse([&](Object3D& node) {
         if (auto* mesh = dynamic_cast<Mesh*>(&node)) {
             ++meshCount;
             if (auto stdMat = mesh->materialAs<MeshStandardMaterial>()) {
-                auto lambert = MeshLambertMaterial::create();
-                lambert->color = stdMat->color;
-                lambert->map = stdMat->map;
-                lambert->opacity = stdMat->opacity;
-                lambert->transparent = stdMat->transparent;
-                if (lambert->map) ++textured;
-                mesh->setMaterial(lambert);
-                ++swapped;
+                ++standardMaterials;
+                if (stdMat->map) ++textured;
             }
         }
     });
-    std::cout << "glb proof: meshes=" << meshCount << " swapped=" << swapped << " textured=" << textured << "\n";
+    std::cout << "glb proof: meshes=" << meshCount
+              << " standard_materials=" << standardMaterials
+              << " textured_standard_materials=" << textured << "\n";
     if (meshCount == 0) {
         std::cerr << "glb proof: scene contained no meshes\n";
         return 1;
     }
 
-    scene->add(AmbientLight::create(Color(0xffffff), 0.6f));
-    auto light = DirectionalLight::create(Color(0xffffff), 2.0f);
+    scene->add(AmbientLight::create(Color(0xffffff), 1.0f));
+    auto light = DirectionalLight::create(Color(0xffffff), 3.0f);
     light->position.set(2, 3, 4);
     scene->add(light);
 

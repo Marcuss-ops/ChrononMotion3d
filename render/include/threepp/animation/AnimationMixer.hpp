@@ -24,6 +24,10 @@ namespace threepp {
 
         void update(float dt) const;
 
+        /// Evaluate an absolute clip time without depending on the previous frame.
+        /// Intended for deterministic offline rendering and timeline random access.
+        void setTime(float timeInSeconds) const;
+
         ~AnimationMixer() override;
 
     private:

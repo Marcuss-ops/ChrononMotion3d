@@ -20,6 +20,12 @@ namespace threepp {
             return morphTargetInfluences_;
         }
 
+        const std::vector<float>& morphTargetInfluences() const {
+
+            if (copyMorphTargetInfluences_) return *copyMorphTargetInfluences_;
+            return morphTargetInfluences_;
+        }
+
         void copyMorphTargetInfluences(std::vector<float>* influences) {
 
             copyMorphTargetInfluences_ = influences;

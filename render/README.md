@@ -13,17 +13,25 @@ Reintroduced from upstream threepp at the pinned revision
 `docs/THREEPP_TEST_COMPATIBILITY.md`), in the `threepp::` namespace, unmodified
 except:
 
-- deleted stale sources whose headers no longer exist upstream
-  (`animation/{AnimationAction,AnimationMixer,PropertyBinding,PropertyMixer}.cpp`,
-  `objects/{DisplacedMesh,Ocean}.cpp` — Vulkan-coupled);
+- omitted stale sources whose headers no longer exist upstream
+  (`objects/{DisplacedMesh,Ocean}.cpp` — Vulkan-coupled);
+- restored upstream animation runtime sources
+  (`animation/{AnimationAction,AnimationMixer,PropertyBinding,PropertyMixer}.cpp`)
+  for GLTF clips; the bridge samples clips at absolute Motion frame time;
 - `include/threepp/favicon.hpp` stub (headless needs no window icon);
-- `GLTFLoader` keeps materials/lights/animation-clip support; the animation
-  *runtime* (mixer/action) stays out — sampling authority remains Motion's.
+- `GLTFLoader` includes materials/lights/animation-clip support and the restored
+  mixer/action runtime. `MotionSceneBridge` samples bound top-level clips from
+  absolute Chronon frame time; nested time remapping and clip blending remain
+  unimplemented.
 
 ## What is in here
 
 - `renderers/gl/` + `GLRenderer` + `RenderTarget` + embedded GLSL shaders:
   the OpenGL renderer, no Vulkan.
+- `postprocessing/`: threepp's OpenGL `EffectComposer`, image-space passes,
+  `UnrealBloomPass` and `BokehPass`, restored from the same pinned revision.
+  These process a rendered 3D scene; Chronon3D still owns video-layer
+  composition, project effects and final encoding.
 - `materials/` (full set — the zoo is small next to the renderer; use
   Basic/Lambert/Standard), `lights/`, `textures/`, `geometries/`.
 - `loaders/`: GLTFLoader, ImageLoader, TextureLoader (+ ModelLoader,
@@ -39,11 +47,18 @@ except:
   transforms, `CameraRig` poses, lights (`Ambient`/`Directional`/`Point`/`Spot`),
   `MaterialDescriptor`s, `BufferGeometry`s, imported GLB subtrees, and
   per-frame deformed mesh vertices (`RigFrameGeometry` / `DeformerStack`) into
-  `threepp::Scene` + `threepp::PerspectiveCamera`.
+  `threepp::Scene` + `threepp::PerspectiveCamera`. Bound GLTF `AnimationClip`s
+  are sampled at the absolute Chronon frame/fps time, including random access.
+  `MaterialKind::PBR` maps roughness, metalness and emission to threepp
+  `MeshStandardMaterial`. `bindMaterialNormalMap(materialId, texture)` attaches
+  tangent-space normal maps to bridged PBR materials without putting GPU texture
+  state in Chronon's renderer-neutral descriptor. When
+  lowering to Chronon3D's compact inline material contract those values are
+  approximated as specular/shininess rather than full PBR.
 
 ## Deliberately NOT here
 
-Vulkan renderer, post-processing, audio, controls/input (except the passive
+Vulkan renderer, audio, controls/input (except the passive
 event source Canvas links against), physics, examples, python, editor.
 Compositing, effects and encoding stay in Chronon3D.
 
@@ -55,7 +70,8 @@ cmake --build --preset dev --target \
   chrononmotion_render_spike \
   chrononmotion_render_glb \
   chrononmotion_render_bridge \
-  chrononmotion_render_image_mesh
+  chrononmotion_render_image_mesh \
+  chrononmotion_render_postprocessing
 
 # Milestone 1: Textured cube -> PPM
 xvfb-run -a ./build/dev/render/chrononmotion_render_spike /tmp/cube.ppm 256 256
@@ -69,5 +85,8 @@ xvfb-run -a ./build/dev/render/chrononmotion_render_bridge /tmp/bridge.ppm 256 2
 # Milestone 4: Deformable image mesh animation (PinWarp + Wave via RigProgram) -> PPM or MP4
 xvfb-run -a ./build/dev/render/chrononmotion_render_image_mesh /tmp/image_mesh.mp4 512 512 61
 xvfb-run -a ./build/dev/render/chrononmotion_render_image_mesh <input.png> /tmp/out.mp4 1080 1080 90
+
+# threepp scene post-processing: RenderPass -> UnrealBloomPass -> PPM
+xvfb-run -a ./build/dev/render/chrononmotion_render_postprocessing /tmp/bloom.ppm 512 512
 ```
 

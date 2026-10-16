@@ -709,6 +709,25 @@ void testTypedChronon3dLowering() {
     check(emittedProceduralMesh.at("layers").at(0).at("inline_mesh").at("indices") ==
               nlohmann::json{0, 1, 2},
           "procedural MotionScene geometry reaches the emitted RenderPlan without a second adapter");
+    MotionScene pbrMeshScene("procedural pbr mesh contract", 30.f);
+    const MaterialDescriptor pbrDescriptor = MaterialDescriptor::pbr(10, Color(0x8090a0), 0.25f, 0.8f);
+    pbrMeshScene.addMesh(73, "pbr triangle", MeshAttachment{
+        .geometry = proceduralTriangle, .material = pbrDescriptor}).alive(0, 1);
+    proceduralMeshOptions.contentLayers.clear();
+    proceduralMeshOptions.contentLayers.emplace("73", proceduralMeshContent);
+    const auto loweredPbrMesh = lowerToRenderPlan(pbrMeshScene, proceduralMeshOptions);
+    check(loweredPbrMesh.layers.size() == 1 && loweredPbrMesh.layers[0].inline_mesh &&
+          loweredPbrMesh.layers[0].inline_mesh->material.has_value(),
+          "PBR MotionScene meshes remain expressible in the compact RenderPlan material contract");
+    if (loweredPbrMesh.layers.size() == 1 && loweredPbrMesh.layers[0].inline_mesh &&
+        loweredPbrMesh.layers[0].inline_mesh->material) {
+        checkNear(loweredPbrMesh.layers[0].inline_mesh->material->specular,
+                  pbrDescriptor.metalness, 1e-6f,
+                  "PBR lowering maps metalness into RenderPlan specular strength");
+        checkNear(loweredPbrMesh.layers[0].inline_mesh->material->shininess,
+                  1.f + (1.f - pbrDescriptor.roughness) * 1023.f, 1e-3f,
+                  "PBR lowering maps roughness into RenderPlan shininess approximation");
+    }
     MotionScene animatedMeshScene("animated mesh contract", 30.f);
     Layer& animatedMesh = animatedMeshScene.addMesh(
         72, "animated triangle", MeshAttachment{.geometry = proceduralTriangle});
@@ -1519,12 +1538,15 @@ void testTypedChronon3dLowering() {
     cameraPose.position = {1.f, 2.f, -3.f};
     cameraPose.focusDistance = 480.f;
     cameraPose.focalLength = 50.f;
-    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
-          "camera lowering rejects authored focal-length metadata without an equivalent RenderPlan lens contract");
+    const auto focalLengthCamera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
+    check(focalLengthCamera.focal_length_mm == 50.f,
+          "camera lowering preserves authored focal length in the RenderPlan lens contract");
     cameraPose.focalLength = 0.f;
     cameraPose.fStop = 2.8f;
-    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
-          "camera lowering rejects authored physical f-stop metadata without an equivalent RenderPlan lens contract");
+    const auto physicalDofCamera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
+    check(physicalDofCamera.f_stop == 2.8f && physicalDofCamera.dof_f_stop == 2.8f &&
+          physicalDofCamera.dof_enabled,
+          "camera lowering preserves physical f-stop and enables the RenderPlan physical DoF contract");
     cameraPose.fStop = 0.f;
     cameraPose.aperture = 2.8f;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),

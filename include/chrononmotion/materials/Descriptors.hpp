@@ -13,6 +13,7 @@ namespace chrononmotion {
     enum class MaterialKind {
         Unlit,
         Lambert,
+        PBR,
         Emissive
     };
 
@@ -61,8 +62,25 @@ namespace chrononmotion {
             return descriptor;
         }
 
+        [[nodiscard]] static MaterialDescriptor pbr(std::uint32_t id, Color color,
+                                                    float roughness = 1.f,
+                                                    float metalness = 0.f,
+                                                    Color emission = Color(0x000000),
+                                                    float emissionStrength = 0.f) {
+            MaterialDescriptor descriptor;
+            descriptor.id = id;
+            descriptor.kind = MaterialKind::PBR;
+            descriptor.baseColor = color;
+            descriptor.roughness = roughness;
+            descriptor.metalness = metalness;
+            descriptor.emissiveColor = emission;
+            descriptor.emissiveStrength = emissionStrength;
+            descriptor.validate();
+            return descriptor;
+        }
+
         [[nodiscard]] static MaterialDescriptor emissive(std::uint32_t id, Color color,
-                                                          float strength = 1.f) {
+                                                         float strength = 1.f) {
             MaterialDescriptor descriptor;
             descriptor.id = id;
             descriptor.kind = MaterialKind::Emissive;
