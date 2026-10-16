@@ -37,8 +37,8 @@ namespace {
         checkNear(point, Vector3(0.f, 0.f, 1.f), 1e-5f, "ray returns the nearest AABB hit");
 
         const auto triangleHit = ray.intersectTriangle(Vector3(-1.f, -1.f, 0.f),
-                                                        Vector3(1.f, -1.f, 0.f),
-                                                        Vector3(0.f, 1.f, 0.f), false);
+                                                       Vector3(1.f, -1.f, 0.f),
+                                                       Vector3(0.f, 1.f, 0.f), false);
         check(triangleHit.has_value(), "ray intersects a triangle");
         checkNear(*triangleHit, Vector3(0.f, 0.f, 0.f), 1e-5f, "ray returns the triangle hit");
 
@@ -81,6 +81,10 @@ namespace {
         ambient.color.setRGB(0.2f, 0.3f, 0.4f, ColorSpace::Linear);
         ambient.intensity = 0.25f;
 
+        DirectionalLight& trackedDirection = scene.addDirectionalLight(23, "AnimatedDirection");
+        trackedDirection.directionTrack.add(0.f, Vector3(0.f, -1.f, 0.f));
+        trackedDirection.directionTrack.add(1.f, Vector3(1.f, 0.f, 0.f));
+
         scene.evaluate(15);
         const LightState& key = scene.lightState(20);
         check(key.evaluated && key.visible, "directional light is evaluated");
@@ -112,14 +116,18 @@ namespace {
         checkNear(key.direction, Vector3(0.f, -1.f, -5.f).normalize(), 1e-5f,
                   "directional target resolves through the layer graph");
 
+        const LightState& animatedDirection = scene.lightState(23);
+        checkNear(animatedDirection.direction, Vector3(1.f, -1.f, 0.f).normalize(), 1e-5f,
+                  "root directional light follows its authored direction track");
+
         const LightState& fill = scene.lightState(21);
         checkNear(fill.sample.range, 16.f, 1e-5f, "point light range follows its track");
         checkNear(fill.sample.decay, 2.f, 1e-5f, "point light decay is preserved");
-        check(scene.lightCount() == 3, "scene owns all light descriptors");
+        check(scene.lightCount() == 4, "scene owns all light descriptors");
 
         const CompiledScene compiled = scene.compile();
         check(compiled.transforms.size() == 2, "compiled scene contains evaluated transforms");
-        check(compiled.lights.size() == 3, "compiled scene contains evaluated lights");
+        check(compiled.lights.size() == 4, "compiled scene contains evaluated lights");
         check(compiled.frame == 15 && compiled.fps == 30.f, "compiled scene preserves the time authority");
     }
 
@@ -156,14 +164,19 @@ namespace {
         const MaterialDescriptor lambert = MaterialDescriptor::lambert(2, Color(0x00ff00));
         check(lambert.kind == MaterialKind::Lambert, "lambert descriptor identifies its material kind");
 
-        const MaterialDescriptor emissive = MaterialDescriptor::emissive(3, Color(0x00ffff), 4.f);
+        const MaterialDescriptor pbr = MaterialDescriptor::pbr(3, Color(0x808080), 0.2f, 0.9f);
+        check(pbr.kind == MaterialKind::PBR, "PBR descriptor identifies its material kind");
+        checkNear(pbr.roughness, 0.2f, 1e-6f, "PBR roughness is preserved");
+        checkNear(pbr.metalness, 0.9f, 1e-6f, "PBR metalness is preserved");
+
+        const MaterialDescriptor emissive = MaterialDescriptor::emissive(4, Color(0x00ffff), 4.f);
         check(emissive.kind == MaterialKind::Emissive, "emissive descriptor identifies its material kind");
         checkNear(emissive.emissiveStrength, 4.f, 1e-6f, "emissive strength is preserved");
 
         bool rejected = false;
         try {
-            MaterialDescriptor invalid = MaterialDescriptor::emissive(4, Color(0xffffff), -1.f);
-            (void)invalid;
+            MaterialDescriptor invalid = MaterialDescriptor::emissive(5, Color(0xffffff), -1.f);
+            (void) invalid;
         } catch (const std::invalid_argument&) {
             rejected = true;
         }

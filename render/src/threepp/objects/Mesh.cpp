@@ -385,6 +385,7 @@ void Mesh::copy(const Object3D& source, bool recursive) {
 
         materials_ = m->materials_;
         geometry_ = m->geometry_;
+        morphTargetInfluences() = m->morphTargetInfluences();
     }
 }
 

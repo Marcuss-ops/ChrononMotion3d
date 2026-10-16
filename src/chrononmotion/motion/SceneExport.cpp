@@ -335,6 +335,7 @@ namespace chrononmotion::motion {
             switch (mesh.material.kind) {
                 case MaterialKind::Unlit: writer.raw("\"unlit\""); break;
                 case MaterialKind::Lambert: writer.raw("\"lambert\""); break;
+                case MaterialKind::PBR: writer.raw("\"pbr\""); break;
                 case MaterialKind::Emissive: writer.raw("\"emissive\""); break;
             }
             writer.key("baseColor");

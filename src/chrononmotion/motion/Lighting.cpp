@@ -32,7 +32,11 @@ namespace chrononmotion::motion {
         result.shadowBias = shadowBiasTrack.empty() ? shadowBias : shadowBiasTrack.sample(seconds);
         result.shadowNormalBias = shadowNormalBiasTrack.empty() ? shadowNormalBias : shadowNormalBiasTrack.sample(seconds);
         result.shadowRadius = shadowRadiusTrack.empty() ? shadowRadius : shadowRadiusTrack.sample(seconds);
-        if (!directionTrack.empty()) result.direction = directionTrack.sample(seconds);
+        if (!directionTrack.empty()) {
+            result.direction = directionTrack.sample(seconds);
+        } else {
+            result.direction.set(0.f, 0.f, -1.f).transformDirection(result.local.toMatrix());
+        }
         return result;
     }
 

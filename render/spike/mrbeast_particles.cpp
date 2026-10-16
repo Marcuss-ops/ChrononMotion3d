@@ -85,7 +85,7 @@ std::shared_ptr<threepp::Mesh> addEllipsoid(
 std::shared_ptr<threepp::BufferGeometry> makeCurvedFacePatch() {
     constexpr int nx = 48, ny = 64;
     constexpr float rx = 0.335f, ry = 0.465f, rz = 0.265f;
-    constexpr float cy = 0.72f;
+    constexpr float cy = 0.f; // Face patch is authored in head-bone local space.
     std::vector<float> positions, uvs;
     std::vector<unsigned int> indices;
     positions.reserve((nx + 1) * (ny + 1) * 3);
@@ -100,7 +100,9 @@ std::shared_ptr<threepp::BufferGeometry> makeCurvedFacePatch() {
             const float pz = 0.065f + rz * std::sqrt(std::max(0.035f, 1.f - r2));
             positions.insert(positions.end(), {px, cy + py, pz});
             // Crop the source portrait's hairline-to-chin region directly in UV space.
-            uvs.insert(uvs.end(), {0.235f + u * 0.545f, 0.585f - v * 0.535f});
+            // Image UVs use a bottom-left origin, while the crop bounds above
+            // are measured from the source image's top edge.
+            uvs.insert(uvs.end(), {0.235f + u * 0.545f, 0.415f + v * 0.535f});
         }
     }
     for (int y = 0; y < ny; ++y) for (int x = 0; x < nx; ++x) {
@@ -145,8 +147,7 @@ MrBeastRig3D buildMrBeastRig(const std::shared_ptr<threepp::Texture>& portrait) 
     addEllipsoid(*rig.spine, shirt, {0.f, -0.43f, 0.f}, {0.58f, 0.70f, 0.32f}, "hoodie_torso");
     addEllipsoid(*rig.spine, shirt, {0.f, 0.02f, 0.f}, {0.53f, 0.22f, 0.30f}, "shoulder_line");
     addEllipsoid(*rig.neck, skin, {0.f, -0.03f, 0.f}, {0.19f, 0.27f, 0.19f}, "neck_mesh");
-    addEllipsoid(*rig.head, skin, {0.f, 0.f, 0.f}, {0.37f, 0.48f, 0.31f}, "skull");
-    addEllipsoid(*rig.head, hair, {0.f, 0.39f, -0.055f}, {0.385f, 0.17f, 0.26f}, "hair_volume");
+    addEllipsoid(*rig.head, hair, {0.f, 0.f, 0.f}, {0.36f, 0.475f, 0.29f}, "hair_and_skull_volume");
 
     // The source portrait is wrapped onto a curved facial surface that follows the 3D skull.
     auto faceMat = threepp::MeshPhongMaterial::create(
@@ -415,7 +416,10 @@ int main(int argc, char** argv) {
     bridge.scene()->add(character.root);
 
     auto renderAtFrame = [&](int frame) {
-        character.animate(static_cast<float>(frame) / fps, durationSec);
+        const float characterTime = frame == totalFrames - 1
+            ? 0.f
+            : static_cast<float>(frame) / fps;
+        character.animate(characterTime, durationSec);
         bridge.evaluateAndSync(motionScene, frame, &cameraRig);
         renderer.render(*bridge.scene(), *bridge.camera());
         return renderer.readRGBPixels();
