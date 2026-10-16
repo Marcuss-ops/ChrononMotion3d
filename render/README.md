@@ -34,20 +34,40 @@ except:
 - `thirdparty/`: glad, glfw, stb, nlohmann/json, meshoptimizer, quickhull,
   libwebp decoder subset.
 
+- `motion/MotionBridge.hpp` (`threepp::motion::MotionSceneBridge`): stateful
+  bridge that synchronizes evaluated `MotionScene` / `CompiledScene` world
+  transforms, `CameraRig` poses, lights (`Ambient`/`Directional`/`Point`/`Spot`),
+  `MaterialDescriptor`s, `BufferGeometry`s, imported GLB subtrees, and
+  per-frame deformed mesh vertices (`RigFrameGeometry` / `DeformerStack`) into
+  `threepp::Scene` + `threepp::PerspectiveCamera`.
+
 ## Deliberately NOT here
 
 Vulkan renderer, post-processing, audio, controls/input (except the passive
 event source Canvas links against), physics, examples, python, editor.
 Compositing, effects and encoding stay in Chronon3D.
 
-## Build & spike
+## Build & headless proofs
 
 ```shell
 cmake --preset dev
-cmake --build --preset dev --target chrononmotion_render_spike
+cmake --build --preset dev --target \
+  chrononmotion_render_spike \
+  chrononmotion_render_glb \
+  chrononmotion_render_bridge \
+  chrononmotion_render_image_mesh
+
+# Milestone 1: Textured cube -> PPM
 xvfb-run -a ./build/dev/render/chrononmotion_render_spike /tmp/cube.ppm 256 256
+
+# Milestone 2: Embedded-texture GLB 2.0 import -> PPM (or pass <model.glb> <out.ppm>)
+xvfb-run -a ./build/dev/render/chrononmotion_render_glb /tmp/glb.ppm 256 256
+
+# Milestone 3: MotionScene + CameraRig -> MotionSceneBridge -> multi-frame GL render
+xvfb-run -a ./build/dev/render/chrononmotion_render_bridge /tmp/bridge.ppm 256 256
+
+# Milestone 4: Deformable image mesh animation (PinWarp + Wave via RigProgram) -> PPM or MP4
+xvfb-run -a ./build/dev/render/chrononmotion_render_image_mesh /tmp/image_mesh.mp4 512 512 61
+xvfb-run -a ./build/dev/render/chrononmotion_render_image_mesh <input.png> /tmp/out.mp4 1080 1080 90
 ```
 
-The spike renders a textured, Lambert-lit cube offscreen and writes a PPM.
-Milestone 1 (Textured Cube) is that spike; next: GLB import proof, then the
-Motion→threepp bridge (baked world matrices + camera → threepp scene).

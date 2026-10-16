@@ -640,6 +640,18 @@ revision — not into the core library, but as the separate `render/` module
 The core stays dependency-free and renderer-free; the boundary guardrail
 explicitly scopes `render/` out while still pinning `include/`/`src/`/`tests/`.
 Dropped on re-entry: stale mixer/action sources, Vulkan-coupled objects,
-window icon stub. Proven by the headless textured-cube spike
-(`chrononmotion_render_spike`); GLB proof and the Motion→threepp bridge are
-next. See `render/README.md`.
+window icon stub.
+
+Proven across four headless offscreen executables:
+* `chrononmotion_render_spike` — textured Lambert-lit cube to PPM.
+* `chrononmotion_render_glb` — self-contained binary GLB 2.0 (or external
+  `.glb`) import with embedded PNG texture through `GLTFLoader` to PPM.
+* `chrononmotion_render_bridge` — `threepp::motion::MotionSceneBridge` driving
+  a `threepp::Scene` + `PerspectiveCamera` from evaluated `MotionScene`,
+  `CameraRig`, lights, materials and geometries across frames with verified
+  random-access determinism.
+* `chrononmotion_render_image_mesh` — takes an image (or synthetic subject
+  portrait), maps it onto a subdivided 32x32 `PlaneGeometry`, and animates the
+  image via mesh deformation (`RigProgram` + `PinWarp`/`Wave` +
+  `MotionSceneBridge::applyRigFrame`) into PPM or MP4. See `render/README.md`.
+

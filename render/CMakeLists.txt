@@ -188,9 +188,17 @@ target_include_directories(chrononmotion_render BEFORE PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libwebp"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libwebp/src"
 )
-target_link_libraries(chrononmotion_render PUBLIC glfw)
+target_link_libraries(chrononmotion_render PUBLIC glfw chrononmotion)
 target_compile_features(chrononmotion_render PUBLIC cxx_std_20)
 
-# --- spike: headless textured cube -> PPM ---
+# --- spikes: headless proofs (cube, glb, bridge, image_mesh) -> PPM/MP4 ---
 add_executable(chrononmotion_render_spike spike/cube.cpp)
 target_link_libraries(chrononmotion_render_spike PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_glb spike/glb.cpp)
+target_include_directories(chrononmotion_render_glb PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb")
+target_link_libraries(chrononmotion_render_glb PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_bridge spike/bridge.cpp)
+target_link_libraries(chrononmotion_render_bridge PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_image_mesh spike/image_mesh.cpp)
+target_link_libraries(chrononmotion_render_image_mesh PRIVATE chrononmotion_render)
+
