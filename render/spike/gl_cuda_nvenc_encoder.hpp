@@ -42,6 +42,28 @@ public:
         cuda_check(cudaGetDeviceProperties(&device_properties, devices_[0]), "cudaGetDeviceProperties");
         device_name_ = device_properties.name;
 
+        // Use a separate GPU framebuffer for the vertical flip. Blitting a
+        // framebuffer onto itself with reversed rows has overlapping source
+        // and destination rectangles and is undefined by OpenGL; on the headless
+        // pbuffer it produced a vertically mirrored/cropped encoder image.
+        GLint old_read_fbo = 0, old_draw_fbo = 0, old_texture = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &old_read_fbo);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &old_draw_fbo);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &old_texture);
+        glGenTextures(1, &flip_texture_);
+        glBindTexture(GL_TEXTURE_2D, flip_texture_);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width_, height_, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glGenFramebuffers(1, &flip_framebuffer_);
+        glBindFramebuffer(GL_FRAMEBUFFER, flip_framebuffer_);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, flip_texture_, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            throw std::runtime_error("vertical-flip framebuffer is incomplete");
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(old_read_fbo));
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(old_draw_fbo));
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(old_texture));
+
         glGenBuffers(1, &pbo_);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo_);
         glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(width_) * height_ * 4, nullptr, GL_STREAM_READ);
@@ -111,16 +133,17 @@ public:
         glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
 
-        // ReadPixels into PBO is GPU-resident. The vertical blit reverses the
-        // framebuffer's bottom-up row order for normal top-down video output.
+        // ReadPixels into PBO is GPU-resident. Blit into a separate texture FBO
+        // with reversed destination rows to convert OpenGL's bottom-up origin
+        // to top-down video order without a host-side copy.
         GLint previous_draw_fbo = 0;
         glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_draw_fbo);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, previous_read_fbo);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, flip_framebuffer_);
         glBlitFramebuffer(0, 0, width_, height_, 0, height_, width_, 0,
                           GL_COLOR_BUFFER_BIT, GL_NEAREST);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-        glReadBuffer(GL_BACK);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, flip_framebuffer_);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo_);
         glReadPixels(0, 0, width_, height_, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, static_cast<GLuint>(previous_pack_buffer));
@@ -220,6 +243,8 @@ private:
         if (cuda_device_) av_buffer_unref(&cuda_device_);
         if (graphics_resource_) cudaGraphicsUnregisterResource(graphics_resource_);
         if (pbo_) glDeleteBuffers(1, &pbo_);
+        if (flip_framebuffer_) glDeleteFramebuffers(1, &flip_framebuffer_);
+        if (flip_texture_) glDeleteTextures(1, &flip_texture_);
     }
 
     int width_{};
@@ -230,6 +255,8 @@ private:
     unsigned int device_count_{};
     int devices_[1]{};
     GLuint pbo_{};
+    GLuint flip_framebuffer_{};
+    GLuint flip_texture_{};
     cudaGraphicsResource* graphics_resource_{};
     AVBufferRef* cuda_device_{};
     AVBufferRef* frames_{};
