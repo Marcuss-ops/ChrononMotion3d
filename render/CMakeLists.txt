@@ -248,6 +248,8 @@ target_link_libraries(chrononmotion_render_alpha_handoff PRIVATE chrononmotion_r
 add_executable(chrononmotion_render_bridge spike/bridge.cpp)
 target_link_libraries(chrononmotion_render_bridge PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_clip_sequence_demo spike/clip_sequence_demo.cpp)
+target_include_directories(chrononmotion_render_clip_sequence_demo PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
 target_link_libraries(chrononmotion_render_clip_sequence_demo PRIVATE chrononmotion_render)
 
 add_executable(chrononmotion_render_clip_sequence_weights tests/clip_sequence_weights.cpp)
@@ -264,6 +266,16 @@ if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
     target_include_directories(chrononmotion_render_animation_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
     target_link_libraries(chrononmotion_render_animation_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
     target_compile_definitions(chrononmotion_render_animation_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
+endif ()
+add_executable(chrononmotion_render_humanoid_shadow_certification spike/humanoid_shadow_certification.cpp)
+target_include_directories(chrononmotion_render_humanoid_shadow_certification PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_humanoid_shadow_certification PRIVATE chrononmotion_render)
+if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
+    target_include_directories(chrononmotion_render_humanoid_shadow_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
+    target_link_libraries(chrononmotion_render_humanoid_shadow_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
+    target_compile_definitions(chrononmotion_render_humanoid_shadow_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
 endif ()
 add_executable(chrononmotion_render_pbr_certification spike/pbr_certification.cpp)
 target_include_directories(chrononmotion_render_pbr_certification PRIVATE
