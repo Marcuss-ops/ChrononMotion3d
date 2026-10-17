@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "glad/glad.h"
+#include "gpu_certification_gate.hpp"
 #include "threepp/canvas/Canvas.hpp"
 #include "threepp/lights/AmbientLight.hpp"
 #include "threepp/lights/DirectionalLight.hpp"
@@ -76,9 +78,12 @@ int main(int argc, char** argv) try {
     key->position.set(-3.f, 5.f, 7.f);
     bridge.scene()->add(key);
 
+    chrononmotion::certification::prepare_nvidia_egl_headless();
     Canvas canvas(Canvas::Parameters().size(W, H).antialiasing(4).headless(true));
     GLRenderer renderer(canvas);
     renderer.setClearColor(Color(0x151922));
+    const auto* rendererName = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
+    chrononmotion::certification::require_nvidia_renderer(rendererName ? rendererName : "unknown");
 
     // Random-access determinism: a frame must not depend on the frames rendered
     // before it. Render probe frames in order, then again in a scrambled order,

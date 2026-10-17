@@ -14,6 +14,7 @@ directory and used by certification scenes.
 | `RiggedSimple.glb` | Rigged Simple | CC BY 4.0; Cesium for Everything | `3a79dabb67bb0cd598a18d08b954d9d357c27c30672f82ef5d3f4e7fe6ca3401` |
 | `AnimatedMorphCube.glb` | Animated Morph Cube | CC0 1.0; Microsoft for Everything | `214ee56160a50dbf22543a1d66dbf860986e87f0efac3d89feac1359d0e6aeab` |
 | `Fox.glb` | Fox animated rig | CC0 model; CC BY 4.0 rigging and animation by tomkranis | `d97044e701822bac5a62696459b27d7b375aada5de8574ed4362edbba94771f7` |
+| `CesiumMan.glb` | Cesium Man: textured, skinned humanoid (19 joints) with one embedded walk clip | CC BY 4.0; Cesium (Khronos glTF-Sample-Assets, Models/CesiumMan) | `b7001eaeea8254bd44773bcd247e78696d94169388fbb2a1800fc69434e777d9` |
 | `CesiumMilkTruck.glb` | Multi-node/multi-mesh textured truck with animations | CC BY 4.0; Cesium for Everything; contains Cesium trademark/logo | `09371b34608116de5842d23abe260bf11acf3e1554daf334a647eb566eee5c49` |
 
 Model descriptions, authorship and license statements are recorded in the
