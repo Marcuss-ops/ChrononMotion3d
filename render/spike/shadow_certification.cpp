@@ -18,6 +18,9 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "glad/glad.h"
+#ifdef CHRONONMOTION_HAS_GL_CUDA_NVENC
+#include "gl_cuda_nvenc_encoder.hpp"
+#endif
 #include "stb_image_write.h"
 
 #include "chrononmotion/geometries/BoxGeometry.hpp"
@@ -48,12 +51,6 @@ namespace {
         if (!stbi_write_png(path.c_str(), W, H, 3, top.data(), int(stride))) {
             throw std::runtime_error("failed to write PNG: " + path.string());
         }
-    }
-
-    std::string shellQuote(const std::string& value) {
-        std::string result = "'";
-        for (char c : value) result += c == '\'' ? "'\\''" : std::string(1, c);
-        return result + "'";
     }
 
     struct ShadowMask {
@@ -99,6 +96,12 @@ namespace {
 }
 
 int main(int argc, char** argv) try {
+#ifndef CHRONONMOTION_HAS_GL_CUDA_NVENC
+    (void)argc;
+    (void)argv;
+    throw std::runtime_error("T05 requires the GL PBO -> CUDA -> NVENC build; CPU encoding fallback is disabled");
+#else
+    chrononmotion::certification::prepare_nvidia_egl_headless();
     const fs::path output = argc > 1 ? argv[1] : "out/threepp_certification/T05";
     fs::create_directories(output);
 
@@ -171,13 +174,6 @@ int main(int argc, char** argv) try {
     const auto* initialRendererName = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
     const std::string glRenderer = initialRendererName ? initialRendererName : "unknown";
     chrononmotion::certification::require_nvidia_renderer(glRenderer);
-    const char* requireHardware = std::getenv("CHRONON_CERT_REQUIRE_HARDWARE_GPU");
-    if (requireHardware && std::string(requireHardware) == "1" &&
-        (glRenderer.find("llvmpipe") != std::string::npos ||
-         glRenderer.find("softpipe") != std::string::npos ||
-         glRenderer.find("Software") != std::string::npos)) {
-        throw std::runtime_error("hardware GPU required but GL selected: " + glRenderer);
-    }
     renderer.setClearColor(Color(0x111823));
     renderer.toneMapping = ToneMapping::ACESFilmic;
     renderer.toneMappingExposure = 1.f;
@@ -185,11 +181,16 @@ int main(int argc, char** argv) try {
     renderer.shadowMap().type = ShadowMap::PFCSoft;
 
     const fs::path videoPath = output / "T05_dynamic_shadows_1080p30.mp4";
-    const std::string videoEncoder = chrononmotion::certification::require_nvenc_encoder();
-    const std::string encodeArgs = "-c:v h264_nvenc -preset p5 -rc vbr -cq 18 -b:v 0 -pix_fmt yuv420p ";
-    const std::string ffmpeg = "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size 1920x1080 -framerate 30 -i - -an " + encodeArgs + shellQuote(videoPath.string());
-    FILE* pipe = popen(ffmpeg.c_str(), "w");
-    if (!pipe) throw std::runtime_error("could not start ffmpeg");
+    chrononmotion::certification::require_nvenc_encoder();
+    chrononmotion::certification::GlCudaNvencEncoder gpuEncoder(W, H, FPS, videoPath.string());
+    for (unsigned frame = 0; frame < FRAMES; ++frame) {
+        bridge.evaluateAndSync(motion, int(frame));
+        renderer.render(*bridge.scene(), *bridge.camera());
+        gpuEncoder.encode_current_target(frame);
+    }
+    gpuEncoder.finish();
+    if (gpuEncoder.frames_submitted() != FRAMES || gpuEncoder.packets_written() != FRAMES)
+        throw std::runtime_error("T05 GPU encoder did not submit and mux all frames");
 
     std::array<std::vector<unsigned char>, 3> shadowedFrames;
     std::vector<unsigned char> sequentialFrame77;
@@ -199,17 +200,13 @@ int main(int argc, char** argv) try {
         bridge.evaluateAndSync(motion, int(frame));
         renderer.render(*bridge.scene(), *bridge.camera());
         auto pixels = renderer.readRGBPixels();
-        if (pixels.size() != std::size_t(W) * H * 3) throw std::runtime_error("unexpected T05 RGB readback size");
+        if (pixels.size() != std::size_t(W) * H * 3) throw std::runtime_error("unexpected T05 diagnostic RGB readback size");
         if (frame == 77) sequentialFrame77 = pixels;
         for (std::size_t i = 0; i < probeFrames.size(); ++i) {
             if (frame == probeFrames[i]) {
                 shadowedFrames[i] = pixels;
                 writePng(output / ("frame-" + std::to_string(frame) + ".png"), pixels);
             }
-        }
-        if (std::fwrite(pixels.data(), 1, pixels.size(), pipe) != pixels.size()) {
-            pclose(pipe);
-            throw std::runtime_error("ffmpeg pipe closed before all T05 frames were written");
         }
     }
     const auto sequentialDone = std::chrono::steady_clock::now();
@@ -234,10 +231,6 @@ int main(int argc, char** argv) try {
     const auto movingMaskPixels = maskDifference(masks[0], masks[1]);
     const double shadowCentroidMotion = std::hypot(masks[0].centerX - masks[1].centerX,
                                                    masks[0].centerY - masks[1].centerY);
-    const int encoder = pclose(pipe);
-    if (encoder == -1 || !WIFEXITED(encoder) || WEXITSTATUS(encoder) != 0) {
-        throw std::runtime_error("ffmpeg failed to encode T05 video");
-    }
 
     const bool shadowPresent = std::all_of(masks.begin(), masks.end(), [](const ShadowMask& mask) {
         return mask.count > 1000;
@@ -255,7 +248,7 @@ int main(int argc, char** argv) try {
     std::ofstream metadata(output / "metadata.json");
     metadata << std::fixed << std::setprecision(6)
              << "{\n  \"test_id\": \"T05\",\n  \"status\": \"" << "PARTIAL" << "\",\n  \"technical_checks_passed\": true,\n"
-             << "  \"pipeline\": \"MotionScene shadow flags and animated light -> MotionSceneBridge -> threepp GLShadowMap PFCSoft -> GLRenderer -> ffmpeg\",\n"
+             << "  \"pipeline\": \"MotionScene shadow flags and animated light -> MotionSceneBridge -> threepp GLShadowMap PFCSoft -> GLRenderer -> GL PBO -> CUDA -> NVENC\",\n"
              << "  \"width\": " << W << ",\n  \"height\": " << H << ",\n  \"fps\": " << FPS
              << ",\n  \"frames\": " << FRAMES << ",\n  \"duration_seconds\": 5.0,\n"
              << "  \"shadow_map_resolution\": [1024,1024],\n  \"shadow_bias\": " << key.shadowBias
@@ -270,20 +263,25 @@ int main(int argc, char** argv) try {
              << ",\n  \"peak_rss_kib\": " << usage.ru_maxrss << ",\n"
              << "  \"gl_renderer\": \"" << glRenderer
              << "\",\n  \"gl_version\": \"" << (glVersion ? glVersion : "unknown")
-             << "\",\n  \"video_encoder\": \"" << videoEncoder
-             << "\",\n  \"hardware_gpu_render\": "
+             << "\",\n  \"video_encoder\": \"h264_nvenc\""
+             << ",\n  \"gpu_device\": \"" << gpuEncoder.device_name() << "\""
+             << ",\n  \"frames_submitted\": " << gpuEncoder.frames_submitted()
+             << ",\n  \"packets_muxed\": " << gpuEncoder.packets_written()
+             << ",\n  \"hardware_gpu_render\": "
              << ((glRenderer.find("llvmpipe") == std::string::npos &&
                   glRenderer.find("softpipe") == std::string::npos &&
                   glRenderer.find("Software") == std::string::npos) ? "true" : "false")
-             << ",\n  \"cpu_framebuffer_readback_before_encode\": true"
+             << ",\n  \"cpu_framebuffer_readback_in_encode_path\": false"
+             << ",\n  \"diagnostic_cpu_readback_passes\": 157"
              << ",\n  \"gpu_resident_zero_copy\": false"
              << ",\n  \"vram_bytes\": null\n}\n";
     renderer.dispose();
-    std::cout << "T05 PARTIAL (CPU framebuffer readback before encode) shadow mask pixels=" << masks[0].count << ',' << masks[1].count << ',' << masks[2].count
+    std::cout << "T05 PARTIAL (GPU-resident encode verified; CPU readbacks are diagnostics only) shadow mask pixels=" << masks[0].count << ',' << masks[1].count << ',' << masks[2].count
               << " symmetric_difference_0_75=" << movingMaskPixels
               << " centroid_motion=" << shadowCentroidMotion
               << " random_access=" << randomAccess << '\n';
     return 0;
+#endif
 } catch (const std::exception& error) {
     std::cerr << "T05 FAIL: " << error.what() << '\n';
     return 1;
