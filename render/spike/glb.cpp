@@ -12,6 +12,7 @@
 //        chrononmotion_render_glb <model.glb> <out.ppm> [w h]
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -28,15 +29,18 @@
 
 #include "threepp/cameras/PerspectiveCamera.hpp"
 #include "threepp/canvas/Canvas.hpp"
+#include "threepp/geometries/PlaneGeometry.hpp"
 #include "threepp/lights/AmbientLight.hpp"
 #include "threepp/lights/DirectionalLight.hpp"
 #include "threepp/loaders/GLTFLoader.hpp"
 #include "threepp/math/Box3.hpp"
+#include "threepp/materials/MeshBasicMaterial.hpp"
 #include "threepp/materials/MeshStandardMaterial.hpp"
 #include "threepp/objects/Group.hpp"
 #include "threepp/objects/Mesh.hpp"
 #include "threepp/renderers/GLRenderer.hpp"
 #include "threepp/renderers/RenderTarget.hpp"
+#include "threepp/textures/DataTexture.hpp"
 #include "chrononmotion/motion/CameraRig.hpp"
 #include "threepp/motion/MotionBridge.hpp"
 
@@ -202,6 +206,75 @@ bool endsWithGlbOrGltf(const std::string& s) {
            (lower.size() >= 5 && lower.substr(lower.size() - 5) == ".gltf");
 }
 
+std::shared_ptr<DataTexture> makePaperTexture() {
+    constexpr int size = 512;
+    std::vector<unsigned char> rgb(size * size * 3);
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            const unsigned char grain = static_cast<unsigned char>((x * 17 + y * 29 + (x * y) % 31) % 9);
+            const unsigned char base = static_cast<unsigned char>(126 + grain);
+            const size_t at = static_cast<size_t>(y * size + x) * 3;
+            rgb[at] = rgb[at + 1] = rgb[at + 2] = base;
+        }
+    }
+    const auto pixel = [&](int x, int y, unsigned char shade) {
+        if (x < 0 || y < 0 || x >= size || y >= size) return;
+        const size_t at = static_cast<size_t>(y * size + x) * 3;
+        rgb[at] = rgb[at + 1] = rgb[at + 2] = shade;
+    };
+    const auto line = [&](int x0, int y0, int x1, int y1, unsigned char shade, int width = 1) {
+        const int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+        const int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+        int err = dx + dy;
+        for (;;) {
+            for (int oy = -width / 2; oy <= width / 2; ++oy)
+                for (int ox = -width / 2; ox <= width / 2; ++ox) pixel(x0 + ox, y0 + oy, shade);
+            if (x0 == x1 && y0 == y1) break;
+            const int e2 = 2 * err;
+            if (e2 >= dy) { err += dy; x0 += sx; }
+            if (e2 <= dx) { err += dx; y0 += sy; }
+        }
+    };
+    const auto rect = [&](int x, int y, int w, int h, unsigned char shade, int thickness = 1) {
+        for (int i = 0; i < thickness; ++i) {
+            line(x + i, y + i, x + w - i, y + i, shade);
+            line(x + i, y + h - i, x + w - i, y + h - i, shade);
+            line(x + i, y + i, x + i, y + h - i, shade);
+            line(x + w - i, y + i, x + w - i, y + h - i, shade);
+        }
+    };
+    // Restrained archival blueprint: an outline, a large technical diagram,
+    // and small measurement callouts without borrowing the reference's logos.
+    rect(24, 24, 464, 464, 145, 2);
+    rect(55, 62, 245, 248, 137, 1);
+    rect(91, 96, 174, 134, 179, 2);
+    rect(108, 110, 140, 106, 119, 1);
+    line(108, 163, 248, 163, 156);
+    line(178, 110, 178, 216, 156);
+    line(122, 124, 164, 150, 190, 2);
+    line(164, 150, 223, 124, 190, 2);
+    line(122, 200, 164, 174, 190, 2);
+    line(164, 174, 223, 200, 190, 2);
+    rect(332, 71, 124, 92, 154, 1);
+    rect(346, 84, 96, 65, 118, 1);
+    line(346, 117, 442, 117, 168);
+    for (int i = 0; i < 7; ++i) line(60, 345 + i * 17, 250 + (i % 3) * 22, 345 + i * 17, 126);
+    rect(328, 202, 128, 122, 145, 1);
+    for (int i = 0; i < 5; ++i) {
+        line(343, 222 + i * 19, 442, 222 + i * 19, 127);
+        line(343 + i * 20, 222, 343 + i * 20, 298, 127);
+    }
+    line(70, 458, 441, 458, 145, 2);
+    auto texture = DataTexture::create(std::move(rgb), size, size);
+    texture->format = Format::RGB;
+    texture->colorSpace = ColorSpace::sRGB;
+    texture->generateMipmaps = true;
+    texture->minFilter = Filter::LinearMipmapLinear;
+    texture->magFilter = Filter::Linear;
+    texture->needsUpdate();
+    return texture;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -211,16 +284,17 @@ int main(int argc, char** argv) {
     int height = 256;
     int orbitFrames = 0;
     std::filesystem::path orbitDirectory;
+    const bool pushInMode = argc >= 2 && std::string(argv[1]) == "--pushin";
     bool cleanupGlb = false;
 
-    if (argc >= 6 && std::string(argv[1]) == "--orbit") {
+    if (argc >= 6 && (std::string(argv[1]) == "--orbit" || pushInMode)) {
         glbPath = argv[2];
         orbitDirectory = argv[3];
         orbitFrames = std::atoi(argv[4]);
         width = std::atoi(argv[5]);
         height = argc > 6 ? std::atoi(argv[6]) : width * 9 / 16;
         if (orbitFrames < 2 || width < 1 || height < 1) {
-            std::cerr << "usage: chrononmotion_render_glb --orbit model.glb frame_dir frames width [height]\n";
+            std::cerr << "usage: chrononmotion_render_glb --orbit|--pushin model.glb frame_dir frames width [height]\n";
             return 2;
         }
         std::filesystem::create_directories(orbitDirectory);
@@ -252,17 +326,76 @@ int main(int argc, char** argv) {
 
     Canvas canvas(Canvas::Parameters().size(width, height).headless(true));
     GLRenderer renderer(canvas);
-    renderer.setClearColor(Color(0x393633));
-    auto scene = result->scene;
+    renderer.setClearColor(Color(pushInMode ? 0x202020 : 0x393633));
+    auto modelScene = result->scene;
 
     // Compose the proof around the imported object's actual bounds rather than
     // assuming that its origin is its visual center. This keeps ordinary GLBs
     // inside frame and gives the preview an elevated three-quarter angle.
-    scene->updateMatrixWorld(true);
-    const Box3 bounds = Box3().setFromObject(*scene, true);
+    modelScene->updateMatrixWorld(true);
+    const Box3 bounds = Box3().setFromObject(*modelScene, true);
     const Vector3 objectCenter = bounds.getCenter();
     const Vector3 size = bounds.getSize();
     const float span = std::max({size.x, size.y, size.z});
+
+    const float centeredTop = bounds.max().y - objectCenter.y;
+    const float centeredBottom = bounds.min().y - objectCenter.y;
+    const Vector3 pivot(objectCenter.x, 0.f, objectCenter.z);
+    auto scene = pushInMode ? Group::create() : modelScene;
+    if (pushInMode) {
+        modelScene->position.y -= objectCenter.y;
+        scene->add(modelScene);
+    }
+    std::shared_ptr<MeshBasicMaterial> paperMaterial;
+    std::shared_ptr<Mesh> paperMesh;
+    if (pushInMode) {
+        auto floor = Mesh::create(PlaneGeometry::create(80.f, 80.f),
+                MeshBasicMaterial::create(MeshBasicMaterial::Params().color(Color(0x303030))));
+        floor->material()->toneMapped = false;
+        floor->rotation.x = -1.57079632679f;
+        floor->position.set(pivot.x, centeredBottom - 0.025f, pivot.z);
+        scene->add(floor);
+        auto wall = Mesh::create(PlaneGeometry::create(80.f, 28.f),
+                MeshBasicMaterial::create(MeshBasicMaterial::Params().color(Color(0x242424))));
+        wall->material()->toneMapped = false;
+        wall->position.set(pivot.x, centeredTop + 4.f, pivot.z - span * 0.95f);
+        scene->add(wall);
+
+        const float wallZ = pivot.z - span * 0.95f;
+        auto windowFrame = Mesh::create(PlaneGeometry::create(3.15f, 2.55f),
+                MeshBasicMaterial::create(MeshBasicMaterial::Params().color(Color(0x3a3a3a))));
+        windowFrame->material()->toneMapped = false;
+        windowFrame->position.set(pivot.x, centeredTop + 2.5f, wallZ + 0.025f);
+        scene->add(windowFrame);
+        auto windowGlass = Mesh::create(PlaneGeometry::create(2.85f, 2.25f),
+                MeshBasicMaterial::create(MeshBasicMaterial::Params().color(Color(0x707070))));
+        windowGlass->material()->toneMapped = false;
+        windowGlass->position.set(pivot.x, centeredTop + 2.5f, wallZ + 0.045f);
+        scene->add(windowGlass);
+        for (const auto& [x, y, w, h] : std::array<std::array<float, 4>, 4>{
+                     std::array<float, 4>{0.f, 0.f, 0.07f, 2.2f},
+                     std::array<float, 4>{0.f, 0.f, 2.8f, 0.07f},
+                     std::array<float, 4>{-1.4f, 0.f, 0.06f, 2.2f},
+                     std::array<float, 4>{1.4f, 0.f, 0.06f, 2.2f}}) {
+            auto bar = Mesh::create(PlaneGeometry::create(w, h),
+                    MeshBasicMaterial::create(MeshBasicMaterial::Params().color(Color(0x292929))));
+            bar->material()->toneMapped = false;
+            bar->position.set(pivot.x + x, centeredTop + 2.5f + y, wallZ + 0.065f);
+            scene->add(bar);
+        }
+
+        paperMaterial = MeshBasicMaterial::create(
+                MeshBasicMaterial::Params().map(makePaperTexture()).color(Color(0xffffff)));
+        paperMaterial->transparent = true;
+        paperMaterial->side = Side::Double;
+        paperMaterial->depthWrite = false;
+        paperMaterial->opacity = 0.f;
+        paperMesh = Mesh::create(PlaneGeometry::create(1.85f, 1.35f), paperMaterial);
+        paperMesh->rotation.x = -1.57079632679f;
+        paperMesh->position.set(pivot.x, centeredTop + 0.08f, pivot.z);
+        paperMesh->visible = true;
+        scene->add(paperMesh);
+    }
 
     auto target = RenderTarget::create(width, height, RenderTarget::Options{});
     renderer.setRenderTarget(target.get());
@@ -273,12 +406,17 @@ int main(int argc, char** argv) {
     int meshCount = 0;
     int standardMaterials = 0;
     int textured = 0;
-    scene->traverse([&](Object3D& node) {
+    modelScene->traverse([&](Object3D& node) {
         if (auto* mesh = dynamic_cast<Mesh*>(&node)) {
             ++meshCount;
             if (auto stdMat = mesh->materialAs<MeshStandardMaterial>()) {
                 ++standardMaterials;
                 if (stdMat->map) ++textured;
+                if (pushInMode) {
+                    stdMat->color.multiplyScalar(0.82f);
+                    stdMat->roughness = 0.95f;
+                    stdMat->metalness = 0.f;
+                }
             }
         }
     });
@@ -290,38 +428,69 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    scene->add(AmbientLight::create(Color(0xffffff), 8.0f));
-    auto light = DirectionalLight::create(Color(0xffe4c4), 24.0f);
+    scene->add(AmbientLight::create(Color(0xffffff), pushInMode ? 4.5f : 8.0f));
+    auto light = DirectionalLight::create(pushInMode ? Color(0xe0e0e0) : Color(0xffe4c4), pushInMode ? 12.0f : 24.0f);
     light->position.set(objectCenter.x - span * 1.4f,
-                        objectCenter.y + span * 1.8f,
-                        objectCenter.z + span * 1.1f);
+                        pushInMode ? centeredTop + span * 1.7f : objectCenter.y + span * 1.8f,
+                        pushInMode ? objectCenter.z - span * 1.2f : objectCenter.z + span * 1.1f);
     auto lightTarget = Group::create();
-    lightTarget->position.copy(objectCenter);
+    lightTarget->position.set(pivot.x, pushInMode ? centeredTop : objectCenter.y, pivot.z);
     scene->add(lightTarget);
     light->setTarget(*lightTarget);
     scene->add(light);
 
     const float distance = std::max(span * 2.7f, 1.f);
     auto camera = PerspectiveCamera::create(30, float(width) / float(height), 0.1f, 1000);
-    chrononmotion::motion::CameraRig rig(301, 30.f, float(width) / float(height), 0.1f, 1000.f);
+    chrononmotion::motion::CameraRig rig(301, pushInMode ? 45.f : 30.f, float(width) / float(height), 0.1f, 1000.f);
     chrononmotion::motion::CameraPose pose;
     pose.position = chrononmotion::Vector3(objectCenter.x + distance * 0.58f,
                                            objectCenter.y + distance * 0.48f,
                                            objectCenter.z + distance * 0.66f);
     chrononmotion::motion::CameraRig::lookAtPose(pose, chrononmotion::Vector3(objectCenter.x, objectCenter.y, objectCenter.z));
     renderer.toneMapping = ToneMapping::ACESFilmic;
-    renderer.toneMappingExposure = 2.0f;
+    renderer.toneMappingExposure = pushInMode ? 1.0f : 2.0f;
+    if (pushInMode) {
+        constexpr float duration = 6.f;
+        rig.positionTrack().add(0.f, chrononmotion::Vector3(pivot.x + 8.f, 3.2f, pivot.z + 12.f));
+        rig.positionTrack().add(1.25f, chrononmotion::Vector3(pivot.x + 6.f, 7.8f, pivot.z + 8.f));
+        rig.positionTrack().add(2.6f, chrononmotion::Vector3(pivot.x + 3.f, 9.8f, pivot.z + 5.5f));
+        rig.positionTrack().add(4.0f, chrononmotion::Vector3(pivot.x + 1.f, centeredTop + 5.85f, pivot.z + 4.f));
+        rig.positionTrack().add(4.8f, chrononmotion::Vector3(pivot.x + 0.4f, centeredTop + 4.85f, pivot.z + 3.f));
+        rig.positionTrack().add(duration, chrononmotion::Vector3(pivot.x, centeredTop + 2.55f, pivot.z + 1.8f));
+        rig.targetTrack().add(0.f, chrononmotion::Vector3(pivot.x, 0.1f, pivot.z));
+        rig.targetTrack().add(1.25f, chrononmotion::Vector3(pivot.x, 0.65f, pivot.z));
+        rig.targetTrack().add(2.6f, chrononmotion::Vector3(pivot.x, centeredTop, pivot.z));
+        rig.targetTrack().add(4.0f, chrononmotion::Vector3(pivot.x, centeredTop, pivot.z));
+        rig.targetTrack().add(4.8f, chrononmotion::Vector3(pivot.x, centeredTop, pivot.z));
+        rig.targetTrack().add(duration, chrononmotion::Vector3(pivot.x, centeredTop, pivot.z));
+        rig.fovTrack().add(0.f, 45.f);
+        rig.fovTrack().add(1.25f, 43.f);
+        rig.fovTrack().add(2.6f, 38.f);
+        rig.fovTrack().add(4.0f, 30.f);
+        rig.fovTrack().add(4.8f, 26.f);
+        rig.fovTrack().add(duration, 24.f);
+    }
     const int renderCount = orbitFrames > 0 ? orbitFrames : 1;
     for (int frame = 0; frame < renderCount; ++frame) {
         if (orbitFrames > 0) {
-            const float yaw = (float(frame) / float(orbitFrames - 1)) * 6.28318530718f;
-            chrononmotion::motion::CameraPose framePose = pose;
-            chrononmotion::motion::CameraRig::orbitAround(framePose,
-                    chrononmotion::Vector3(objectCenter.x, objectCenter.y, objectCenter.z), yaw, 0.f);
+            const float frameTime = float(frame) / float(orbitFrames - 1) * 6.f;
+            chrononmotion::motion::CameraPose framePose;
+            if (pushInMode) {
+                framePose = rig.sample(frameTime);
+                paperMesh->visible = true;
+                paperMaterial->opacity = std::clamp((frameTime - 3.1f) / 0.55f, 0.f, 1.f);
+                pose = framePose;
+            } else {
+                const float yaw = (float(frame) / float(orbitFrames - 1)) * 6.28318530718f;
+                framePose = pose;
+                chrononmotion::motion::CameraRig::orbitAround(framePose,
+                        chrononmotion::Vector3(objectCenter.x, objectCenter.y, objectCenter.z), yaw, 0.f);
+            }
             threepp::motion::applyCameraPose(framePose, *camera);
         } else {
             threepp::motion::applyCameraPose(pose, *camera);
         }
+        scene->updateMatrixWorld(true);
         renderer.render(*scene, *camera);
         const auto pixels = renderer.readRGBPixels();
         if (int(pixels.size()) != width * height * 3) {
