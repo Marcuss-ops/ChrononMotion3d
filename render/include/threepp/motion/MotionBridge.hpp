@@ -123,6 +123,29 @@ namespace threepp::motion {
         void bindLayerAnimation(chrononmotion::motion::Layer::Id layerId,
                                 std::shared_ptr<AnimationClip> clip);
 
+        /// One clip in a deterministic clip sequence on a layer. Segments must be
+        /// sorted by `startSeconds`. Each segment crossfades in over `fadeInSeconds`
+        /// starting at its start, while the previous segment fades out over the same
+        /// window. `endSeconds` is only used by the final segment.
+        struct ClipSegment {
+            std::shared_ptr<AnimationClip> clip{};
+            float startSeconds{0.f};
+            float endSeconds{0.f};
+            float fadeInSeconds{0.f};
+        };
+
+        /// Bind a sequence of clips (e.g. walk -> talk -> wave) to a top-level Motion
+        /// mesh layer. Evaluated at absolute Chronon time on every sync, so random
+        /// access is deterministic and crossfades produce no pose snap.
+        void bindLayerClipSequence(chrononmotion::motion::Layer::Id layerId,
+                                   std::vector<ClipSegment> segments);
+
+        /// Effective crossfade weight of segment `index` at absolute time `t` (seconds).
+        /// Pure function of the segment list, so it can be unit-tested directly.
+        static float clipSequenceWeight(const std::vector<ClipSegment>& segments,
+                                        std::size_t index,
+                                        float t);
+
         /// Bind a threepp Texture to a ChrononMotion MaterialDescriptor id.
         void bindMaterialTexture(std::uint32_t materialId, std::shared_ptr<Texture> texture);
 
@@ -172,6 +195,13 @@ namespace threepp::motion {
             std::unique_ptr<AnimationMixer> mixer{};
         };
 
+        struct SequenceEntry {
+            std::vector<ClipSegment> segments{};
+            std::shared_ptr<Object3D> root{};
+            std::unique_ptr<AnimationMixer> mixer{};
+            std::vector<AnimationAction*> actions{};
+        };
+
         void syncSceneGraph(
                 const chrononmotion::motion::CompiledScene& compiled,
                 const Matrix4& rootTransform,
@@ -192,6 +222,7 @@ namespace threepp::motion {
         std::unordered_map<unsigned int, std::shared_ptr<BufferGeometry>> geometryCache_;
         std::unordered_map<std::string, LightEntry> lightNodes_;
         std::unordered_map<chrononmotion::motion::Layer::Id, AnimationEntry> animations_;
+        std::unordered_map<chrononmotion::motion::Layer::Id, SequenceEntry> sequences_;
     };
 
 }// namespace threepp::motion

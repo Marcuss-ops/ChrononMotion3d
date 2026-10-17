@@ -71,6 +71,12 @@ namespace threepp {
         // set the time scale stopping any scheduled warping
         // although .paused = true yields an effective time scale of zero, this
         // method does *not* change .paused, because it would be confusing
+        // Deterministic random-access: set the scaled local clip time directly
+        // (0..duration, clamped/wrapped by the caller) without advancing the
+        // mixer. Intended for offline timeline evaluation: set local times +
+        // weights on all sequenced actions, then call mixer->update(0).
+        AnimationAction& setLocalTime(float localTime);
+
         AnimationAction& setEffectiveTimeScale(float timeScale);
 
         // return the time scale considering warping and .paused
