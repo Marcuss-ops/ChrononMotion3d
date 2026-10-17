@@ -186,7 +186,9 @@ int run(const fs::path& asset, const fs::path& out, const std::string& requested
     floor->receiveShadow = true;
     bridge.scene()->add(floor);
 
-    bridge.camera()->position.set(center.x + span * 0.5f, center.y + span * 0.15f, center.z + span * 1.85f);
+    // CesiumMan's walk is authored for a side-on read. A frontal camera makes
+    // near and far limbs overlap the narrow torso and creates a false waist seam.
+    bridge.camera()->position.set(center.x + span * 1.85f, center.y + span * 0.15f, center.z + span * 0.5f);
     bridge.camera()->lookAt(center);
 
     std::shared_ptr<DirectionalLight> shadowLight;
