@@ -305,6 +305,61 @@ namespace threepp::motion {
         entry.mixer.reset();
     }
 
+    float MotionSceneBridge::clipSequenceWeight(
+            const std::vector<ClipSegment>& segments,
+            std::size_t index,
+            float t) {
+        const std::size_t n = segments.size();
+        if (index >= n) return 0.f;
+        const auto& seg = segments[index];
+
+        // Fade in over [start, start + fadeIn], linear.
+        float in = 0.f;
+        if (t >= seg.startSeconds) {
+            in = seg.fadeInSeconds > 0.f ? std::min(1.f, (t - seg.startSeconds) / seg.fadeInSeconds) : 1.f;
+        }
+
+        // Fade out is driven by the next segment's fade-in window; the final
+        // segment fades out at its endSeconds.
+        float out = 1.f;
+        if (index + 1 < n) {
+            const auto& next = segments[index + 1];
+            if (t >= next.startSeconds) {
+                out = next.fadeInSeconds > 0.f
+                              ? std::max(0.f, 1.f - (t - next.startSeconds) / next.fadeInSeconds)
+                              : 0.f;
+            }
+        } else if (t >= seg.endSeconds) {
+            out = 0.f;
+        }
+        return in * out;
+    }
+
+    void MotionSceneBridge::bindLayerClipSequence(
+            chrononmotion::motion::Layer::Id layerId,
+            std::vector<ClipSegment> segments) {
+        if (layerId == chrononmotion::motion::Layer::kRoot || segments.empty()) {
+            throw std::invalid_argument("MotionSceneBridge::bindLayerClipSequence: valid layer id and segments required");
+        }
+        for (std::size_t i = 0; i < segments.size(); ++i) {
+            const auto& seg = segments[i];
+            if (!seg.clip || !std::isfinite(seg.startSeconds) || !std::isfinite(seg.fadeInSeconds) || seg.fadeInSeconds < 0.f) {
+                throw std::invalid_argument("MotionSceneBridge::bindLayerClipSequence: segment needs clip and finite start/non-negative fade");
+            }
+            if (i > 0 && seg.startSeconds < segments[i - 1].startSeconds) {
+                throw std::invalid_argument("MotionSceneBridge::bindLayerClipSequence: segments must be sorted by start");
+            }
+        }
+        if (!(segments.back().endSeconds > segments.back().startSeconds)) {
+            throw std::invalid_argument("MotionSceneBridge::bindLayerClipSequence: last segment needs endSeconds > startSeconds");
+        }
+        auto& entry = sequences_[layerId];
+        entry.segments = std::move(segments);
+        entry.root.reset();
+        entry.mixer.reset();
+        entry.actions.clear();
+    }
+
     void MotionSceneBridge::bindMaterialTexture(
             std::uint32_t materialId,
             std::shared_ptr<Texture> texture) {
@@ -433,6 +488,42 @@ namespace threepp::motion {
                 animation.root = std::move(root);
             }
             animation.mixer->setTime(timelineSeconds);
+        }
+
+        // Clip sequences: each segment's weight is a linear crossfade. Segment i
+        // fades in over [start_i, start_i + fadeIn_i]; the previous segment fades
+        // out over the same window, so the weights always sum to 1 there.
+        for (auto& [layerId, seq] : sequences_) {
+            auto root = layerNode(layerId);
+            if (!root || seq.segments.empty()) continue;
+            if (seq.root != root || !seq.mixer) {
+                seq.mixer = std::make_unique<AnimationMixer>(*root);
+                seq.actions.clear();
+                for (const auto& seg : seq.segments) {
+                    AnimationAction* action = seq.mixer->clipAction(seg.clip);
+                    action->setEffectiveWeight(0.f);
+                    action->play();
+                    seq.actions.push_back(action);
+                }
+                seq.root = std::move(root);
+            }
+
+            const auto n = seq.segments.size();
+            const float t = timelineSeconds;
+            for (std::size_t i = 0; i < n; ++i) {
+                const auto& seg = seq.segments[i];
+                AnimationAction* action = seq.actions[i];
+                const float weight = clipSequenceWeight(seq.segments, i, t);
+                action->setEffectiveWeight(weight);
+                if (weight > 0.f) {
+                    // Clips loop (Loop::Repeat default): wrap local time into [0, duration).
+                    const float duration = seg.clip->getDuration();
+                    const float elapsed = std::max(0.f, t - seg.startSeconds);
+                    const float local = duration > 0.f ? std::fmod(elapsed, duration) : 0.f;
+                    action->setLocalTime(local);
+                }
+            }
+            seq.mixer->update(0.f);
         }
 
         scene_->updateMatrixWorld(true);

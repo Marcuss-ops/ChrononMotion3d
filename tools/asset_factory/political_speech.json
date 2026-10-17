@@ -1,0 +1,11 @@
+{
+  "template": "political_speech",
+  "speaker": {
+    "model": "render/spike/assets/threepp-certification/Fox.glb",
+    "clips": ["walk", "survey", "run"]
+  },
+  "stage": { "width": 6.0, "depth": 3.0, "height": 0.5 },
+  "crowd_count": 30,
+  "crowd_width": 8.0,
+  "crowd_depth": 4.0
+}
