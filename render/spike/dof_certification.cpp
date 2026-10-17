@@ -179,7 +179,7 @@ int main(int argc, char** argv) try {
     composer.renderToScreen = false;
     composer.setSize(W, H);
     composer.addPass(std::make_shared<RenderPass>(*bridge.scene(), *bridge.camera()));
-    auto bokeh = std::make_shared<BokehPass>(*bridge.scene(), *bridge.camera(), focusDistances[0], 0.06f, 0.025f);
+    auto bokeh = std::make_shared<BokehPass>(*bridge.scene(), *bridge.camera(), focusDistances[0], 0.008f, 0.02f);
     composer.addPass(bokeh);
 
     const fs::path videoPath = output / "T10_dof_1080p30.mp4";
