@@ -80,6 +80,28 @@ int main(int argc, char** argv) try {
     GLRenderer renderer(canvas);
     renderer.setClearColor(Color(0x151922));
 
+    // Random-access determinism: a frame must not depend on the frames rendered
+    // before it. Render probe frames in order, then again in a scrambled order,
+    // and require byte-identical pixels.
+    {
+        const std::vector<int> probes{10, 180, 239, 75, 10};
+        std::vector<std::vector<unsigned char>> reference;
+        for (int f : probes) {
+            bridge.evaluateAndSync(motion, f);
+            renderer.render(*bridge.scene(), *bridge.camera());
+            reference.push_back(renderer.readRGBPixels());
+        }
+        const std::vector<std::size_t> order{3, 0, 4, 1, 2};
+        for (std::size_t k : order) {
+            bridge.evaluateAndSync(motion, probes[k]);
+            renderer.render(*bridge.scene(), *bridge.camera());
+            if (renderer.readRGBPixels() != reference[k]) {
+                throw std::runtime_error("random-access mismatch at frame " + std::to_string(probes[k]));
+            }
+        }
+        std::cout << "random-access check: " << order.size() << " frames identical out of order\n";
+    }
+
     fs::create_directories(out.parent_path().empty() ? fs::path(".") : out.parent_path());
     const std::string cmd = "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size " +
                             std::to_string(W) + "x" + std::to_string(H) + " -framerate " + std::to_string(FPS) +
