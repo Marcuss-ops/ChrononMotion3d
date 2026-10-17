@@ -277,6 +277,26 @@ if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
     target_link_libraries(chrononmotion_render_humanoid_shadow_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
     target_compile_definitions(chrononmotion_render_humanoid_shadow_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
 endif ()
+add_executable(chrononmotion_render_scene_lowpoly_crowd spike/scene01_lowpoly_crowd.cpp)
+target_include_directories(chrononmotion_render_scene_lowpoly_crowd PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_scene_lowpoly_crowd PRIVATE chrononmotion_render)
+if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
+    target_include_directories(chrononmotion_render_scene_lowpoly_crowd PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
+    target_link_libraries(chrononmotion_render_scene_lowpoly_crowd PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
+    target_compile_definitions(chrononmotion_render_scene_lowpoly_crowd PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
+endif ()
+add_executable(chrononmotion_render_scene_hoodie_portrait spike/scene02_hoodie_portrait.cpp)
+target_include_directories(chrononmotion_render_scene_hoodie_portrait PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_scene_hoodie_portrait PRIVATE chrononmotion_render)
+if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
+    target_include_directories(chrononmotion_render_scene_hoodie_portrait PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
+    target_link_libraries(chrononmotion_render_scene_hoodie_portrait PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
+    target_compile_definitions(chrononmotion_render_scene_hoodie_portrait PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
+endif ()
 add_executable(chrononmotion_render_pbr_certification spike/pbr_certification.cpp)
 target_include_directories(chrononmotion_render_pbr_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
