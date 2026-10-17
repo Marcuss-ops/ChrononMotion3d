@@ -11,6 +11,7 @@
 //   2. External GLB file:
 //        chrononmotion_render_glb <model.glb> <out.ppm> [w h]
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -30,10 +31,14 @@
 #include "threepp/lights/AmbientLight.hpp"
 #include "threepp/lights/DirectionalLight.hpp"
 #include "threepp/loaders/GLTFLoader.hpp"
+#include "threepp/math/Box3.hpp"
 #include "threepp/materials/MeshStandardMaterial.hpp"
+#include "threepp/objects/Group.hpp"
 #include "threepp/objects/Mesh.hpp"
 #include "threepp/renderers/GLRenderer.hpp"
 #include "threepp/renderers/RenderTarget.hpp"
+#include "chrononmotion/motion/CameraRig.hpp"
+#include "threepp/motion/MotionBridge.hpp"
 
 using namespace threepp;
 
@@ -204,9 +209,22 @@ int main(int argc, char** argv) {
     std::string outPpm = "glb.ppm";
     int width = 256;
     int height = 256;
+    int orbitFrames = 0;
+    std::filesystem::path orbitDirectory;
     bool cleanupGlb = false;
 
-    if (argc >= 3 && endsWithGlbOrGltf(argv[1])) {
+    if (argc >= 6 && std::string(argv[1]) == "--orbit") {
+        glbPath = argv[2];
+        orbitDirectory = argv[3];
+        orbitFrames = std::atoi(argv[4]);
+        width = std::atoi(argv[5]);
+        height = argc > 6 ? std::atoi(argv[6]) : width * 9 / 16;
+        if (orbitFrames < 2 || width < 1 || height < 1) {
+            std::cerr << "usage: chrononmotion_render_glb --orbit model.glb frame_dir frames width [height]\n";
+            return 2;
+        }
+        std::filesystem::create_directories(orbitDirectory);
+    } else if (argc >= 3 && endsWithGlbOrGltf(argv[1])) {
         glbPath = argv[1];
         outPpm = argv[2];
         if (argc > 3) width = std::atoi(argv[3]);
@@ -234,12 +252,21 @@ int main(int argc, char** argv) {
 
     Canvas canvas(Canvas::Parameters().size(width, height).headless(true));
     GLRenderer renderer(canvas);
-    renderer.setClearColor(Color(0x1a1d24));
+    renderer.setClearColor(Color(0x393633));
+    auto scene = result->scene;
+
+    // Compose the proof around the imported object's actual bounds rather than
+    // assuming that its origin is its visual center. This keeps ordinary GLBs
+    // inside frame and gives the preview an elevated three-quarter angle.
+    scene->updateMatrixWorld(true);
+    const Box3 bounds = Box3().setFromObject(*scene, true);
+    const Vector3 objectCenter = bounds.getCenter();
+    const Vector3 size = bounds.getSize();
+    const float span = std::max({size.x, size.y, size.z});
 
     auto target = RenderTarget::create(width, height, RenderTarget::Options{});
     renderer.setRenderTarget(target.get());
 
-    auto scene = result->scene;
     // Preserve GLTFLoader's imported materials and textures. This proof is meant
     // to exercise the actual imported PBR path rather than replacing it with a
     // simpler material for a brighter screenshot.
@@ -263,27 +290,51 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    scene->add(AmbientLight::create(Color(0xffffff), 1.0f));
-    auto light = DirectionalLight::create(Color(0xffffff), 3.0f);
-    light->position.set(2, 3, 4);
+    scene->add(AmbientLight::create(Color(0xffffff), 8.0f));
+    auto light = DirectionalLight::create(Color(0xffe4c4), 24.0f);
+    light->position.set(objectCenter.x - span * 1.4f,
+                        objectCenter.y + span * 1.8f,
+                        objectCenter.z + span * 1.1f);
+    auto lightTarget = Group::create();
+    lightTarget->position.copy(objectCenter);
+    scene->add(lightTarget);
+    light->setTarget(*lightTarget);
     scene->add(light);
 
-    auto camera = PerspectiveCamera::create(45, float(width) / float(height), 0.1f, 100);
-    camera->position.z = 4;
-    renderer.render(*scene, *camera);
-
-    const auto pixels = renderer.readRGBPixels();
-    if (int(pixels.size()) != width * height * 3) {
-        std::cerr << "glb proof: readback size " << pixels.size() << "\n";
-        return 1;
-    }
+    const float distance = std::max(span * 2.7f, 1.f);
+    auto camera = PerspectiveCamera::create(30, float(width) / float(height), 0.1f, 1000);
+    chrononmotion::motion::CameraRig rig(301, 30.f, float(width) / float(height), 0.1f, 1000.f);
+    chrononmotion::motion::CameraPose pose;
+    pose.position = chrononmotion::Vector3(objectCenter.x + distance * 0.58f,
+                                           objectCenter.y + distance * 0.48f,
+                                           objectCenter.z + distance * 0.66f);
+    chrononmotion::motion::CameraRig::lookAtPose(pose, chrononmotion::Vector3(objectCenter.x, objectCenter.y, objectCenter.z));
+    renderer.toneMapping = ToneMapping::ACESFilmic;
+    renderer.toneMappingExposure = 2.0f;
+    const int renderCount = orbitFrames > 0 ? orbitFrames : 1;
+    for (int frame = 0; frame < renderCount; ++frame) {
+        if (orbitFrames > 0) {
+            const float yaw = (float(frame) / float(orbitFrames - 1)) * 6.28318530718f;
+            chrononmotion::motion::CameraPose framePose = pose;
+            chrononmotion::motion::CameraRig::orbitAround(framePose,
+                    chrononmotion::Vector3(objectCenter.x, objectCenter.y, objectCenter.z), yaw, 0.f);
+            threepp::motion::applyCameraPose(framePose, *camera);
+        } else {
+            threepp::motion::applyCameraPose(pose, *camera);
+        }
+        renderer.render(*scene, *camera);
+        const auto pixels = renderer.readRGBPixels();
+        if (int(pixels.size()) != width * height * 3) {
+            std::cerr << "glb proof: readback size " << pixels.size() << "\n";
+            return 1;
+        }
 
     const auto pixelAt = [&](int x, int y) -> uint32_t {
         const size_t i = static_cast<size_t>(y * width + x) * 3;
         return (uint32_t(pixels[i]) << 16) | (uint32_t(pixels[i + 1]) << 8) | uint32_t(pixels[i + 2]);
     };
     const uint32_t corner = pixelAt(2, 2);
-    const uint32_t center = pixelAt(width / 2, height / 2);
+    const uint32_t centerPixel = pixelAt(width / 2, height / 2);
     std::set<uint32_t> centerPatchColors;
     for (int y = height / 3; y < (2 * height) / 3; ++y) {
         for (int x = width / 3; x < (2 * width) / 3; ++x) {
@@ -291,19 +342,23 @@ int main(int argc, char** argv) {
             if (c != corner) centerPatchColors.insert(c);
         }
     }
-    std::cout << "glb proof: center=0x" << std::hex << center << " corner=0x" << corner << std::dec
+    std::cout << "glb proof: center=0x" << std::hex << centerPixel << " corner=0x" << corner << std::dec
               << " distinct_lit_colors=" << centerPatchColors.size() << "\n";
-    if (center == corner || centerPatchColors.size() < 2) {
+    if (centerPixel == corner || centerPatchColors.size() < 2) {
         std::cerr << "glb proof: expected non-background textured pixels in center region\n";
         return 1;
     }
 
-    std::ofstream ppm(outPpm, std::ios::binary);
+    const auto output = orbitFrames > 0
+            ? orbitDirectory / ("frame_" + std::string(6 - std::min(6, int(std::to_string(frame).size())), '0') + std::to_string(frame) + ".ppm")
+            : std::filesystem::path(outPpm);
+    std::ofstream ppm(output, std::ios::binary);
     ppm << "P6\n" << width << " " << height << "\n255\n";
     for (int y = height - 1; y >= 0; --y) {
         ppm.write(reinterpret_cast<const char*>(&pixels[y * width * 3]), width * 3);
     }
-    std::cout << "glb proof: wrote " << outPpm << "\n";
+    std::cout << "glb proof: wrote " << output << "\n";
+    }
 
     renderer.setRenderTarget(nullptr);
     renderer.dispose();
