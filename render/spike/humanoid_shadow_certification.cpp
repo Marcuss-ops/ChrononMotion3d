@@ -141,17 +141,19 @@ int run(const fs::path& asset, const fs::path& out, const std::string& requested
 
     auto& fill = motion.addAmbientLight(100, "fill");
     fill.color = chrononmotion::Color(0xffffff);
-    fill.intensity = 0.35f;
+    fill.intensity = 0.6f;
 
     auto& key = motion.addDirectionalLight(101, "key");
     key.color = chrononmotion::Color(0xffedcf);
-    key.intensity = 2.8f;
+    key.intensity = 2.4f;
     key.castsShadow = true;
     key.shadowBias = -0.00015f;
     key.shadowNormalBias = 0.025f;
     key.shadowRadius = 3.f;
-    key.positionTrack.add(0.f, {-3.5f, 7.f, 3.4f});
-    key.directionTrack.add(0.f, {3.5f, -7.f, -3.4f});
+    // Keep the key fairly high so its floor shadow reads as a grounding cue
+    // instead of a long dark band across the set.
+    key.positionTrack.add(0.f, {-2.f, 8.f, 1.f});
+    key.directionTrack.add(0.f, {2.f, -8.f, -1.f});
 
     threepp::motion::MotionSceneBridge bridge(40.f, float(W) / H, 0.05f, 1000.f);
     bridge.bindAsset("humanoid_asset", result->scene);
@@ -184,7 +186,7 @@ int run(const fs::path& asset, const fs::path& out, const std::string& requested
     floor->receiveShadow = true;
     bridge.scene()->add(floor);
 
-    bridge.camera()->position.set(center.x + span * 0.75f, center.y + span * 0.25f, center.z + span * 2.4f);
+    bridge.camera()->position.set(center.x + span * 0.5f, center.y + span * 0.15f, center.z + span * 1.85f);
     bridge.camera()->lookAt(center);
 
     std::shared_ptr<DirectionalLight> shadowLight;
