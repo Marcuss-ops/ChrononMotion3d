@@ -151,6 +151,18 @@ AnimationAction& AnimationAction::stopFading() {
     return *this;
 }
 
+AnimationAction& AnimationAction::setLocalTime(float localTime) {
+    if (!std::isfinite(localTime)) {
+        throw std::invalid_argument("AnimationAction::setLocalTime: time must be finite");
+    }
+    this->time = localTime;
+    this->_loopCount = -1;
+    this->_startTime = std::nullopt;
+    if (!this->enabled) this->enabled = true;
+    if (this->paused) this->paused = false;
+    return this->stopFading().stopWarping();
+}
+
 AnimationAction& AnimationAction::setEffectiveTimeScale(float timeScale) {
 
     this->timeScale = timeScale;
