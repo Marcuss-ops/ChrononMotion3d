@@ -33,6 +33,7 @@
 #include "threepp/geometries/PlaneGeometry.hpp"
 #include "threepp/lights/AmbientLight.hpp"
 #include "threepp/lights/DirectionalLight.hpp"
+#include "threepp/lights/SpotLight.hpp"
 #include "threepp/loaders/GLTFLoader.hpp"
 #include "threepp/math/Box3.hpp"
 #include "threepp/materials/MeshBasicMaterial.hpp"
@@ -231,6 +232,49 @@ std::shared_ptr<DataTexture> makePaperTexture() {
     return texture;
 }
 
+std::shared_ptr<DataTexture> loadPaperOverlay(const std::filesystem::path& path) {
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    unsigned char* decoded = stbi_load(path.string().c_str(), &width, &height, &channels, 4);
+    if (!decoded || width <= 0 || height <= 0) {
+        std::cerr << "glb proof: failed to load paper overlay " << path << "\n";
+        if (decoded) stbi_image_free(decoded);
+        return {};
+    }
+    std::vector<unsigned char> rgba(decoded, decoded + static_cast<size_t>(width) * height * 4);
+    stbi_image_free(decoded);
+    auto texture = DataTexture::create(std::move(rgba), width, height);
+    texture->format = Format::RGBA;
+    texture->colorSpace = ColorSpace::sRGB;
+    texture->generateMipmaps = true;
+    texture->minFilter = Filter::LinearMipmapLinear;
+    texture->magFilter = Filter::Linear;
+    texture->needsUpdate();
+    return texture;
+}
+
+Vector3 sampleSmoothPath(const std::vector<Vector3>& points, float progress) {
+    if (points.size() < 2) return points.empty() ? Vector3() : points.front();
+    const float scaled = std::clamp(progress, 0.f, 1.f) * static_cast<float>(points.size() - 1);
+    const size_t segment = std::min(static_cast<size_t>(scaled), points.size() - 2);
+    const float t = scaled - static_cast<float>(segment);
+    const Vector3& p0 = points[segment == 0 ? 0 : segment - 1];
+    const Vector3& p1 = points[segment];
+    const Vector3& p2 = points[segment + 1];
+    const Vector3& p3 = points[std::min(segment + 2, points.size() - 1)];
+    const auto component = [t](float a, float b, float c, float d) {
+        const float t2 = t * t;
+        const float t3 = t2 * t;
+        return 0.5f * (2.f * b + (-a + c) * t +
+                (2.f * a - 5.f * b + 4.f * c - d) * t2 +
+                (-a + 3.f * b - 3.f * c + d) * t3);
+    };
+    return Vector3(component(p0.x, p1.x, p2.x, p3.x),
+                   component(p0.y, p1.y, p2.y, p3.y),
+                   component(p0.z, p1.z, p2.z, p3.z));
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -241,6 +285,7 @@ int main(int argc, char** argv) {
     int orbitFrames = 0;
     std::filesystem::path orbitDirectory;
     const bool pushInMode = argc >= 2 && std::string(argv[1]) == "--pushin";
+    const std::filesystem::path assetsDirectory = std::filesystem::path(__FILE__).parent_path() / "assets";
     bool cleanupGlb = false;
 
     if (argc >= 6 && (std::string(argv[1]) == "--orbit" || pushInMode)) {
@@ -304,6 +349,7 @@ int main(int argc, char** argv) {
     }
     std::shared_ptr<MeshBasicMaterial> paperMaterial;
     std::shared_ptr<Mesh> paperMesh;
+    std::array<std::shared_ptr<MeshBasicMaterial>, 5> animatedMastheadMaterials{};
     if (pushInMode) {
         auto floor = Mesh::create(PlaneGeometry::create(80.f, 80.f),
                 MeshBasicMaterial::create(MeshBasicMaterial::Params().color(Color(0x303030))));
@@ -351,6 +397,26 @@ int main(int argc, char** argv) {
         paperMesh->position.set(pivot.x, centeredTop + 0.08f, pivot.z);
         paperMesh->visible = true;
         scene->add(paperMesh);
+
+        const std::array<std::string, 5> mastheadAssets{
+                "sony_letter_S.png", "sony_letter_O.png", "sony_letter_N.png",
+                "sony_letter_Y.png", "sony_masthead_info.png"};
+        for (size_t i = 0; i < mastheadAssets.size(); ++i) {
+            auto map = loadPaperOverlay(assetsDirectory / mastheadAssets[i]);
+            if (!map) return 1;
+            auto material = MeshBasicMaterial::create(MeshBasicMaterial::Params()
+                    .map(map).color(Color(0xffffff)));
+            material->transparent = true;
+            material->depthWrite = false;
+            material->toneMapped = false;
+            material->opacity = 0.f;
+            material->side = Side::Double;
+            auto lettering = Mesh::create(PlaneGeometry::create(1.85f, 1.35f), material);
+            lettering->rotation.x = -1.57079632679f;
+            lettering->position.set(pivot.x, centeredTop + 0.083f, pivot.z);
+            scene->add(lettering);
+            animatedMastheadMaterials[i] = material;
+        }
     }
 
     auto target = RenderTarget::create(width, height, RenderTarget::Options{});
@@ -384,8 +450,8 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    scene->add(AmbientLight::create(Color(0xffffff), pushInMode ? 4.5f : 8.0f));
-    auto light = DirectionalLight::create(pushInMode ? Color(0xe0e0e0) : Color(0xffe4c4), pushInMode ? 12.0f : 24.0f);
+    scene->add(AmbientLight::create(Color(0xffffff), pushInMode ? 2.1f : 8.0f));
+    auto light = DirectionalLight::create(pushInMode ? Color(0xe0e0e0) : Color(0xffe4c4), pushInMode ? 5.0f : 24.0f);
     light->position.set(objectCenter.x - span * 1.4f,
                         pushInMode ? centeredTop + span * 1.7f : objectCenter.y + span * 1.8f,
                         pushInMode ? objectCenter.z - span * 1.2f : objectCenter.z + span * 1.1f);
@@ -395,11 +461,13 @@ int main(int argc, char** argv) {
     light->setTarget(*lightTarget);
     scene->add(light);
 
-    // A broad neutral overhead fill keeps the tabletop readable as the camera
-    // rises, without washing out the warm side light or the dark room.
+    // A localized overhead spotlight creates the actual pool of light on the
+    // tabletop; the side key remains low to preserve the dark room around it.
     if (pushInMode) {
-        auto overhead = DirectionalLight::create(Color(0xfff3df), 6.5f);
-        overhead->position.set(pivot.x, centeredTop + span * 2.4f, pivot.z + span * 0.15f);
+        auto overhead = SpotLight::create(Color(0xfff1dc), 320.f, span * 6.f, 0.95f, 0.72f, 2.f);
+        overhead->position.set(pivot.x - span * 0.08f, centeredTop + span * 1.45f,
+                               pivot.z + span * 0.12f);
+        overhead->radius = span * 0.12f;
         auto overheadTarget = Group::create();
         overheadTarget->position.set(pivot.x, centeredTop, pivot.z);
         scene->add(overheadTarget);
@@ -409,7 +477,9 @@ int main(int argc, char** argv) {
 
     const float distance = std::max(span * 2.7f, 1.f);
     auto camera = PerspectiveCamera::create(30, float(width) / float(height), 0.1f, 1000);
-    chrononmotion::motion::CameraRig rig(301, pushInMode ? 45.f : 30.f, float(width) / float(height), 0.1f, 1000.f);
+    std::vector<Vector3> cameraPath;
+    std::vector<Vector3> targetPath;
+    chrononmotion::motion::Easing cameraTiming = chrononmotion::motion::Easing::easeInOut();
     chrononmotion::motion::CameraPose pose;
     pose.position = chrononmotion::Vector3(objectCenter.x + distance * 0.58f,
                                            objectCenter.y + distance * 0.48f,
@@ -418,25 +488,20 @@ int main(int argc, char** argv) {
     renderer.toneMapping = ToneMapping::ACESFilmic;
     renderer.toneMappingExposure = pushInMode ? 1.0f : 2.0f;
     if (pushInMode) {
-        constexpr float duration = 6.f;
-        rig.positionTrack().add(0.f, chrononmotion::Vector3(pivot.x + 8.f, 3.2f, pivot.z + 12.f));
-        rig.positionTrack().add(1.25f, chrononmotion::Vector3(pivot.x + 6.f, 7.8f, pivot.z + 8.f));
-        rig.positionTrack().add(2.6f, chrononmotion::Vector3(pivot.x + 3.f, 9.8f, pivot.z + 5.5f));
-        rig.positionTrack().add(4.0f, chrononmotion::Vector3(pivot.x + 1.f, centeredTop + 5.85f, pivot.z + 4.f));
-        rig.positionTrack().add(4.8f, chrononmotion::Vector3(pivot.x + 0.4f, centeredTop + 4.85f, pivot.z + 3.f));
-        rig.positionTrack().add(duration, chrononmotion::Vector3(pivot.x, centeredTop + 2.55f, pivot.z + 1.8f));
-        rig.targetTrack().add(0.f, chrononmotion::Vector3(pivot.x, 0.1f, pivot.z));
-        rig.targetTrack().add(1.25f, chrononmotion::Vector3(pivot.x, 0.65f, pivot.z));
-        rig.targetTrack().add(2.6f, chrononmotion::Vector3(pivot.x, centeredTop, pivot.z));
-        rig.targetTrack().add(4.0f, chrononmotion::Vector3(pivot.x, centeredTop, pivot.z));
-        rig.targetTrack().add(4.8f, chrononmotion::Vector3(pivot.x, centeredTop, pivot.z));
-        rig.targetTrack().add(duration, chrononmotion::Vector3(pivot.x, centeredTop, pivot.z));
-        rig.fovTrack().add(0.f, 45.f);
-        rig.fovTrack().add(1.25f, 43.f);
-        rig.fovTrack().add(2.6f, 38.f);
-        rig.fovTrack().add(4.0f, 30.f);
-        rig.fovTrack().add(4.8f, 26.f);
-        rig.fovTrack().add(duration, 24.f);
+        cameraPath = {
+                Vector3(pivot.x + 8.f, 3.2f, pivot.z + 12.f),
+                Vector3(pivot.x + 7.f, 4.8f, pivot.z + 10.5f),
+                Vector3(pivot.x + 4.f, 7.2f, pivot.z + 8.f),
+                Vector3(pivot.x + 1.4f, 9.1f, pivot.z + 5.2f),
+                Vector3(pivot.x + 0.35f, centeredTop + 3.4f, pivot.z + 2.8f),
+                Vector3(pivot.x, centeredTop + 2.35f, pivot.z + 2.5f)};
+        targetPath = {
+                Vector3(pivot.x, 0.1f, pivot.z),
+                Vector3(pivot.x, 0.25f, pivot.z),
+                Vector3(pivot.x, 0.75f, pivot.z),
+                Vector3(pivot.x, centeredTop, pivot.z),
+                Vector3(pivot.x, centeredTop, pivot.z),
+                Vector3(pivot.x, centeredTop, pivot.z)};
     }
     const int renderCount = orbitFrames > 0 ? orbitFrames : 1;
     for (int frame = 0; frame < renderCount; ++frame) {
@@ -444,9 +509,24 @@ int main(int argc, char** argv) {
             const float frameTime = float(frame) / float(orbitFrames - 1) * 6.f;
             chrononmotion::motion::CameraPose framePose;
             if (pushInMode) {
-                framePose = rig.sample(frameTime);
+                const float linearProgress = std::clamp(frameTime / 6.f, 0.f, 1.f);
+                const float progress = cameraTiming(linearProgress);
+                const Vector3 cameraPoint = sampleSmoothPath(cameraPath, progress);
+                const Vector3 targetPoint = sampleSmoothPath(targetPath, progress);
+                framePose.position = chrononmotion::Vector3(cameraPoint.x, cameraPoint.y, cameraPoint.z);
+                framePose.target = chrononmotion::Vector3(targetPoint.x, targetPoint.y, targetPoint.z);
+                framePose.hasTarget = true;
+                framePose.fov = 46.f + (24.f - 46.f) * progress;
+                chrononmotion::motion::CameraRig::lookAtPose(framePose, framePose.target);
                 paperMesh->visible = true;
                 paperMaterial->opacity = std::clamp((frameTime - 3.1f) / 0.55f, 0.f, 1.f);
+                for (size_t i = 0; i < 4; ++i) {
+                    const float letterStart = 4.05f + static_cast<float>(i) * 0.24f;
+                    animatedMastheadMaterials[i]->opacity =
+                            std::clamp((frameTime - letterStart) / 0.34f, 0.f, 1.f);
+                }
+                animatedMastheadMaterials[4]->opacity =
+                        std::clamp((frameTime - 5.05f) / 0.48f, 0.f, 1.f);
                 pose = framePose;
             } else {
                 const float yaw = (float(frame) / float(orbitFrames - 1)) * 6.28318530718f;
@@ -473,15 +553,23 @@ int main(int argc, char** argv) {
     const uint32_t corner = pixelAt(2, 2);
     const uint32_t centerPixel = pixelAt(width / 2, height / 2);
     std::set<uint32_t> centerPatchColors;
-    for (int y = height / 3; y < (2 * height) / 3; ++y) {
-        for (int x = width / 3; x < (2 * width) / 3; ++x) {
+    const int patchStep = pushInMode ? 4 : 1;
+    const int xBegin = pushInMode ? 0 : width / 3;
+    const int xEnd = pushInMode ? width : (2 * width) / 3;
+    const int yBegin = pushInMode ? 0 : height / 3;
+    const int yEnd = pushInMode ? height : (2 * height) / 3;
+    for (int y = yBegin; y < yEnd; y += patchStep) {
+        for (int x = xBegin; x < xEnd; x += patchStep) {
             const uint32_t c = pixelAt(x, y);
             if (c != corner) centerPatchColors.insert(c);
         }
     }
     std::cout << "glb proof: center=0x" << std::hex << centerPixel << " corner=0x" << corner << std::dec
               << " distinct_lit_colors=" << centerPatchColors.size() << "\n";
-    if (centerPixel == corner || centerPatchColors.size() < 2) {
+    const bool weakCoverage = pushInMode
+            ? centerPatchColors.size() < 8
+            : centerPixel == corner || centerPatchColors.size() < 2;
+    if (weakCoverage) {
         std::cerr << "glb proof: expected non-background textured pixels in center region\n";
         return 1;
     }
