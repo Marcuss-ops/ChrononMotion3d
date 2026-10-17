@@ -26,6 +26,7 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+#include "stb_image.h"
 
 #include "threepp/cameras/PerspectiveCamera.hpp"
 #include "threepp/canvas/Canvas.hpp"
@@ -207,65 +208,20 @@ bool endsWithGlbOrGltf(const std::string& s) {
 }
 
 std::shared_ptr<DataTexture> makePaperTexture() {
-    constexpr int size = 512;
-    std::vector<unsigned char> rgb(size * size * 3);
-    for (int y = 0; y < size; ++y) {
-        for (int x = 0; x < size; ++x) {
-            const unsigned char grain = static_cast<unsigned char>((x * 17 + y * 29 + (x * y) % 31) % 9);
-            const unsigned char base = static_cast<unsigned char>(126 + grain);
-            const size_t at = static_cast<size_t>(y * size + x) * 3;
-            rgb[at] = rgb[at + 1] = rgb[at + 2] = base;
-        }
+    const std::filesystem::path sourcePath =
+            std::filesystem::path(__FILE__).parent_path() / "assets/table_paper.png";
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    unsigned char* decoded = stbi_load(sourcePath.string().c_str(), &width, &height, &channels, 3);
+    if (!decoded || width <= 0 || height <= 0) {
+        std::cerr << "glb proof: failed to load paper texture " << sourcePath << "\n";
+        if (decoded) stbi_image_free(decoded);
+        return {};
     }
-    const auto pixel = [&](int x, int y, unsigned char shade) {
-        if (x < 0 || y < 0 || x >= size || y >= size) return;
-        const size_t at = static_cast<size_t>(y * size + x) * 3;
-        rgb[at] = rgb[at + 1] = rgb[at + 2] = shade;
-    };
-    const auto line = [&](int x0, int y0, int x1, int y1, unsigned char shade, int width = 1) {
-        const int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-        const int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-        int err = dx + dy;
-        for (;;) {
-            for (int oy = -width / 2; oy <= width / 2; ++oy)
-                for (int ox = -width / 2; ox <= width / 2; ++ox) pixel(x0 + ox, y0 + oy, shade);
-            if (x0 == x1 && y0 == y1) break;
-            const int e2 = 2 * err;
-            if (e2 >= dy) { err += dy; x0 += sx; }
-            if (e2 <= dx) { err += dx; y0 += sy; }
-        }
-    };
-    const auto rect = [&](int x, int y, int w, int h, unsigned char shade, int thickness = 1) {
-        for (int i = 0; i < thickness; ++i) {
-            line(x + i, y + i, x + w - i, y + i, shade);
-            line(x + i, y + h - i, x + w - i, y + h - i, shade);
-            line(x + i, y + i, x + i, y + h - i, shade);
-            line(x + w - i, y + i, x + w - i, y + h - i, shade);
-        }
-    };
-    // Restrained archival blueprint: an outline, a large technical diagram,
-    // and small measurement callouts without borrowing the reference's logos.
-    rect(24, 24, 464, 464, 145, 2);
-    rect(55, 62, 245, 248, 137, 1);
-    rect(91, 96, 174, 134, 179, 2);
-    rect(108, 110, 140, 106, 119, 1);
-    line(108, 163, 248, 163, 156);
-    line(178, 110, 178, 216, 156);
-    line(122, 124, 164, 150, 190, 2);
-    line(164, 150, 223, 124, 190, 2);
-    line(122, 200, 164, 174, 190, 2);
-    line(164, 174, 223, 200, 190, 2);
-    rect(332, 71, 124, 92, 154, 1);
-    rect(346, 84, 96, 65, 118, 1);
-    line(346, 117, 442, 117, 168);
-    for (int i = 0; i < 7; ++i) line(60, 345 + i * 17, 250 + (i % 3) * 22, 345 + i * 17, 126);
-    rect(328, 202, 128, 122, 145, 1);
-    for (int i = 0; i < 5; ++i) {
-        line(343, 222 + i * 19, 442, 222 + i * 19, 127);
-        line(343 + i * 20, 222, 343 + i * 20, 298, 127);
-    }
-    line(70, 458, 441, 458, 145, 2);
-    auto texture = DataTexture::create(std::move(rgb), size, size);
+    std::vector<unsigned char> rgb(decoded, decoded + static_cast<size_t>(width) * height * 3);
+    stbi_image_free(decoded);
+    auto texture = DataTexture::create(std::move(rgb), width, height);
     texture->format = Format::RGB;
     texture->colorSpace = ColorSpace::sRGB;
     texture->generateMipmaps = true;
@@ -438,6 +394,18 @@ int main(int argc, char** argv) {
     scene->add(lightTarget);
     light->setTarget(*lightTarget);
     scene->add(light);
+
+    // A broad neutral overhead fill keeps the tabletop readable as the camera
+    // rises, without washing out the warm side light or the dark room.
+    if (pushInMode) {
+        auto overhead = DirectionalLight::create(Color(0xfff3df), 6.5f);
+        overhead->position.set(pivot.x, centeredTop + span * 2.4f, pivot.z + span * 0.15f);
+        auto overheadTarget = Group::create();
+        overheadTarget->position.set(pivot.x, centeredTop, pivot.z);
+        scene->add(overheadTarget);
+        overhead->setTarget(*overheadTarget);
+        scene->add(overhead);
+    }
 
     const float distance = std::max(span * 2.7f, 1.f);
     auto camera = PerspectiveCamera::create(30, float(width) / float(height), 0.1f, 1000);
