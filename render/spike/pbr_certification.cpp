@@ -19,6 +19,9 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "glad/glad.h"
+#ifdef CHRONONMOTION_HAS_GL_CUDA_NVENC
+#include "gl_cuda_nvenc_encoder.hpp"
+#endif
 #include "stb_image_write.h"
 
 #include "chrononmotion/geometries/SphereGeometry.hpp"
@@ -140,6 +143,12 @@ namespace {
     }
 }// namespace
 int main(int argc, char** argv) try {
+#ifndef CHRONONMOTION_HAS_GL_CUDA_NVENC
+    (void)argc;
+    (void)argv;
+    throw std::runtime_error("T03/T04 require the GL PBO -> CUDA -> NVENC build; CPU encoding fallback is disabled");
+#else
+    chrononmotion::certification::prepare_nvidia_egl_headless();
     fs::path out = argc > 1 ? argv[1] : "out/threepp_certification/T03";
     fs::create_directories(out);
     chrononmotion::motion::MotionScene motion("T03_pbr_materials", float(FPS));
@@ -193,12 +202,6 @@ int main(int argc, char** argv) try {
     const auto* selectedRenderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
     const std::string selectedRendererName = selectedRenderer ? selectedRenderer : "unknown";
     chrononmotion::certification::require_nvidia_renderer(selectedRendererName);
-    const char* requireHardware = std::getenv("CHRONON_CERT_REQUIRE_HARDWARE_GPU");
-    if (requireHardware && std::string(requireHardware) == "1" &&
-        (selectedRendererName.find("llvmpipe") != std::string::npos ||
-         selectedRendererName.find("softpipe") != std::string::npos ||
-         selectedRendererName.find("Software") != std::string::npos))
-        throw std::runtime_error("hardware GPU required but GL selected: " + selectedRendererName);
     renderer.setClearColor(Color(0x090c13));
     renderer.toneMapping = ToneMapping::ACESFilmic;
     renderer.toneMappingExposure = 1.f;
@@ -227,17 +230,22 @@ int main(int argc, char** argv) try {
     const std::string video = (out / "T03_pbr_1080p30.mp4").string();
     fs::path lightOut = out.parent_path() / "T04";
     fs::create_directories(lightOut);
-    const std::string encoder = chrononmotion::certification::require_nvenc_encoder();
-    auto ffmpeg = [&](const std::string& path) {
-        const std::string encodeArgs = "-c:v h264_nvenc -preset p5 -rc vbr -cq 18 -b:v 0 -pix_fmt yuv420p ";
-        return "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size 1920x1080 -framerate 30 -i - -an " + encodeArgs + quote(path);
-    };
-    FILE* pipe = popen(ffmpeg(video).c_str(), "w");
-    if (!pipe) throw std::runtime_error("ffmpeg startup failed");
+    chrononmotion::certification::require_nvenc_encoder();
+    chrononmotion::certification::GlCudaNvencEncoder pbrEncoder(W, H, FPS, video);
+    auto start = std::chrono::steady_clock::now();
+    // Encode on the GPU in a dedicated pass. CPU snapshots below are only
+    // diagnostic evidence and are not fed to the production video encoder.
+    for (int f = 0; f < FRAMES; ++f) {
+        bridge.evaluateAndSync(motion, f);
+        renderer.render(*bridge.scene(), *bridge.camera());
+        pbrEncoder.encode_current_target(f);
+    }
+    pbrEncoder.finish();
+    if (pbrEncoder.frames_submitted() != FRAMES || pbrEncoder.packets_written() != FRAMES)
+        throw std::runtime_error("T03 GPU encoder did not submit and mux all frames");
     std::array<unsigned char, 3> bg{};
     std::vector<unsigned char> first, mid, last, at77;
     size_t minCov = std::numeric_limits<size_t>::max(), maxCov = 0;
-    auto start = std::chrono::steady_clock::now();
     for (int f = 0; f < FRAMES; ++f) {
         bridge.evaluateAndSync(motion, f);
         renderer.render(*bridge.scene(), *bridge.camera());
@@ -256,7 +264,6 @@ int main(int argc, char** argv) try {
         if (f == 0 || f == 75 || f == 149) {
             png(out / ("frame-" + std::to_string(f) + ".png"), pixels);
         }
-        if (std::fwrite(pixels.data(), 1, pixels.size(), pipe) != pixels.size()) throw std::runtime_error("ffmpeg pipe failed");
     }
     auto done = std::chrono::steady_clock::now();
     bridge.evaluateAndSync(motion, 77);
@@ -277,8 +284,6 @@ int main(int argc, char** argv) try {
     const size_t normalMapChangedPixels = diff(mid, noNormalMapFrame);
     firstMaterial->normalMap = savedNormalMap;
     firstMaterial->needsUpdate();
-    int enc = pclose(pipe);
-    if (enc == -1 || !WIFEXITED(enc) || WEXITSTATUS(enc) != 0) throw std::runtime_error("T03 ffmpeg encode failed");
     // Measure visual occupancy as well as distinct color response. PBR samples
     // must be large enough to inspect at the stated delivery resolution.
     int subjectMinY = H, subjectMaxY = -1, subjectMinX = W, subjectMaxX = -1;
@@ -318,7 +323,7 @@ int main(int argc, char** argv) try {
     const char* gl = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
     const char* ver = reinterpret_cast<const char*>(glGetString(GL_VERSION));
     std::ofstream meta(out / "metadata.json");
-    meta << std::fixed << std::setprecision(3) << "{\n  \"test_id\": \"T03\",\n  \"status\": \"PARTIAL\",\n  \"pipeline\": \"PBR MaterialDescriptor -> MotionScene -> MotionSceneBridge -> MeshStandardMaterial -> GLRenderer -> ffmpeg\",\n  \"width\": 1920,\n  \"height\": 1080,\n  \"fps\": 30,\n  \"frames\": 150,\n  \"duration_seconds\": 5.0,\n  \"environment\": \"deterministic procedural linear HDR equirectangular, PMREM generated by threepp\",\n  \"material_roi_distinct_colors\": [" << distinct[0] << "," << distinct[1] << "," << distinct[2] << "," << distinct[3] << "],\n  \"material_1_normal_map_procedural\": true,\n  \"normal_map_enabled_vs_disabled_changed_pixels_frame_75\": " << normalMapChangedPixels << ",\n  \"subject_bbox_frame_75\": [" << subjectMinX << ", " << subjectMinY << ", " << subjectMaxX << ", " << subjectMaxY << "],\n  \"subject_height_ratio_frame_75\": " << subjectHeightRatio << ",\n  \"minimum_subject_height_ratio\": 0.32,\n  \"min_changed_pixels\": " << minCov << ",\n  \"max_changed_pixels\": " << maxCov << ",\n  \"first_last_diff_pixels\": " << diff(first, last) << ",\n  \"random_access_frame_77_identical\": " << (randomOk ? "true" : "false") << ",\n  \"render_seconds\": " << std::chrono::duration<double>(done - start).count() << ",\n  \"peak_rss_kib\": " << ru.ru_maxrss << ",\n  \"gl_renderer\": \"" << (gl ? gl : "unknown") << "\",\n  \"gl_version\": \"" << (ver ? ver : "unknown") << "\",\n  \"video_encoder\": \"" << encoder << "\",\n  \"hardware_gpu_render\": " << ((selectedRendererName.find("llvmpipe") == std::string::npos && selectedRendererName.find("softpipe") == std::string::npos && selectedRendererName.find("Software") == std::string::npos) ? "true" : "false") << ",\n  \"cpu_framebuffer_readback_before_encode\": true,\n  \"gpu_resident_zero_copy\": false,\n  \"vram_bytes\": null\n}\n";
+    meta << std::fixed << std::setprecision(3) << "{\n  \"test_id\": \"T03\",\n  \"status\": \"PARTIAL\",\n  \"pipeline\": \"PBR MaterialDescriptor -> MotionScene -> MotionSceneBridge -> MeshStandardMaterial -> GLRenderer -> GL PBO -> CUDA -> NVENC\",\n  \"width\": 1920,\n  \"height\": 1080,\n  \"fps\": 30,\n  \"frames\": 150,\n  \"duration_seconds\": 5.0,\n  \"environment\": \"deterministic procedural linear HDR equirectangular, PMREM generated by threepp\",\n  \"material_roi_distinct_colors\": [" << distinct[0] << "," << distinct[1] << "," << distinct[2] << "," << distinct[3] << "],\n  \"material_1_normal_map_procedural\": true,\n  \"normal_map_enabled_vs_disabled_changed_pixels_frame_75\": " << normalMapChangedPixels << ",\n  \"subject_bbox_frame_75\": [" << subjectMinX << ", " << subjectMinY << ", " << subjectMaxX << ", " << subjectMaxY << "],\n  \"subject_height_ratio_frame_75\": " << subjectHeightRatio << ",\n  \"minimum_subject_height_ratio\": 0.32,\n  \"min_changed_pixels\": " << minCov << ",\n  \"max_changed_pixels\": " << maxCov << ",\n  \"first_last_diff_pixels\": " << diff(first, last) << ",\n  \"random_access_frame_77_identical\": " << (randomOk ? "true" : "false") << ",\n  \"render_seconds\": " << std::chrono::duration<double>(done - start).count() << ",\n  \"peak_rss_kib\": " << ru.ru_maxrss << ",\n  \"gl_renderer\": \"" << (gl ? gl : "unknown") << "\",\n  \"gl_version\": \"" << (ver ? ver : "unknown") << "\",\n  \"video_encoder\": \"h264_nvenc\",\n  \"gpu_device\": \"" << pbrEncoder.device_name() << "\",\n  \"frames_submitted\": " << pbrEncoder.frames_submitted() << ",\n  \"packets_muxed\": " << pbrEncoder.packets_written() << ",\n  \"hardware_gpu_render\": true,\n  \"cpu_framebuffer_readback_in_encode_path\": false,\n  \"diagnostic_cpu_readback_passes\": 152,\n  \"gpu_resident_zero_copy\": false,\n  \"vram_bytes\": null\n}\n";
     std::ofstream lightScene(lightOut / "scene.json");
     lightScene << "{\n  \"fixture\": \"one large matte sphere, fixed low ambient and one animated point light\",\n  \"light_motion\": \"point light orbits the sphere over five seconds\",\n  \"material\": \"fixed Lambert diffuse, unchanged throughout the clip\",\n  \"output\": \"1920x1080 30fps 150 frames\"\n}\n";
     std::ofstream lm(lightOut / "metadata.json");
@@ -344,8 +349,15 @@ int main(int argc, char** argv) try {
     lightingBridge.camera()->position.set(0.f, 0.f, 6.2f);
     lightingBridge.camera()->lookAt(0.f, 0.f, 0.f);
     const std::string lightVideo = (lightOut / "T04_lighting_1080p30.mp4").string();
-    FILE* lightPipe = popen(ffmpeg(lightVideo).c_str(), "w");
-    if (!lightPipe) throw std::runtime_error("T04 ffmpeg startup failed");
+    chrononmotion::certification::GlCudaNvencEncoder lightingEncoder(W, H, FPS, lightVideo);
+    for (int f = 0; f < FRAMES; ++f) {
+        lightingBridge.evaluateAndSync(lighting, f);
+        renderer.render(*lightingBridge.scene(), *lightingBridge.camera());
+        lightingEncoder.encode_current_target(f);
+    }
+    lightingEncoder.finish();
+    if (lightingEncoder.frames_submitted() != FRAMES || lightingEncoder.packets_written() != FRAMES)
+        throw std::runtime_error("T04 GPU encoder did not submit and mux all frames");
     std::array<std::vector<unsigned char>, 3> lightingSamples;
     std::vector<unsigned char> lightingFrame77;
     std::array<std::array<double, 2>, FRAMES> lightingCentroids{};
@@ -359,13 +371,10 @@ int main(int argc, char** argv) try {
         if (f == 149) lightingSamples[2] = pixels;
         if (f == 77) lightingFrame77 = pixels;
         if (f == 0 || f == 75 || f == 149) png(lightOut / ("frame-" + std::to_string(f) + ".png"), pixels);
-        if (std::fwrite(pixels.data(), 1, pixels.size(), lightPipe) != pixels.size()) throw std::runtime_error("T04 ffmpeg pipe failed");
     }
     lightingBridge.evaluateAndSync(lighting, 77);
     renderer.render(*lightingBridge.scene(), *lightingBridge.camera());
     const bool lightingRandomOk = renderer.readRGBPixels() == lightingFrame77;
-    int lightingEnc = pclose(lightPipe);
-    if (lightingEnc == -1 || !WIFEXITED(lightingEnc) || WEXITSTATUS(lightingEnc) != 0) throw std::runtime_error("T04 ffmpeg encode failed");
     const std::array<size_t, 3> temporalLightDiffs{
             diff(lightingSamples[0], lightingSamples[1]),
             diff(lightingSamples[1], lightingSamples[2]),
@@ -400,15 +409,22 @@ int main(int argc, char** argv) try {
        << "  \"render_seconds\": " << std::chrono::duration<double>(done - start).count() << ",\n"
        << "  \"peak_rss_kib\": " << ru.ru_maxrss << ",\n"
        << "  \"gl_renderer\": \"" << selectedRendererName << "\",\n"
-       << "  \"video_encoder\": \"" << encoder << "\",\n"
+       << "  \"video_encoder\": \"h264_nvenc\",\n"
        << "  \"hardware_gpu_render\": " << ((selectedRendererName.find("llvmpipe") == std::string::npos && selectedRendererName.find("softpipe") == std::string::npos && selectedRendererName.find("Software") == std::string::npos) ? "true" : "false") << ",\n"
-       << "  \"cpu_framebuffer_readback_before_encode\": true,\n  \"gpu_resident_zero_copy\": false,\n"
+       << "  \"encode_path\": \"GL PBO -> CUDA device copy -> NVENC\",\n"
+       << "  \"gpu_device\": \"" << lightingEncoder.device_name() << "\",\n"
+       << "  \"frames_submitted\": " << lightingEncoder.frames_submitted() << ",\n"
+       << "  \"packets_muxed\": " << lightingEncoder.packets_written() << ",\n"
+       << "  \"cpu_framebuffer_readback_in_encode_path\": false,\n"
+       << "  \"diagnostic_cpu_readback_passes\": 151,\n"
+       << "  \"gpu_resident_zero_copy\": false,\n"
        << "  \"vram_bytes\": null\n}\n";
     if (!lightingPass) throw std::runtime_error("T04 gate failed: independent moving-light scene did not change enough pixels");
     renderer.dispose();
-    std::cout << "T04 PARTIAL (CPU framebuffer readback before encode) independent moving-light temporal diffs=" << temporalLightDiffs[0] << "," << temporalLightDiffs[1] << "," << temporalLightDiffs[2] << "\n";
+    std::cout << "T04 PARTIAL (GPU-resident encode verified; presentation/reference review remains open) independent moving-light temporal diffs=" << temporalLightDiffs[0] << "," << temporalLightDiffs[1] << "," << temporalLightDiffs[2] << "\n";
     std::cout << "T03 PARTIAL (PBR and bound normal-map response measured; trusted material golden remains open) coverage=" << minCov << ".." << maxCov << " subject_height_ratio=" << subjectHeightRatio << " normal_map_changed_pixels=" << normalMapChangedPixels << " roi_colors=" << distinct[0] << "," << distinct[1] << "," << distinct[2] << "," << distinct[3] << " random_access=" << randomOk << "\n";
     return 0;
+#endif
 } catch (const std::exception& e) {
     std::cerr << "T03 FAIL: " << e.what() << '\n';
     return 1;

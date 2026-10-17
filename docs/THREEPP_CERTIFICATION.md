@@ -11,8 +11,9 @@ correctness.
 - Reference output: 1920×1080, 30 fps, 150–180 frames (5–6 seconds).
 - Each executed case writes its scene/configuration, MP4, frame 0/middle/last
   PNGs, metadata, and a log under `out/threepp_certification/Tnn/`.
-- Headless GL uses the available context provider. Metadata records the actual
-  GL renderer. VRAM and GPU-utilization fields stay null when the backend does
+- Linux is the only supported target for this certification; Apple and Windows
+  build targets are out of scope. Headless GL uses NVIDIA EGL, and metadata records
+  the hardware renderer. VRAM and GPU-utilization fields stay null when the backend does
   not expose them. A GPU-quality PASS requires an end-to-end hardware-resident path from rendering
   through composition to hardware video encode. CPU framebuffer readback,
   software rendering/encoding, CPU-only paths, fallback, or downgrade means the
@@ -37,28 +38,41 @@ failure cannot return.
 
 ### Next actions
 
-- [x] **GPU gate for every certification:** each GPU-quality PASS must record
+- [x] **Linux-only GPU gate for every certification:** each GPU-quality PASS must record
   the actual hardware renderer/adapter and hardware encoder, and show no
   software renderer, software encode, fallback, or downgrade. Record CPU
   readback explicitly: GPU rendering with a CPU handoff is hardware-backed,
   and fails the full-GPU acceptance gate. Do not promote a CPU-handoff,
   software-only, or llvmpipe run to PASS. Shared `gpu_certification_gate.hpp`
-  now makes T03/T04/T05/T06/T07/T08/T10/T11/T14 fail fast unless NVIDIA GL and
-  NVENC are selected; software encoder fallbacks were removed from those
-  runners. They remain PARTIAL because their frame handoff still reads into
-  CPU memory. NVIDIA + NVENC proves hardware stages only where CPU framebuffer
-  readback is recorded; those cases do not meet the full-GPU requirement.
+  now makes supported runners fail fast unless NVIDIA GL and NVENC are selected.
+  T01/T02/T03/T04/T05/T06/T07/T08/T09/T10/T11/T12/T14 encode with GL PBO → CUDA →
+  NVENC; T15 uses strict Chronon NVDEC → Vulkan → NVENC. Diagnostic readbacks
+  are performed in separately disclosed passes.
+  T07/T08/T10 now use the same GPU-resident encode path. Their PARTIAL status
+  reflects remaining test coverage and presentation quality, not CPU encoding.
+  Certification targets and build instructions are
+  Linux-only; Apple and Windows targets are out of scope.
+- [x] **T02 UV, texture and mip filtering proof:** the generated six-face numbered atlas passes `GLTFLoader → MotionSceneBridge → NVIDIA GL`; six unique atlas-cell UV ranges validate. Default linear/trilinear mip sampler metadata matches the GLB. On the minified GPU render, disabling mipmaps changes 1,697 pixels; nearest versus linear changes 806. The 150-frame NVIDIA EGL/PBO/CUDA/NVENC clip is uploaded. Keep PARTIAL until an orientation golden and cross-driver tolerance are added.
+- [x] **T01/T09 camera and depth proof:** both Linux-only runners produce 150
+  frames at 1920×1080/30 through NVIDIA GL PBO → CUDA → NVENC. T01 checks six
+  cube-face color palettes, coverage and random-access frame 77. T09 checks
+  near/mid/far depth ordering, object masks, orbit/dolly and random access. Their
+  clips are uploaded; keep PARTIAL until trusted camera/clipping goldens and
+  production-quality compositions exist.
 - [ ] **T03/T04/T07 visual refinement:** T03 and T04 already have NVIDIA/NVENC
   runs; T03 still needs a trusted PBR golden. T07 now has an NVIDIA/NVENC run,
   but nested precomp timing and clip blending remain open. Enlarge subjects
   where needed and inspect complete 1920×1080 playback before upgrading quality
   or integration status.
-- [x] **T11 hardware rerun:** bloom now runs on NVIDIA RTX A4000 and NVENC with
-  sampled GPU/encoder/VRAM telemetry. CPU framebuffer readback remains explicit;
-  retain as a hardware-stage demo only, not a full-GPU PASS.
-- [x] **T05 hardware rerun:** shadow mapping now runs on NVIDIA RTX A4000 with
-  NVENC and sampled GPU/encoder/VRAM telemetry. CPU framebuffer readback is
-  disclosed; retain as a hardware-stage demo only, not a full-GPU PASS.
+- [x] **T11 full-GPU encode rerun:** bloom now renders through NVIDIA RTX A4000
+  and encodes through GL PBO → CUDA → NVENC. All 150 frames are submitted and
+  muxed; bloom changes 662,469 diagnostic pixels, frame 77 is deterministic,
+  and 153 CPU reads are isolated to a separate diagnostics pass. Keep PARTIAL
+  for production-composition and visual-quality coverage, not encoder fallback.
+- [x] **T05 full-GPU encode rerun:** shadow mapping now renders on NVIDIA RTX
+  A4000 and encodes through GL PBO → CUDA → NVENC, with 150/150 frames submitted
+  and muxed. Shadow masks, moving centroid and frame-77 checks pass; 157 CPU
+  reads are confined to a separate diagnostics pass.
 - [x] **T04 lighting — verify the orbit:** the rebuilt five-second clip was
   reviewed as a 150-frame contact sheet. An all-frame brightness-centroid trace
   now checks the sphere's left → top → right → bottom → return path and endpoint
@@ -82,8 +96,8 @@ failure cannot return.
   `GLTFLoader → MotionSceneBridge → EffectComposer → BokehPass`. On NVIDIA RTX
   A4000 with NVENC, same-subject ROI gradients peak at the requested focus and
   frame 77 is identical on random access. Telemetry captured 45 samples (GPU
-  peak 6%, encoder peak 17%, whole-device VRAM peak 1,938 MiB). The framebuffer
-  is read back to CPU before encoding, so it fails the full-GPU-resident gate. [Drive evidence](https://drive.google.com/file/d/1uZO4zQxX0YcYTaIG0ag1cJAu-CN-VStP/view?usp=drivesdk)
+  peak 6%, encoder peak 17%, whole-device VRAM peak 1,938 MiB). Encoding uses GL PBO → CUDA → NVENC;
+  diagnostic CPU readbacks are isolated to a separate pass. [Drive evidence](https://drive.google.com/file/d/1uZO4zQxX0YcYTaIG0ag1cJAu-CN-VStP/view?usp=drivesdk)
 - [ ] **T10 quality/composition:** make the subjects larger and more legible,
   review complete playback, and integrate the focus rack in a Chronon3D scene.
 - [x] **T13 alpha still-image composition — preserve transparency on Vulkan:**
@@ -121,8 +135,8 @@ failure cannot return.
   the original files were duplicates. Both runners now produce independent
   NVIDIA-rendered scenes and NVENC videos; T04 passes its moving-light gate.
   T03 stays PARTIAL pending a trusted material golden. Drive contains the
-  replacement clips; their metadata identifies CPU framebuffer readback before
-  NVENC, so these are hardware-stage demos and do not meet full-GPU PASS.
+  replacement clips use GL PBO → CUDA → NVENC for encoding. Diagnostic readbacks
+  are separate; T03 remains PARTIAL pending a trusted PBR golden.
 - [ ] **T03/T04/T07/T08/T10 presentation quality:** enlarge and frame the
   subjects so PBR response, lighting, skeleton deformation, morph silhouette
   changes and rack focus are easy to judge in complete 1920x1080 playback.
@@ -135,40 +149,45 @@ failure cannot return.
 
 | ID | Feature | Status | Production path / evidence | Output | Remaining blocker |
 |---|---|---|---|---|---|
-| T01 | Geometry & camera | PARTIAL | `MotionSceneBridge` creates Chronon box/sphere meshes, applies hierarchy and camera poses; existing `render/spike/bridge.cpp` checks coverage and random access. | Existing low-resolution PPM proof only. | 1080p five-second video and face/occlusion golden. |
-| T02 | UV & textures | PARTIAL | T06 verifies finite UV attributes on all five imported CesiumMilkTruck meshes and preserves three mapped materials through the bridge. | [T06 MP4](../out/threepp_certification/T06/T06_gltf_pbr_1080p30.mp4), [frame 75](../out/threepp_certification/T06/frame-75.png), [metadata](../out/threepp_certification/T06/metadata.json) | Use a numbered checker fixture and compare UV orientation, sampler filtering and mip transitions to reference pixels. |
-| T03 | PBR materials | PARTIAL (hardware stages; CPU readback) | Chronon roughness, metalness and emission map to threepp `MeshStandardMaterial`. Four enlarged spheres under deterministic HDR occupy 37.4% of frame height. A bound procedural normal map changes 86,264 pixels. The refreshed run uses NVIDIA RTX A4000 and NVENC; random-access frame 77 is identical. | [NVIDIA/NVENC MP4](../out/threepp_certification/nvidia/T03/T03_pbr_1080p30.mp4), [frame 75](../out/threepp_certification/nvidia/T03/frame-75.png), [metadata](../out/threepp_certification/nvidia/T03/metadata.json), [run log](../out/threepp_certification/nvidia/T03/run.log) | Establish trusted PBR/normal-map golden tolerances; procedural materials are response tests, not reference assets. |
-| T04 | Lighting | PARTIAL (hardware stages; CPU readback) | Independent MotionScene with a fixed Lambert sphere, low ambient fill and an orbiting point light. NVIDIA RTX A4000 rendering plus NVENC; brightness centroid follows left → top → right → bottom → return across all frames. Temporal frame pairs change 306,759, 307,035 and 203,445 pixels; frame 77 matches random access. | [NVIDIA/NVENC MP4](../out/threepp_certification/nvidia/T04/T04_lighting_1080p30.mp4), [all-frame metadata](../out/threepp_certification/nvidia/T04/metadata.json), [frame 75](../out/threepp_certification/nvidia/T04/frame-75.png), [run log](../out/threepp_certification/nvidia/T04/run.log) | Basic light orbit only; no production-quality lighting or shadows. |
-| T05 | Shadow mapping | PARTIAL (hardware stages; CPU readback) | Motion-authored directional light track, shadow caster/receiver flags and bias/radius flow through `MotionScene → MotionSceneBridge → NVIDIA GLShadowMap (PFCSoft) → GLRenderer → NVENC`. NVIDIA RTX A4000; masks contain 10,303/2,407/10,207 pixels at frames 0/75/149, symmetric difference 9,804, centroid motion 86.85 pixels, frame 77 random access matches. 22 telemetry samples: GPU peak 6%, encoder peak 27%, whole-device VRAM peak 1,555 MiB. Framebuffer readback to CPU precedes NVENC; not zero-copy. | [Drive MP4](https://drive.google.com/file/d/1QjaE4c12_coBpZ4lNuJpj1TCvyzkc9Eu/view?usp=drivesdk), [local NVIDIA/NVENC MP4](../out/threepp_certification/nvidia/T05/T05_dynamic_shadows_1080p30.mp4), [frame 0](../out/threepp_certification/nvidia/T05/frame-0.png), [frame 75](../out/threepp_certification/nvidia/T05/frame-75.png), [metadata](../out/threepp_certification/nvidia/T05/metadata.json), [GPU telemetry](../out/threepp_certification/nvidia/T05/gpu-telemetry.csv) | Basic moving-shadow demonstration; tune light/shadow quality and integrate into Chronon3D production composition. |
-| T06 | Full GLB import | PARTIAL (hardware stages; CPU readback) | Pinned Khronos CesiumMilkTruck with five meshes loads through `GLTFLoader` into a Motion asset layer; bridge hierarchy/bounds, UVs, five standard materials and three maps are checked. Refreshed NVIDIA RTX A4000 GL render plus NVENC encode; frame 77 random access is exact. | [NVIDIA/NVENC MP4](../out/threepp_certification/nvidia/T06/T06_gltf_pbr_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T06/metadata.json), [run log](../out/threepp_certification/nvidia/T06/run.log) | Trusted orientation, texture sampling and PBR golden comparison remain open. threepp reads GL frames back to CPU before NVENC; Chronon re-decodes this video on NVDEC. |
-| T07 | Skeleton animation | PARTIAL | `GLTFLoader` Fox `Run` clip binds to a top-level Motion mesh layer; bridge samples absolute `frame/fps`; cloned `SkinnedMesh` joints remap. NVIDIA RTX A4000/NVENC, subject height 53.52%, bone matrices change 891.593, frame 77 random access matches. 26 telemetry samples: GPU peak 7%, encoder peak 17%, whole-device VRAM peak 1,555 MiB. CPU framebuffer readback precedes NVENC; fails the full-GPU-resident acceptance gate. | [Drive MP4](https://drive.google.com/file/d/1DKbNmyJfuKK0YR6oUSq4RzvvMcR71etE/view?usp=drivesdk), [local MP4](../out/threepp_certification/nvidia/T07/T07_animation_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T07/metadata.json), [telemetry](../out/threepp_certification/nvidia/T07/gpu-telemetry.csv), [scene](../out/threepp_certification/nvidia/T07/scene.json) | One top-level clip only; add nested precomp/multi-clip coverage and review full playback. |
-| T08 | Morph targets | PARTIAL | Khronos AnimatedMorphCube `Square` clip samples through the Chronon timeline; bridge preserves weights and GLTFLoader enables morph shader variants. NVIDIA RTX A4000/NVENC; morph weight delta 1.0, 626,152 pixels change between frames 0/75, subject occupies 64.1% of frame height, random frame 77 matches. 25 telemetry samples: GPU peak 5%, encoder peak 17%, whole-device VRAM peak 1,545 MiB. A test-only orange tint and three-quarter camera make the deformation easier to see. CPU framebuffer readback precedes NVENC; fails the full-GPU-resident acceptance gate. | [Drive MP4](https://drive.google.com/file/d/1LvIW6HVLeU0GVyepdaulLM_IU-zvs6EY/view?usp=drivesdk), [local MP4](../out/threepp_certification/nvidia/T08/T08_animation_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T08/metadata.json), [scene](../out/threepp_certification/nvidia/T08/scene.json), [telemetry](../out/threepp_certification/nvidia/T08/gpu-telemetry.csv) | Single morph-only cube and one clip; mixed skin+morph, broader target validation, and a more expressive authored asset remain open. |
-| T09 | Camera & depth | PARTIAL | CameraRig is sampled through the bridge; existing bridge proof checks changing frames. | Existing low-resolution PPM proof only. | 1080p dolly/orbit clip plus depth/occlusion/clipping checks. |
-| T10 | Depth of field | PARTIAL | Pinned Fox, Avocado and CesiumMilkTruck GLBs render through `GLTFLoader → MotionSceneBridge → EffectComposer → BokehPass`. NVIDIA RTX A4000 and NVENC; focus follows subject depth, frame 77 is deterministic. 45 telemetry samples: GPU peak 6%, encoder peak 17%, whole-device VRAM peak 1,938 MiB. CPU framebuffer readback precedes encode; fails the full-GPU-resident acceptance gate. | [Drive MP4](https://drive.google.com/file/d/1uZO4zQxX0YcYTaIG0ag1cJAu-CN-VStP/view?usp=drivesdk), [local MP4](../out/threepp_certification/nvidia/T10/T10_dof_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T10/metadata.json), [telemetry](../out/threepp_certification/nvidia/T10/gpu-telemetry.csv), [scene](../out/threepp_certification/nvidia/T10/scene.json) | Presentation quality needs larger subjects and full playback review; Chronon3D composite integration remains open. |
-| T11 | Post-processing | PARTIAL (hardware stages; CPU readback) | `MotionScene → MotionSceneBridge → NVIDIA GLRenderer → EffectComposer → UnrealBloomPass → NVENC`; 150 frames at 1920×1080/30, bloom toggle changes 662,469 pixels, random-access frame 77 is identical. NVIDIA RTX A4000 and NVENC confirmed; 36 GPU telemetry samples show 8% GPU-utilization peak, 18% encoder-utilization peak, 1,699 MiB whole-device VRAM peak. GL framebuffer is read back to CPU before NVENC, so this fails the full-GPU-resident acceptance gate. | [Drive MP4](https://drive.google.com/file/d/1GuJIZg-1pD-Uzwdq-spXQTVWJOaANDNu/view?usp=drivesdk), [local NVIDIA/NVENC MP4](../out/threepp_certification/nvidia/T11/T11_bloom_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T11/metadata.json), [GPU telemetry](../out/threepp_certification/nvidia/T11/gpu-telemetry.csv), [run log](../out/threepp_certification/nvidia/T11/run.log) | Basic bloom demonstration only; integrate post-processing in Chronon3D production composition and retain the CPU readback disclosure. |
-| T12 | Documentary 3D composition | PARTIAL | Documentary/character render spikes exist. | Existing showcase outputs, not this test's tracked scene manifest. | Build an explicit documentary scene and certify its composition at 1080p. |
-| T13 | 3D + Chronon compositing | PASS (Chronon native-video segment); PASS (Chronon Vulkan alpha-PNG composite); PARTIAL (full threepp→Chronon handoff and animated alpha) | Opaque source: NVIDIA GLB render → NVENC → NVDEC → Vulkan graph → NVENC. The Chronon segment has 150/150 GPU surfaces, zero readbacks/fallbacks/downgrades, overlay ROIs pass, random-access PSNR 54.23 dB. The upstream threepp GL export reads its framebuffer back to CPU, so the complete threepp→Chronon opaque route is PARTIAL under the full-GPU-resident gate. Alpha image lane: full six-layer Chronon composition at 1920×1080/30 for 150 frames, strict Vulkan/NVENC; native GPU handles on all composited surfaces, zero conversion/staging-copy bytes, transparent unoccluded backdrop MAE 1.15–1.50 RGB after H.264. PNG decode/upload is asset preparation; Chronon composition and video encode remain native GPU. This does not certify an animated full-GPU threepp→Chronon alpha source. Continuous GPU-native alpha video decode is still missing. | [Chronon native-video segment (upstream GL readback disclosed)](https://drive.google.com/file/d/1ljUBYHjg1ImCejV4GxZ2zlDw2P0sJSqZ/view?usp=drivesdk), [alpha composition MP4](https://drive.google.com/file/d/1-ba876wrbR-WLFfuBNhITDi0sXnurimt/view?usp=drivesdk), [alpha scene](../out/threepp_certification/T13-alpha/scene-alpha-chronon-composition.json), [alpha GPU log](../out/threepp_certification/T13-alpha/T13_alpha_Chronon_composite_full_gpu_1080p30.log), [timing/telemetry](../out/threepp_certification/T13-alpha/T13_alpha_Chronon_composite_full_gpu_1080p30.mp4.timing.json), [frame 0](../out/threepp_certification/T13-alpha/T13_alpha_Chronon_composite_full_gpu_frame0.png), [frame 75](../out/threepp_certification/T13-alpha/T13_alpha_Chronon_composite_full_gpu_frame75.png), [frame 149](../out/threepp_certification/T13-alpha/T13_alpha_Chronon_composite_full_gpu_frame149.png) | The native Chronon decode/composite/encode segment passes. The complete threepp-to-Chronon route remains PARTIAL because its upstream GL-to-PNG/video producer uses CPU framebuffer readback; GPU-native animated alpha video decode is also missing. Alpha still-image composition inside Chronon is verified. |
-| T14 | Headless GPU rendering | PARTIAL | 180-frame turntable at 1920×1080, 30 fps through `GLTFLoader → MotionSceneBridge → GLRenderer → ffmpeg`; hidden context under Xvfb selected `NVIDIA RTX A4000/PCIe/SSE2`, not llvmpipe. Random-access frame 77 matched byte-for-byte; peak RSS 248,024 KiB. | [MP4](../out/threepp_certification/T14/T14_gltf_pbr_1080p30.mp4), [frame 90](../out/threepp_certification/T14/frame-90.png), [metadata](../out/threepp_certification/T14/metadata.json), [run log](../out/threepp_certification/T14/run.log) | It still requires a virtual X display; GLFW Null + NVIDIA EGL could not choose a surfaceless config. `nvidia-smi` readings are whole-device, not process-attributed. |
-| T15 | Production integration | PARTIAL | Motion can render through threepp and Chronon3D can encode video, but no same-job production plan→3D asset→composite→MP4 proof is recorded. | None. | One deterministic end-to-end scene, random-access comparison, repeated-render stability and resource metrics. |
+| T01 | Geometry & camera | PARTIAL (Linux full-GPU encode verified) | `camera_certification.cpp` creates six colored cube faces through `MotionSceneBridge`; NVIDIA GL PBO → CUDA → NVENC, 150/150 frames, face-palette hit counts, coverage, and random-access frame 77 pass. Diagnostic readbacks are separate. | [MP4 su Drive](https://drive.google.com/file/d/1fTixa-hMQ2e3kOryB_LdiI1bbr9ZAPqj/view?usp=drivesdk), local `out/threepp_certification/T01/` | Face ordering/clipping golden and production-quality scene remain open. |
+| T02 | UV & textures | PARTIAL (Linux full-GPU encode and sampler variants verified) | Generated `NumberedUVCube.glb`: six textured faces, six distinct 3×2 atlas cells, valid normalized UVs. GLTF min/mag filters and mipmap flag match the fixture; production GPU renders compare default mipmapping against linear-no-mip (1,697 changed pixels) and nearest (806 changed pixels). NVIDIA RTX A4000 GL PBO → CUDA → NVENC; 150/150 frames, random frame 77 identical, no CPU framebuffer handoff in encode. | [MP4 su Drive](https://drive.google.com/file/d/1J0DDdVUC8eayGt6zmufrwpA1j8JnT_8E/view?usp=drivesdk), local [MP4](../out/threepp_certification/T02/T02_uv_texture_mipmaps_1080p30.mp4), [scene](../out/threepp_certification/T02/scene.json), [metadata](../out/threepp_certification/T02/metadata.json), [UV/sampler validation](../out/threepp_certification/T02/t02-validation.json), [frame 75](../out/threepp_certification/T02/frame-75.png) | Full-frame trusted UV orientation golden, filtering tolerance across GPU drivers, and professional-quality camera framing remain open. |
+| T03 | PBR materials | PARTIAL (GPU encode verified; golden pending) | Chronon roughness, metalness and emission map to threepp `MeshStandardMaterial`. Four enlarged spheres under deterministic HDR occupy 37.2% of frame height. The normal-map toggle changes 86,195 pixels. NVIDIA RTX A4000; GL PBO → CUDA → NVENC submitted and muxed 150/150 frames. Frame-77 random access matches; separate diagnostics use 152 CPU readback passes. | [MP4 su Drive](https://drive.google.com/file/d/1RvJk4k8lqJf7QO6Fap___4YEQDrh01B9/view?usp=drivesdk), [locale](../out/threepp_certification/nvidia/T03/T03_pbr_1080p30.mp4), [frame 75](../out/threepp_certification/nvidia/T03/frame-75.png), [metadata](../out/threepp_certification/nvidia/T03/metadata.json) | Establish trusted PBR/normal-map golden tolerances; procedural materials are response tests, not reference assets. |
+| T04 | Lighting | PARTIAL (GPU encode verified; presentation review pending) | Independent MotionScene with a fixed Lambert sphere, low ambient fill and an orbiting point light. NVIDIA RTX A4000; GL PBO → CUDA → NVENC submitted and muxed 150/150 frames. Brightness centroid follows left → top → right → bottom → return; temporal pairs change 306,214, 306,495 and 203,389 pixels; frame 77 matches. Separate diagnostics use 151 CPU readback passes. | [MP4 su Drive](https://drive.google.com/file/d/1TwsvVLaUnr_QTskacLEaA9DhY764Nb85/view?usp=drivesdk), [locale](../out/threepp_certification/nvidia/T04/T04_lighting_1080p30.mp4), [all-frame metadata](../out/threepp_certification/nvidia/T04/metadata.json), [frame 75](../out/threepp_certification/nvidia/T04/frame-75.png) | Basic light orbit only; no production-quality lighting or shadows. |
+| T05 | Shadow mapping | PARTIAL (GPU encode verified; quality/integration pending) | Motion-authored directional light track, shadow caster/receiver flags and bias/radius flow through `MotionScene → MotionSceneBridge → NVIDIA GLShadowMap (PFCSoft) → GLRenderer → GL PBO → CUDA → NVENC`. NVIDIA RTX A4000; masks contain 10,240/2,353/10,144 pixels at frames 0/75/149, symmetric difference 9,739, centroid motion 85.27 pixels, frame 77 random access matches. All 150 frames are submitted and muxed; 157 CPU readbacks are in a separate diagnostics pass. | [MP4 su Drive](https://drive.google.com/file/d/1GMawUdiJ7b98wNHcjeSgraYdqzaGD0E5/view?usp=drivesdk), [locale](../out/threepp_certification/nvidia/T05/T05_dynamic_shadows_1080p30.mp4), [frame 0](../out/threepp_certification/nvidia/T05/frame-0.png), [frame 75](../out/threepp_certification/nvidia/T05/frame-75.png), [metadata](../out/threepp_certification/nvidia/T05/metadata.json) | Basic moving-shadow demonstration; tune light/shadow quality and integrate into Chronon3D production composition. |
+| T06 | Full GLB import | PARTIAL (GPU encode verified; golden pending) | Pinned Khronos CesiumMilkTruck with five meshes loads through `GLTFLoader` into a Motion asset layer; bridge hierarchy/bounds, UVs, five standard materials and three maps are checked. NVIDIA RTX A4000, GL PBO → CUDA → NVENC; 150/150 frames submitted/muxed, frame 77 random access exact. Separate diagnostic pass verifies image coverage and geometry. | [MP4 su Drive](https://drive.google.com/file/d/14At3rPbBx16FWWf_WTOlSKGMua2IjBUw/view?usp=drivesdk), [locale](../out/threepp_certification/nvidia/T06/T06_gltf_pbr_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T06/metadata.json), [frame 75](../out/threepp_certification/nvidia/T06/frame-75.png) | Trusted orientation, texture sampling and PBR golden comparison remain open; Chronon3D re-decode/compositing still needs an end-to-end GPU proof. |
+| T07 | Skeleton animation | PARTIAL (GPU encode verified) | `GLTFLoader` Fox `Run` clip binds to a top-level Motion mesh layer; bridge samples absolute `frame/fps`; cloned `SkinnedMesh` joints remap. NVIDIA RTX A4000; GL PBO → CUDA → NVENC submitted and muxed 150/150 frames, subject height 53.43%, bone matrices change 891.593, frame 77 matches. Diagnostic snapshots use a separate 151-readback pass. | [MP4 su Drive](https://drive.google.com/file/d/1ANxIh877VGfmU1gOwlFbs-3GFsFblAbF/view?usp=drivesdk), [locale](../out/threepp_certification/nvidia/T07/T07_animation_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T07/metadata.json), [scene](../out/threepp_certification/nvidia/T07/scene.json) | One top-level clip only; add nested precomp/multi-clip coverage and review full playback. |
+| T08 | Morph targets | PARTIAL (GPU encode verified) | Khronos AnimatedMorphCube `Square` clip samples through the Chronon timeline; bridge preserves weights and GLTFLoader enables morph shader variants. NVIDIA RTX A4000; GL PBO → CUDA → NVENC submitted and muxed 150/150 frames; morph weight delta 1.0, 625,018 pixels change between frames 0/75, subject occupies 63.98% of frame height, frame 77 matches. Diagnostic snapshots use a separate 151-readback pass. | [MP4 su Drive](https://drive.google.com/file/d/1YmGH0IZ4aEvt6OkMYbaegke9BpOU33VV/view?usp=drivesdk), [locale](../out/threepp_certification/nvidia/T08/T08_animation_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T08/metadata.json), [scene](../out/threepp_certification/nvidia/T08/scene.json) | Single morph-only cube and one clip; mixed skin+morph, broader target validation, and a more expressive authored asset remain open. |
+| T09 | Camera & depth | PARTIAL (Linux full-GPU encode verified) | `camera_certification.cpp` renders near/mid/far objects through `MotionSceneBridge`; depth ordering, per-object masks, orbit/dolly, and random-access frame 77 pass. NVIDIA GL PBO → CUDA → NVENC, 150/150 frames; diagnostics use a separate readback pass. | [MP4 su Drive](https://drive.google.com/file/d/1ZpreEXDQ-rKMOaq0J27d7b7VpjPaxtwN/view?usp=drivesdk), local `out/threepp_certification/T09/` | No trusted projected-camera/clipping golden or production composition yet. |
+| T10 | Depth of field | PARTIAL (GPU encode verified) | Pinned Fox, Avocado and CesiumMilkTruck GLBs render through `GLTFLoader → MotionSceneBridge → EffectComposer → BokehPass`. NVIDIA RTX A4000; GL PBO → CUDA → NVENC submitted/muxed 150/150 frames. Focus follows subject depth, frame 77 is deterministic; diagnostic snapshots use a separate 151-readback pass. | [MP4 su Drive](https://drive.google.com/file/d/1Sg9vcu_S9o6klzMLY3y12rvlzh2QPDJu/view?usp=drivesdk), [locale](../out/threepp_certification/nvidia/T10/T10_dof_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T10/metadata.json), [scene](../out/threepp_certification/nvidia/T10/scene.json), [encoded frame 75](../out/threepp_certification/nvidia/T10/frame-75.png) | Presentation quality needs larger subjects and full playback review; Chronon3D composite integration remains open. |
+| T11 | Post-processing | PARTIAL (GPU encode verified; integration/quality pending) | `MotionScene → MotionSceneBridge → NVIDIA GLRenderer → EffectComposer → UnrealBloomPass → GL PBO → CUDA → NVENC`; 150 frames at 1920×1080/30, bloom toggle changes 662,469 pixels, random-access frame 77 is identical. NVIDIA RTX A4000; 150/150 frames submitted and muxed. 153 CPU framebuffer reads are limited to a separate diagnostics pass. | [MP4 su Drive](https://drive.google.com/file/d/1rm-W4ENZVgi-1J-66g5N3d52xJk42LYQ/view?usp=drivesdk), [locale](../out/threepp_certification/nvidia/T11/T11_bloom_1080p30.mp4), [metadata](../out/threepp_certification/nvidia/T11/metadata.json), [frame 75](../out/threepp_certification/nvidia/T11/frame-75.png) | Basic bloom demonstration only; integrate post-processing in Chronon3D production composition and review visual quality. |
+| T12 | Documentary 3D composition | PARTIAL (Linux full-GPU encode verified) | `glb_certification.cpp` T12 mode imports the pinned CesiumMilkTruck via GLTFLoader, stages it with Motion-authored evidence folders/photos/files, and animates a CameraRig. NVIDIA RTX A4000 EGL → GL PBO → CUDA → NVENC, 150/150 packets, zero encode-path CPU framebuffer reads; random-access frame 77 matches. | [MP4 su Drive](https://drive.google.com/file/d/1U86KHZ7D72uzWzg7hPCfl1WeihkXA6T0/view?usp=drivesdk), local [MP4](../out/threepp_certification/T12/T12_documentary_composition_1080p30.mp4), [scene](../out/threepp_certification/T12/scene.json), [metadata](../out/threepp_certification/T12/metadata.json), [frame 75](../out/threepp_certification/T12/frame-75.png) | Primitive evidence props and lighting are a technical layout proof only; improve art direction, texture detail, full-sequence review and integrate with richer Chronon graphics. |
+| T13 | 3D + Chronon compositing | PASS (opaque full-GPU threepp→Chronon); PASS (Chronon Vulkan alpha-PNG composite); PARTIAL (animated alpha video) | Current T06 NVIDIA GL PBO → CUDA → NVENC output feeds Chronon NVDEC → Vulkan full graph → NVENC with `require_gpu_native`. Log confirms native surface input, 150 packets, zero conversion/staging-copy bytes; strict graph validation and the 150-frame 1920×1080 overlay/vehicle ROI gate pass. Vehicle ROI MAE mean is 0.85 RGB; all headline/subhead/marker ROIs exceed the per-frame minimum. Alpha image lane: six-layer Chronon composition at 1920×1080/30, native GPU handles, zero conversion/staging-copy bytes. | [Opaque full-GPU MP4 su Drive](https://drive.google.com/file/d/13g49B_K3SxDjW4BQRcK6FeN7-jb8rmW2/view?usp=drivesdk), [local MP4](../out/threepp_certification/T13/T13_full_gpu_NVIDIA_NVDEC_Vulkan_NVENC_certified.mp4), [run log](../out/threepp_certification/T13/T13_full_gpu_NVIDIA_NVDEC_Vulkan_NVENC_certified.log), [150-frame validation](../out/threepp_certification/T13/full-gpu-hardware-validation-certified.json), [alpha composition MP4](https://drive.google.com/file/d/1-ba876wrbR-WLFfuBNhITDi0sXnurimt/view?usp=drivesdk), [alpha scene](../out/threepp_certification/T13-alpha/scene-alpha-chronon-composition.json), [alpha GPU log](../out/threepp_certification/T13-alpha/T13_alpha_Chronon_composite_full_gpu_1080p30.log) | Continuous GPU-native alpha video decode is still missing. |
+| T14 | Headless GPU rendering | PASS | 150-frame 1920×1080/30 turntable through NVIDIA EGL pbuffer → threepp GL → pixel-pack buffer → same-device CUDA frame → NVENC. 150/150 frames submitted and packets muxed; `ffprobe` confirms H.264, 1920×1080, 30 fps, 150 frames. Random-access frame 77 matches exactly. Video encoding never reads a framebuffer into CPU memory; PNG and numeric diagnostics run in a separate second render pass. | [MP4 su Drive](https://drive.google.com/file/d/1n5Oh2qedEY2aq1pHrSmqZSzOTKJREvJM/view?usp=drivesdk), [MP4 locale](../out/threepp_certification/T14-gl-cuda/T14_gltf_pbr_1080p30.mp4), [frame 0](../out/threepp_certification/T14-gl-cuda/frame-0.png), [frame 75](../out/threepp_certification/T14-gl-cuda/frame-75.png), [frame 149](../out/threepp_certification/T14-gl-cuda/frame-149.png), [metadata](../out/threepp_certification/T14-gl-cuda/metadata.json) | NVIDIA RTX A4000 EGL context is display-free. GPU handoff makes one device-to-device copy per frame. VRAM and utilization are not attributed per process. |
+| T15 | Production integration | PARTIAL (strict full-GPU path, receipt lane and repeat stability verified) | The T12 threepp render feeds a Chronon3D RenderPlan with Chronon text/shape overlays: NVDEC → Vulkan full graph → NVENC; required native mode, `host_frame=false`, native surface encoder feed, zero conversion/staging bytes and 150/150 packets. Receipt now records `backend=vulkan`, `render_lane=full_graph_vulkan`, `lane_reason=required_gpu_native_full_graph`. Three independent renders decode to identical hashes for all 150 frames. GPU sampling: 26 samples, GPU peak 12%, encoder peak 42%, device memory peak 2,597 MiB. | [MP4 su Drive](https://drive.google.com/file/d/1-7e3YTzRFmqZwWExaQpz3ms-550OoEyE/view?usp=drivesdk), local [MP4](../out/threepp_certification/T15/T15_documentary_chronon_full_gpu_sampled.mp4), [scene plan](../out/threepp_certification/T15/scene-full-gpu.json), [latest strict run log](../out/threepp_certification/T15/sampled-render-lane-fix.log), [validation](../out/threepp_certification/T15/full-gpu-validation.json), [repeat stability](../out/threepp_certification/T15/stability-validation.json), [GPU samples](../out/threepp_certification/T15/gpu-samples.csv), [frame 75](../out/threepp_certification/T15/frame-75.png) | T12 is a pre-rendered source clip, not direct GLB ingestion inside a single Chronon job. Per-process CPU/RAM and leak testing remain. |
 
-T11's NVIDIA/NVENC run now passes the basic GPU bloom gate; this does not
-certify T14/T15 or Chronon3D composition.
+T01, T03, T04, T05, T06, T07, T08, T09, T10, T11 and T14 now have GL PBO → CUDA → NVENC
+video paths with no CPU framebuffer handoff during encoding; CPU readbacks are
+isolated to separate diagnostic passes. T13's strict Chronon pipeline also
+passes with native GPU surfaces. T12 and T15 now have tracked proof scenes and
+full-GPU videos; professional scene quality, in-job GLB ingestion and animated
+GPU-native alpha video remain open. Render and encode certification is Linux-only
+and requires a native GPU path; a software-only result cannot satisfy a test.
 
 ## T13 run result
 
 The initial T13 attempt used a software readback/encode lane and is retained
-here as historical evidence only. A replacement opaque-source run rendered
-the GLB with NVIDIA OpenGL, then used NVENC for the source, NVDEC for input,
-Chronon3D's Vulkan render graph, and NVENC for the final output. Chronon3D's
-strict `require_gpu_native` run processed 150/150 native GPU surfaces at
+here as historical evidence only. The current opaque-source route renders the
+GLB with NVIDIA EGL/OpenGL through a CUDA-registered PBO into NVENC, then uses
+NVDEC, Chronon3D's Vulkan render graph and NVENC for the final output.
+Chronon3D's strict `require_gpu_native` run processed 150/150 native GPU surfaces at
 1920×1080/30 fps with zero CPU/GPU readbacks, software encode frames,
 fallback nodes, or execution downgrades in the Chronon video graph. Vulkan
 allocation stayed at 982,089,728 bytes from frames 25–150; whole-device peak
 VRAM was 3,036 MB. All 150 decoded frames passed dimensions and overlay ROI
-checks. Frame 75 random access scored 54.23 dB PSNR against sequential output.
-The NVIDIA threepp GL export reads its framebuffer back to CPU before NVENC.
-It proves hardware stages but fails the required full-GPU-resident end-to-end
-acceptance gate.
+checks. The refreshed run uses the newly generated T06 GPU-encode source and
+passes the 150-frame source/overlay ROI verifier. Mean vehicle ROI MAE is 0.85
+RGB. The threepp encode pass and full Chronon decode/composite/encode graph
+contain no CPU framebuffer handoff.
 
 The earlier Chronon3D software and Vulkan parity run exported 150 frames at 1920×1080, 30
 fps and 5 seconds. Visual inspection confirmed the model, headline, subhead and
@@ -237,22 +256,16 @@ track being ignored by MotionScene evaluation.
 
 ## T14 run result
 
-The same pinned CesiumMilkTruck fixture rendered through a hidden OpenGL context
-under Xvfb with
-`__GLX_VENDOR_LIBRARY_NAME=nvidia`. The captured GL renderer was
-`NVIDIA RTX A4000/PCIe/SSE2`, GL 3.3.0, driver 595.99.02. The 180-frame
-turntable completed at 1920×1080, 30 fps and 6 seconds; frame 77 was
-byte-identical on random access. Five meshes, five standard materials, three
-textured materials, all UVs, hierarchy and bounds survived import and bridge
-cloning. Render time was 6.355 s; peak process RSS was 249,892 KiB. Twenty-seven
-`nvidia-smi` samples recorded whole-device VRAM use of 1,168–1,334 MB and peak
-utilization of 11%; these are system-wide readings, not per-process allocation.
-The no-display probe failed: GLFW Null selected OSMesa by default, which is not
-installed; forcing EGL reached NVIDIA's surfaceless device but GLFW requires a
-window-capable EGL config. Therefore this is PARTIAL against the stricter
-no-display acceptance criterion, even though the GPU rendering itself passed.
-The sample video, three PNG snapshots, metadata and logs are retained under
-`out/threepp_certification/T14/`.
+The NVIDIA EGL backend now creates a display-free pbuffer on the RTX A4000. The
+encoded pass renders 150 frames at 1920×1080/30 and hands each resolved GL frame
+through a pixel-pack buffer registered with CUDA, then copies device-to-device
+into an FFmpeg CUDA frame for NVENC. CUDA GL device discovery binds the GL
+adapter and encoder to the same GPU. The runner records 150 frames submitted,
+150 packets muxed, zero CPU framebuffer readbacks on the encode path, and one
+GPU device copy per encoded frame. A second deterministic render pass produces
+the PNGs and numeric checks; frame 77 matches byte-for-byte. `ffprobe` confirms
+H.264, 1920×1080, 30 fps and 150 frames. Metadata, frames and MP4 are retained
+under `out/threepp_certification/T14-gl-cuda/`.
 
 ## T07/T08 run results
 
@@ -269,15 +282,15 @@ a bone-matrix delta of 891.593 and 108,055 changed pixels between frames 0 and
 75; frame 77 is identical on random access. The subject occupies 53.52% of frame
 height at frame 75; the runner fails if this falls below 50%. The NVIDIA RTX
 A4000/NVENC run sampled 26 telemetry points (GPU utilization peak 7%, encoder
-peak 17%, whole-device VRAM peak 1,555 MiB). As elsewhere, the GL framebuffer
-is read back to CPU before hardware encoding. T08 renders the Khronos
+peak 17%, whole-device VRAM peak 1,555 MiB). Encoding uses GL PBO → CUDA →
+NVENC; diagnostic readbacks are separate. T08 renders the Khronos
 `AnimatedMorphCube` `Square` clip on NVIDIA RTX A4000/NVENC. Morph-weight delta
 is 1.0, 626,152 pixels change from frame 0 to 75, subject height is 64.07%, and
 frame 77 matches sequential rendering. A test-only orange material tint and
 three-quarter camera improve silhouette readability; scene.json records these
 settings. Twenty-five telemetry samples show GPU peak 5%, encoder peak 17%, and
-whole-device VRAM peak 1,545 MiB. Framebuffer readback to CPU remains before
-NVENC. This is still a single morph-only fixture, not a mixed skin+morph or
+whole-device VRAM peak 1,545 MiB. Encoding uses GL PBO → CUDA → NVENC;
+diagnostic readbacks occur in a separate pass. This is still a single morph-only fixture, not a mixed skin+morph or
 multi-target authoring proof. T07 proves the single top-level clip path, not
 nested precomp remapping or multi-clip blending.
 
@@ -290,9 +303,12 @@ hashes matched exactly. That PASS was invalid and is withdrawn. The runner now
 builds a separate MotionScene containing one large fixed Lambert sphere, fixed
 low ambient fill and one animated point light. At 1920×1080/30 fps, frame pairs
 0/75, 75/149 and 0/149 changed 305,637, 305,940 and 203,264 pixels; frame 77
-matched on random access. The rebuilt T04 MP4 differs from T03. This is a basic
-moving-light proof on llvmpipe software GL; it does not certify shadows or
-professional lighting quality.
+matched on random access. The rebuilt T04 MP4 differs from T03. It now renders
+on the NVIDIA RTX A4000 and encodes through GL PBO → CUDA → NVENC, with 150/150
+frames submitted and muxed. The independent brightness-centroid and temporal
+difference checks pass; 151 framebuffer readbacks occur only in the separate
+diagnostic pass. This is a basic moving-light proof and does not certify
+shadows or professional lighting quality.
 
 ## T03 run result
 
@@ -305,9 +321,11 @@ height). `bindMaterialNormalMap` binds a procedural tangent-space normal map to
 the polished metal sample. Visual review caught a format mismatch: the
 procedural bytes are RGB, but `DataTexture` defaults to RGBA. Declaring
 `Format::RGB` removes the diagonal stripe artifact; the corrected map changes
-86,203 pixels when disabled at frame 75. The material values are checked and
-frame 77 matches random-access rendering. The test stays PARTIAL until it has a
-trusted reference render and hardware validation. Chronon3D's inline RenderPlan material remains a compact
+86,195 pixels when disabled at frame 75. The material values are checked and
+frame 77 matches random-access rendering. Its video uses NVIDIA GL PBO → CUDA
+→ NVENC with 150/150 frames submitted and muxed; 152 CPU readbacks are confined
+to a separate diagnostics pass. The test stays PARTIAL until it has a trusted
+reference render. Chronon3D's inline RenderPlan material remains a compact
 Phong-like approximation rather than a full PBR path.
 
 ## T06 run result
@@ -317,11 +335,12 @@ asset layer → MotionSceneBridge → GLRenderer`. Its five meshes, hierarchy
 signature, and source/clone bounds match; all five meshes have finite,
 count-matched UVs; five standard materials and three base-color maps survive
 cloning. A Chronon-authored turntable and `CameraRig` dolly produced 150 frames
-at 1920×1080, 30 fps and 5.0 s. Coverage was 151,757–286,575 pixels, first/last
+at 1920×1080, 30 fps and 5.0 s. Its NVIDIA RTX A4000 encode uses GL PBO → CUDA
+→ NVENC; all 150 frames were submitted and muxed without CPU readback in the
+encode pass. Coverage was 151,757–286,575 pixels, first/last
 frames differed by 59,144 pixels, and random-access frame 77 matched
 byte-for-byte. The sampled frame was visually inspected. This remains PARTIAL
 because texture/UV/material response has no trusted numerical golden render.
-llvmpipe is software OpenGL; VRAM is unavailable.
 
 ## T10 run result
 
@@ -336,8 +355,8 @@ own focus setting than at the other two. The 1080p30, 150-frame NVIDIA RTX A4000
 random-access frame 77 matched exactly, and the measured same-subject ROI
 sharpness peaks at each requested focus distance. The run captured 45 GPU
 telemetry samples: GPU utilization peak 6%, encoder peak 17%, and whole-device
-VRAM peak 1,938 MiB. The GL framebuffer is read back to CPU before NVENC, so it
-is hardware-stage evidence but fails the full-GPU-resident acceptance gate. The actual frame confirms focus
+VRAM peak 1,938 MiB. The encoded pass transfers GL PBO → CUDA → NVENC without
+CPU framebuffer readback; diagnostic image reads are a separate pass. The actual frame confirms focus
 changes, while the subjects remain small; production composition and visual
 refinement are open. See `out/threepp_certification/nvidia/T10/` for the scene,
 MP4, snapshots, metadata, telemetry, and run log.
@@ -346,15 +365,13 @@ MP4, snapshots, metadata, telemetry, and run log.
 
 The initial llvmpipe result remains under `out/threepp_certification/T11/` as
 historical evidence. The replacement in
-`out/threepp_certification/nvidia/T11/` uses NVIDIA RTX A4000 OpenGL and
-`h264_nvenc`; an opt-in runner guard fails if llvmpipe/software GL is selected.
-It produces 150 frames at 1920×1080/30 fps. Coverage is 816,972–936,852 pixels,
-bloom on/off changes 662,469 pixels, and random-access frame 77 is byte-identical
-to sequential rendering. `nvidia-smi` sampled every 250 ms for 36 samples:
-GPU utilization averaged 4.3% and peaked at 8%, encoder utilization peaked at
-18%, and whole-device VRAM peaked at 1,699 MiB. These are device-wide readings.
-The threepp GL framebuffer is read back to CPU for image checks and NVENC input;
-the render and video encode both run on hardware, and the CPU handoff fails the full-GPU-resident acceptance gate. Chronon3D composition remains outstanding.
+`out/threepp_certification/nvidia/T11/` renders on NVIDIA RTX A4000 and sends
+GL pixels through a pixel-pack buffer and same-device CUDA transfer into
+NVENC. It produces 150 frames at 1920×1080/30 fps. Coverage is
+816,972–936,852 pixels, bloom on/off changes 662,469 pixels, and random-access
+frame 77 is byte-identical to sequential rendering. The encoded pass has no
+CPU framebuffer readback; 153 CPU reads occur in the separate diagnostics pass.
+Chronon3D composition remains outstanding.
 
 ## Current provenance and license notes
 
@@ -369,8 +386,10 @@ are recorded beside the binaries.
 
 ## Remaining integration gaps
 
-1. Complete visual/numeric PBR and texture baselines for GLB imports, including
-   normal mapping and material scale that is readable in the output.
+1. Complete visual/numeric PBR and GLB texture baselines: T02 now verifies
+   six atlas regions and real GPU sampler/mipmap response, but a trusted UV
+   orientation golden, cross-driver tolerance, normal-map baseline and readable
+   material scale remain open.
 2. Extend deterministic clip sampling to nested precomps and blended animation
    clips; the T07 single-clip close-up now visibly demonstrates the Fox run.
 3. Tune T05 shadow bias/softness and integrate the hardware-verified T10 focus
@@ -379,5 +398,23 @@ are recorded beside the binaries.
    prove overlay provenance and transparent media handoff end-to-end in
    Chronon3D. The native software decoder alpha conversion now has a passing
    YUVA444 regression, but the existing opaque H.264 demo does not exercise it.
-5. Add a true surfaceless NVIDIA EGL context for T14 and complete T15 on a real
-   GPU with repeated-render and full-pipeline resource evidence.
+5. **T15 direct GLB integration is still open.** T06/T12 load GLB through
+   threepp `GLTFLoader → MotionSceneBridge` and render it on NVIDIA GL; T15
+   currently hands Chronon3D a pre-encoded clip (`NVDEC → Vulkan → NVENC`).
+   Chronon3D's RenderPlan mesh decoder requires inline geometry and rejects
+   mesh asset/source references. Its separate `MeshLoader` prepares static
+   GLBs, but the mesh consumer located in `software_mesh_processor.cpp` is a
+   CPU renderer; no Vulkan mesh executor was found in the current path. Merely
+   connecting `MeshLoader` to RenderPlan would therefore miss the full-GPU
+   requirement. threepp's pinned Vulkan renderer is available upstream but is
+   excluded from this render target and is swapchain-only: its API explicitly
+   does not support offscreen render targets. Keep the existing EGL headless
+   GLTFLoader/GL renderer for 3D, and connect its CUDA-registered GL PBO to
+   Chronon3D's exported Vulkan surface using the existing CUDA/Vulkan memory
+   and semaphore bridge. This would remove the intermediate H.264/NVDEC cycle
+   without a second GLB parser or per-frame CPU readback. The remaining work is
+   to host the bridge in one render job, preserve exact frame/time authority in
+   ChrononMotion, and prove the full 1920×1080/30 render and encode stay
+   GPU-resident. Collect process-scoped CPU/RAM and repeated-job leak evidence
+   alongside that integration. Linux is the sole target; software-only results
+   cannot pass certification.
