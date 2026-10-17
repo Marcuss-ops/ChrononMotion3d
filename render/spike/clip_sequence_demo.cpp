@@ -56,11 +56,13 @@ int main(int argc, char** argv) try {
     bridge.evaluateAndSync(motion, 0);
 
     using Segment = threepp::motion::MotionSceneBridge::ClipSegment;
-    // Walk 0-2.5s, survey (talk stand-in) crossfades in at 2.5s, run crossfades in at 5.0s.
+    // Walk 0-2.5s, survey (talk stand-in) crossfades in at 2.5s, run begins
+    // blending in at 4.5s so its gait is already established through the old
+    // low-motion Survey section around 5.0s.
     bridge.bindLayerClipSequence(1, {
                                             Segment{findClip(result->animations, "Walk"), 0.f, 0.f, 0.f},
                                             Segment{findClip(result->animations, "Survey"), 2.5f, 0.f, 0.5f},
-                                            Segment{findClip(result->animations, "Run"), 5.0f, 8.f, 0.5f},
+                                            Segment{findClip(result->animations, "Run"), 4.5f, 8.f, 1.0f},
                                         });
 
     auto node = bridge.layerNode(1);
@@ -71,7 +73,7 @@ int main(int argc, char** argv) try {
     box.getCenter(center);
     box.getSize(size);
     const float span = std::max({size.x, size.y, size.z, 0.25f});
-    bridge.camera()->position.set(center.x + span * 0.72f, center.y + span * 0.4f, center.z + span * 2.15f);
+    bridge.camera()->position.set(center.x + span * 0.28f, center.y + span * 0.18f, center.z + span * 0.82f);
     bridge.camera()->lookAt(center);
     bridge.scene()->add(AmbientLight::create(Color(0xffffff), 0.5f));
     auto key = DirectionalLight::create(Color(0xffffff), 3.2f);
