@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cuda.h>
 #include <cuda_gl_interop.h>
 
 extern "C" {
@@ -23,9 +24,23 @@ class GlCudaNvencEncoder {
 public:
     GlCudaNvencEncoder(int width, int height, int fps, const std::string& path)
         : width_(width), height_(height), fps_(fps) {
+        cu_check(cuInit(0), "cuInit");
+        int cuda_device_total = 0;
+        cu_check(cuDeviceGetCount(&cuda_device_total), "cuDeviceGetCount");
+        for (int ordinal = 0; ordinal < cuda_device_total; ++ordinal) {
+            CUdevice device{};
+            cu_check(cuDeviceGet(&device, ordinal), "cuDeviceGet");
+            // Match Chronon3D::GpuRuntime so FFmpeg can alias this same
+            // primary context through AV_CUDA_USE_PRIMARY_CONTEXT.
+            cu_check(cuDevicePrimaryCtxSetFlags(device, CU_CTX_SCHED_BLOCKING_SYNC),
+                     "cuDevicePrimaryCtxSetFlags");
+        }
         cuda_check(cudaGLGetDevices(&device_count_, devices_, 1, cudaGLDeviceListCurrentFrame), "cudaGLGetDevices");
         if (device_count_ != 1) throw std::runtime_error("GL context is not associated with exactly one CUDA device");
         cuda_check(cudaSetDevice(devices_[0]), "cudaSetDevice(GL device)");
+        cudaDeviceProp device_properties{};
+        cuda_check(cudaGetDeviceProperties(&device_properties, devices_[0]), "cudaGetDeviceProperties");
+        device_name_ = device_properties.name;
 
         glGenBuffers(1, &pbo_);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo_);
@@ -151,11 +166,23 @@ public:
     }
 
     [[nodiscard]] int frames_submitted() const { return frames_submitted_; }
+    [[nodiscard]] int packets_written() const { return packets_written_; }
+    [[nodiscard]] const std::string& device_name() const { return device_name_; }
 
 private:
     static void cuda_check(cudaError_t result, const char* operation) {
         if (result != cudaSuccess)
             throw std::runtime_error(std::string(operation) + ": " + cudaGetErrorString(result));
+    }
+    static void cu_check(CUresult result, const char* operation) {
+        if (result == CUDA_SUCCESS) return;
+        const char* name = nullptr;
+        const char* description = nullptr;
+        cuGetErrorName(result, &name);
+        cuGetErrorString(result, &description);
+        throw std::runtime_error(std::string(operation) + ": " +
+                                 (description ? description : "CUDA driver error") +
+                                 " (" + (name ? name : "unknown") + ")");
     }
     static void av_check(int result, const char* operation) {
         if (result < 0) {
@@ -177,6 +204,7 @@ private:
             av_packet_rescale_ts(packet_, codec_->time_base, stream_->time_base);
             packet_->stream_index = stream_->index;
             av_check(av_interleaved_write_frame(format_, packet_), "av_interleaved_write_frame");
+            ++packets_written_;
             av_packet_unref(packet_);
         }
         if (flushing && !format_) throw std::runtime_error("missing MP4 muxer during flush");
@@ -198,6 +226,7 @@ private:
     int height_{};
     int fps_{};
     int frames_submitted_{};
+    int packets_written_{};
     unsigned int device_count_{};
     int devices_[1]{};
     GLuint pbo_{};
@@ -211,6 +240,7 @@ private:
     AVFrame* frame_{};
     bool header_written_{};
     bool finished_{};
+    std::string device_name_;
 };
 
 } // namespace chrononmotion::certification

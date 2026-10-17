@@ -18,6 +18,9 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "glad/glad.h"
+#ifdef CHRONONMOTION_HAS_GL_CUDA_NVENC
+#include "gl_cuda_nvenc_encoder.hpp"
+#endif
 #include "stb_image_write.h"
 
 #include "chrononmotion/motion/MotionScene.hpp"
@@ -74,6 +77,13 @@ namespace {
     }
     int run(const std::string& id, const fs::path& asset, const fs::path& out,
             const std::string& requestedClip) {
+#ifndef CHRONONMOTION_HAS_GL_CUDA_NVENC
+        (void)id;
+        (void)asset;
+        (void)out;
+        (void)requestedClip;
+        throw std::runtime_error("T07/T08 require the GL PBO -> CUDA -> NVENC build; CPU encoding fallback is disabled");
+#else
         fs::create_directories(out);
         GLTFLoader loader;
         auto result = loader.load(asset);
@@ -138,31 +148,30 @@ namespace {
         const auto* rendererName = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
         const std::string glRenderer = rendererName ? rendererName : "unknown";
         chrononmotion::certification::require_nvidia_renderer(glRenderer);
-        const char* requireHardware = std::getenv("CHRONON_CERT_REQUIRE_HARDWARE_GPU");
-        if (requireHardware && std::string(requireHardware) == "1" &&
-            (glRenderer.find("llvmpipe") != std::string::npos ||
-             glRenderer.find("softpipe") != std::string::npos ||
-             glRenderer.find("Software") != std::string::npos))
-            throw std::runtime_error("hardware GPU required but GL selected: " + glRenderer);
         renderer.setClearColor(Color(0x151922));
         renderer.toneMapping = ToneMapping::ACESFilmic;
         renderer.toneMappingExposure = 1.f;
         const fs::path videoPath = out / (id + "_animation_1080p30.mp4");
-        const std::string videoEncoder = chrononmotion::certification::require_nvenc_encoder();
-        const std::string encodeArgs = "-c:v h264_nvenc -preset p5 -rc vbr -cq 18 -b:v 0 -pix_fmt yuv420p ";
-        std::string cmd = "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size 1920x1080 -framerate 30 -i - -an " + encodeArgs + quote(videoPath.string());
-        FILE* pipe = popen(cmd.c_str(), "w");
-        if (!pipe) throw std::runtime_error("ffmpeg startup failed");
-        std::vector<unsigned char> first, mid, last, frame77;
-        PoseSignals pose0, poseMid;
-        size_t minCoverage = std::numeric_limits<size_t>::max(), maxCoverage = 0;
-        std::array<unsigned char, 3> background{};
+        chrononmotion::certification::require_nvenc_encoder();
+        chrononmotion::certification::GlCudaNvencEncoder gpuEncoder(W, H, FPS, videoPath.string());
         auto begin = std::chrono::steady_clock::now();
         for (int f = 0; f < FRAMES; ++f) {
             bridge.evaluateAndSync(motion, f);
             renderer.render(*bridge.scene(), *bridge.camera());
+            gpuEncoder.encode_current_target(f);
+        }
+        gpuEncoder.finish();
+        if (gpuEncoder.frames_submitted() != FRAMES || gpuEncoder.packets_written() != FRAMES)
+            throw std::runtime_error(id + " GPU encoder did not submit and mux all frames");
+        std::vector<unsigned char> first, mid, last, frame77;
+        PoseSignals pose0, poseMid;
+        size_t minCoverage = std::numeric_limits<size_t>::max(), maxCoverage = 0;
+        std::array<unsigned char, 3> background{};
+        for (int f = 0; f < FRAMES; ++f) {
+            bridge.evaluateAndSync(motion, f);
+            renderer.render(*bridge.scene(), *bridge.camera());
             auto pixels = renderer.readRGBPixels();
-            if (pixels.size() != size_t(W) * H * 3) throw std::runtime_error("invalid pixel readback");
+            if (pixels.size() != size_t(W) * H * 3) throw std::runtime_error("invalid diagnostic pixel readback");
             if (f == 0) {
                 first = pixels;
                 background = {pixels[0], pixels[1], pixels[2]};
@@ -180,15 +189,12 @@ namespace {
             minCoverage = std::min(minCoverage, cov);
             maxCoverage = std::max(maxCoverage, cov);
             if (f == 0 || f == 75 || f == 149) png(out / ("frame-" + std::to_string(f) + ".png"), pixels);
-            if (std::fwrite(pixels.data(), 1, pixels.size(), pipe) != pixels.size()) throw std::runtime_error("ffmpeg pipe write failed");
         }
         auto done = std::chrono::steady_clock::now();
         bridge.evaluateAndSync(motion, 77);
         renderer.render(*bridge.scene(), *bridge.camera());
         auto random = renderer.readRGBPixels();
         bool randomOk = random == frame77;
-        int enc = pclose(pipe);
-        if (enc == -1 || !WIFEXITED(enc) || WEXITSTATUS(enc) != 0) throw std::runtime_error("ffmpeg encode failed");
         const float boneDelta = vectorDelta(pose0.bones, poseMid.bones), morphDelta = vectorDelta(pose0.morphs, poseMid.morphs);
         const size_t temporal = changed(first, mid);
         int subjectMinY = H, subjectMaxY = -1;
@@ -219,13 +225,15 @@ namespace {
         getrusage(RUSAGE_SELF, &ru);
         const char* ver = reinterpret_cast<const char*>(glGetString(GL_VERSION));
         std::ofstream meta(out / "metadata.json");
-        meta << std::fixed << std::setprecision(5) << "{\n  \"test_id\": \"" << id << "\",\n  \"status\": \"" << "PARTIAL" << "\",\n  \"technical_checks_passed\": true,\n  \"pipeline\": \"GLTFLoader animation -> MotionSceneBridge absolute Chronon sample -> threepp GLRenderer -> ffmpeg\",\n  \"width\": 1920,\n  \"height\": 1080,\n  \"fps\": 30,\n  \"frames\": 150,\n  \"duration_seconds\": 5.0,\n  \"clip_name\": \"" << clip->name() << "\",\n  \"mesh_count\": " << totalMeshes << ",\n  \"skinned_mesh_count\": " << skinMeshes << ",\n  \"morph_mesh_count\": " << morphMeshes << ",\n  \"bone_matrix_delta_frame_0_to_75\": " << boneDelta << ",\n  \"morph_weight_delta_frame_0_to_75\": " << morphDelta << ",\n  \"frame_0_to_75_changed_pixels\": " << temporal << ",\n  \"min_coverage\": " << minCoverage << ",\n  \"max_coverage\": " << maxCoverage << ",\n  \"subject_bbox_frame_75\": [" << subjectMinX << ", " << subjectMinY << ", " << subjectMaxX << ", " << subjectMaxY << "],\n  \"subject_height_ratio_frame_75\": " << subjectHeightRatio << ",\n  \"random_access_frame_77_identical\": " << (randomOk ? "true" : "false") << ",\n  \"render_seconds\": " << std::chrono::duration<double>(done - begin).count() << ",\n  \"peak_rss_kib\": " << ru.ru_maxrss << ",\n  \"gl_renderer\": \"" << glRenderer << "\",\n  \"gl_version\": \"" << (ver ? ver : "unknown") << "\",\n  \"video_encoder\": \"" << videoEncoder << "\",\n  \"hardware_gpu_render\": " << ((glRenderer.find("llvmpipe") == std::string::npos && glRenderer.find("softpipe") == std::string::npos && glRenderer.find("Software") == std::string::npos) ? "true" : "false") << ",\n  \"cpu_framebuffer_readback_before_encode\": true,\n  \"gpu_resident_zero_copy\": false,\n  \"vram_bytes\": null\n}\n";
+        meta << std::fixed << std::setprecision(5) << "{\n  \"test_id\": \"" << id << "\",\n  \"status\": \"PARTIAL\",\n  \"technical_checks_passed\": true,\n  \"pipeline\": \"GLTFLoader animation -> MotionSceneBridge absolute Chronon sample -> threepp GLRenderer -> GL PBO -> CUDA -> NVENC\",\n  \"width\": 1920,\n  \"height\": 1080,\n  \"fps\": 30,\n  \"frames\": 150,\n  \"duration_seconds\": 5.0,\n  \"clip_name\": \"" << clip->name() << "\",\n  \"mesh_count\": " << totalMeshes << ",\n  \"skinned_mesh_count\": " << skinMeshes << ",\n  \"morph_mesh_count\": " << morphMeshes << ",\n  \"bone_matrix_delta_frame_0_to_75\": " << boneDelta << ",\n  \"morph_weight_delta_frame_0_to_75\": " << morphDelta << ",\n  \"frame_0_to_75_changed_pixels\": " << temporal << ",\n  \"min_coverage\": " << minCoverage << ",\n  \"max_coverage\": " << maxCoverage << ",\n  \"subject_bbox_frame_75\": [" << subjectMinX << ", " << subjectMinY << ", " << subjectMaxX << ", " << subjectMaxY << "],\n  \"subject_height_ratio_frame_75\": " << subjectHeightRatio << ",\n  \"random_access_frame_77_identical\": " << (randomOk ? "true" : "false") << ",\n  \"render_seconds\": " << std::chrono::duration<double>(done - begin).count() << ",\n  \"peak_rss_kib\": " << ru.ru_maxrss << ",\n  \"gl_renderer\": \"" << glRenderer << "\",\n  \"gl_version\": \"" << (ver ? ver : "unknown") << "\",\n  \"video_encoder\": \"h264_nvenc\",\n  \"gpu_device\": \"" << gpuEncoder.device_name() << "\",\n  \"frames_submitted\": " << gpuEncoder.frames_submitted() << ",\n  \"packets_muxed\": " << gpuEncoder.packets_written() << ",\n  \"hardware_gpu_render\": true,\n  \"cpu_framebuffer_readback_in_encode_path\": false,\n  \"diagnostic_cpu_readback_passes\": 151,\n  \"gpu_resident_zero_copy\": false,\n  \"vram_bytes\": null\n}\n";
         renderer.dispose();
-        std::cout << id << " PARTIAL (CPU framebuffer readback before encode) clip=" << clip->name() << " meshes=" << totalMeshes << " skinned=" << skinMeshes << " morph=" << morphMeshes << " bone_delta=" << boneDelta << " morph_delta=" << morphDelta << " pixels=" << temporal << " random_access=" << randomOk << "\n";
+        std::cout << id << " PARTIAL (GPU-resident encode verified; diagnostics read back separately) clip=" << clip->name() << " meshes=" << totalMeshes << " skinned=" << skinMeshes << " morph=" << morphMeshes << " bone_delta=" << boneDelta << " morph_delta=" << morphDelta << " pixels=" << temporal << " random_access=" << randomOk << "\n";
         return 0;
+#endif
     }
 }// namespace
 int main(int argc, char** argv) try {
+    chrononmotion::certification::prepare_nvidia_egl_headless();
     if (argc < 3) throw std::invalid_argument("usage: animation_certification T07|T08 output_dir [asset.glb] [clip_name]");
     std::string id = argv[1];
     if (id != "T07" && id != "T08") throw std::invalid_argument("test id must be T07 or T08");

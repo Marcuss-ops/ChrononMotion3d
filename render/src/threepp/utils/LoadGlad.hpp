@@ -8,6 +8,7 @@
 namespace threepp {
 
     void loadGlad();
+    void loadGladWithProc(GLADloadproc getProcAddress);
 }
 
 #endif//THREEPP_LOAD_GLAD_HPP

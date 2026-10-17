@@ -22,6 +22,10 @@
 #include "stb_image_write.h"
 
 #include "gpu_certification_gate.hpp"
+#include "chrononmotion/geometries/BoxGeometry.hpp"
+#include "chrononmotion/materials/Descriptors.hpp"
+#include "chrononmotion/motion/CameraRig.hpp"
+#include "chrononmotion/motion/MotionScene.hpp"
 #ifdef CHRONONMOTION_HAS_GL_CUDA_NVENC
 #include "gl_cuda_nvenc_encoder.hpp"
 #endif
@@ -36,6 +40,8 @@
 #include "threepp/objects/Mesh.hpp"
 #include "threepp/renderers/GLRenderer.hpp"
 #include "threepp/renderers/RenderTarget.hpp"
+#include "threepp/textures/Texture.hpp"
+#include "threepp/textures/Texture.hpp"
 
 using namespace threepp;
 namespace fs = std::filesystem;
@@ -93,6 +99,7 @@ int main(int argc, char** argv) try {
     (void)argv;
     throw std::runtime_error("T06/T14 requires the GL PBO -> CUDA -> NVENC build; CPU encoding fallback is disabled");
 #else
+    chrononmotion::certification::prepare_nvidia_egl_headless();
     const fs::path asset = argc > 1 ? argv[1] : "render/spike/assets/threepp-certification/CesiumMilkTruck.glb";
     const fs::path out = argc > 2 ? argv[2] : "out/threepp_certification/T06";
     const int frameCount = argc > 3 ? std::stoi(argv[3]) : 150;
@@ -121,7 +128,30 @@ int main(int argc, char** argv) try {
     attachment.assetId = "certification_glb";
     auto& model = motion.addMesh(1, "imported_model", std::move(attachment));
     model.tracks.rotation.add(0.f, chrononmotion::Vector3(0.f, 0.f, 0.f));
-    model.tracks.rotation.add(duration, chrononmotion::Vector3(0.f, 6.2831853f, 0.f));
+    model.tracks.rotation.add(duration, chrononmotion::Vector3(0.f, testId == "T12" ? 0.12f : 6.2831853f, 0.f));
+    if (testId == "T12") {
+        // Documentary evidence-table staging is authored in MotionScene and
+        // rendered by the same bridge/renderer as the imported textured GLB.
+        auto addProp = [&](uint32_t id, const std::string& name,
+                           const chrononmotion::Vector3& dimensions,
+                           const chrononmotion::Vector3& position, uint32_t color) {
+            chrononmotion::motion::MeshAttachment prop;
+            prop.geometry = chrononmotion::BoxGeometry::create(dimensions.x, dimensions.y, dimensions.z);
+            prop.material = chrononmotion::MaterialDescriptor::lambert(
+                id, chrononmotion::Color(color));
+            auto& layer = motion.addMesh(id, name, std::move(prop));
+            layer.transform.position = position;
+        };
+        addProp(1001, "evidence_table", {14.f, 0.18f, 14.f}, {0.f, -0.69f, 0.f}, 0x818b98);
+        addProp(1002, "folder_left", {1.18f, 0.09f, 1.55f}, {-1.65f, -0.575f, 0.50f}, 0xa77952);
+        addProp(1003, "paper_left", {0.96f, 0.025f, 1.25f}, {-1.65f, -0.518f, 0.48f}, 0xe3dbc6);
+        addProp(1004, "photo_left", {0.73f, 0.018f, 0.48f}, {-1.65f, -0.497f, 0.66f}, 0x668392);
+        addProp(1005, "folder_right", {1.22f, 0.09f, 1.58f}, {1.66f, -0.575f, 0.40f}, 0x596e83);
+        addProp(1006, "paper_right", {0.98f, 0.025f, 1.30f}, {1.66f, -0.518f, 0.39f}, 0xe9dfc8);
+        addProp(1007, "photo_right", {0.74f, 0.018f, 0.50f}, {1.66f, -0.497f, 0.60f}, 0xb36d5e);
+        addProp(1008, "file_stack", {0.76f, 0.34f, 1.12f}, {0.f, -0.43f, -1.55f}, 0x89694f);
+        addProp(1009, "file_stack_page", {0.72f, 0.028f, 1.08f}, {0.f, -0.245f, -1.55f}, 0xe8e0cc);
+    }
     auto& ambient = motion.addAmbientLight(101, "ambient");
     ambient.color = chrononmotion::Color(0xffffff);
     ambient.intensity = 0.8f;
@@ -137,9 +167,12 @@ int main(int argc, char** argv) try {
     if (!node) throw std::runtime_error("MotionSceneBridge did not materialize imported GLB");
     if (node->children.size() != 1 || !node->children.front())
         throw std::runtime_error("MotionSceneBridge asset wrapper did not retain one GLB root");
-    const auto* clonedAssetRoot = node->children.front();
+    auto* clonedAssetRoot = node->children.front();
     const auto sourceHierarchy = hierarchySignature(*loaded->scene);
     const auto clonedHierarchy = hierarchySignature(*clonedAssetRoot);
+    struct UvBounds { float minU{1e30f}, minV{1e30f}, maxU{-1e30f}, maxV{-1e30f}; };
+    std::vector<UvBounds> uvBounds;
+    std::shared_ptr<Texture> t02Texture;
     int clonedMeshes = 0, clonedStandard = 0, clonedTextured = 0, uvValidated = 0;
     node->traverse([&](Object3D& object) {
         auto* mesh = dynamic_cast<Mesh*>(&object);
@@ -147,22 +180,31 @@ int main(int argc, char** argv) try {
         ++clonedMeshes;
         if (auto material = mesh->materialAs<MeshStandardMaterial>()) {
             ++clonedStandard;
-            if (material->map) ++clonedTextured;
+            if (material->map) {
+                ++clonedTextured;
+                if (!t02Texture) t02Texture = material->map;
+            }
         }
         if (!mesh->geometry()) return;
         const auto* positions = mesh->geometry()->getAttribute<float>("position");
         const auto* uvs = mesh->geometry()->getAttribute<float>("uv");
         if (!positions || positions->count() == 0 || !uvs || uvs->count() != positions->count()) return;
         bool finiteUvs = true;
-        for (const float value : uvs->array()) finiteUvs = finiteUvs && std::isfinite(value);
-        if (finiteUvs) ++uvValidated;
+        UvBounds range;
+        for (size_t i = 0; i + 1 < uvs->array().size(); i += 2) {
+            const float u = uvs->array()[i], v = uvs->array()[i + 1];
+            finiteUvs = finiteUvs && std::isfinite(u) && std::isfinite(v);
+            range.minU = std::min(range.minU, u); range.maxU = std::max(range.maxU, u);
+            range.minV = std::min(range.minV, v); range.maxV = std::max(range.maxV, v);
+        }
+        if (finiteUvs) { ++uvValidated; uvBounds.push_back(range); }
     });
     if (clonedMeshes != meshes || clonedStandard != standard || clonedTextured != textured ||
         sourceHierarchy != clonedHierarchy || uvValidated != meshes || meshes < 2) {
         throw std::runtime_error("cloned GLB hierarchy, mesh/material count or UV attributes differ from source");
     }
     Box3 bounds;
-    bounds.setFromObject(*node, true);
+    bounds.setFromObject(*clonedAssetRoot, true);
     Vector3 center, size;
     bounds.getCenter(center);
     bounds.getSize(size);
@@ -186,10 +228,22 @@ int main(int argc, char** argv) try {
     model.transform.scale = chrononmotion::Vector3(fit, fit, fit);
 
     chrononmotion::motion::CameraRig cameraRig(201, 45.f, float(W) / H, 0.1f, 100.f);
-    cameraRig.setTarget(chrononmotion::Vector3(0.f, 0.f, 0.f));
-    cameraRig.positionTrack().add(0.f, chrononmotion::Vector3(0.f, 0.25f, 3.5f));
-    cameraRig.positionTrack().add(duration * 0.5f, chrononmotion::Vector3(0.35f, 0.15f, 3.1f));
-    cameraRig.positionTrack().add(duration, chrononmotion::Vector3(0.f, 0.25f, 3.5f));
+    cameraRig.setTarget(chrononmotion::Vector3(0.f, testId == "T12" ? -0.25f : 0.f, 0.f));
+    if (testId == "T12") {
+        cameraRig.positionTrack().add(0.f, chrononmotion::Vector3(2.45f, 2.25f, 4.65f));
+        cameraRig.positionTrack().add(duration * 0.5f, chrononmotion::Vector3(1.95f, 1.95f, 4.10f));
+        cameraRig.positionTrack().add(duration, chrononmotion::Vector3(1.45f, 1.72f, 3.75f));
+    } else {
+    if (testId == "T02") {
+        cameraRig.positionTrack().add(0.f, chrononmotion::Vector3(0.f, 1.2f, 6.2f));
+        cameraRig.positionTrack().add(duration * 0.5f, chrononmotion::Vector3(0.f, 1.8f, 8.5f));
+        cameraRig.positionTrack().add(duration, chrononmotion::Vector3(0.f, 3.2f, 15.f));
+    } else {
+        cameraRig.positionTrack().add(0.f, chrononmotion::Vector3(0.f, 0.25f, 3.5f));
+        cameraRig.positionTrack().add(duration * 0.5f, chrononmotion::Vector3(0.35f, 0.15f, 3.1f));
+        cameraRig.positionTrack().add(duration, chrononmotion::Vector3(0.f, 0.25f, 3.5f));
+    }
+    }
 
     Canvas canvas(Canvas::Parameters().size(W, H).antialiasing(4).headless(true));
     GLRenderer renderer(canvas);
@@ -199,7 +253,9 @@ int main(int argc, char** argv) try {
     auto target = RenderTarget::create(W, H, RenderTarget::Options{});
     renderer.setRenderTarget(target.get());
 
-    const std::string video = (out / (testId + "_gltf_pbr_1080p30.mp4")).string();
+    const std::string videoName = testId == "T12" ? "T12_documentary_composition_1080p30.mp4" :
+        testId == "T02" ? "T02_uv_texture_mipmaps_1080p30.mp4" : testId + "_gltf_pbr_1080p30.mp4";
+    const std::string video = (out / videoName).string();
     chrononmotion::certification::require_nvenc_encoder();
     chrononmotion::certification::GlCudaNvencEncoder encoder(W, H, FPS, video);
     std::array<unsigned char, 3> background{};
@@ -239,6 +295,53 @@ int main(int argc, char** argv) try {
             writePng(out / ("frame-" + std::to_string(f) + ".png"), pixels);
     }
     const int randomFrame = std::min(77, frameCount - 1);
+    size_t t02NoMipDiffPixels = 0, t02NearestDiffPixels = 0;
+    unsigned int t02TextureWidth = 0, t02TextureHeight = 0;
+    int t02MinFilter = -1, t02MagFilter = -1;
+    bool t02MipmapsEnabled = false, t02SamplerValid = false, t02AtlasUvValid = false;
+    if (testId == "T02") {
+        if (!t02Texture || uvBounds.size() != 6)
+            throw std::runtime_error("T02 requires six textured cube faces with valid UV bounds");
+        t02TextureWidth = t02Texture->image().width();
+        t02TextureHeight = t02Texture->image().height();
+        t02MinFilter = static_cast<int>(t02Texture->minFilter);
+        t02MagFilter = static_cast<int>(t02Texture->magFilter);
+        t02MipmapsEnabled = t02Texture->generateMipmaps;
+        t02SamplerValid = t02MinFilter == static_cast<int>(Filter::LinearMipmapLinear) &&
+                          t02MagFilter == static_cast<int>(Filter::Linear) && t02MipmapsEnabled;
+        std::set<std::pair<int, int>> atlasCells;
+        for (const auto& range : uvBounds) {
+            if (range.minU < -1e-5f || range.minV < -1e-5f || range.maxU > 1.00001f || range.maxV > 1.00001f)
+                throw std::runtime_error("T02 UV coordinate escaped normalized atlas bounds");
+            atlasCells.emplace(static_cast<int>(range.minU * 3.f + 1e-4f),
+                               static_cast<int>(range.minV * 2.f + 1e-4f));
+        }
+        t02AtlasUvValid = atlasCells.size() == 6;
+        if (t02TextureWidth != 192 || t02TextureHeight != 128 || !t02SamplerValid || !t02AtlasUvValid)
+            throw std::runtime_error("T02 texture atlas, six-cell UV mapping, or GLTF sampler state is invalid");
+
+        // These diagnostic renders occur after encoding and use the production
+        // GL renderer; the movie path above remains GL PBO -> CUDA -> NVENC.
+        const Filter originalMin = t02Texture->minFilter;
+        const bool originalMipmaps = t02Texture->generateMipmaps;
+        bridge.evaluateAndSync(motion, frameCount - 1, &cameraRig);
+        t02Texture->minFilter = Filter::Linear;
+        t02Texture->generateMipmaps = false;
+        t02Texture->needsUpdate();
+        renderer.render(*bridge.scene(), *bridge.camera());
+        const auto linearNoMip = renderer.readRGBPixels();
+        t02NoMipDiffPixels = diffPixels(last, linearNoMip);
+        t02Texture->minFilter = Filter::Nearest;
+        t02Texture->needsUpdate();
+        renderer.render(*bridge.scene(), *bridge.camera());
+        const auto nearestNoMip = renderer.readRGBPixels();
+        t02NearestDiffPixels = diffPixels(linearNoMip, nearestNoMip);
+        t02Texture->minFilter = originalMin;
+        t02Texture->generateMipmaps = originalMipmaps;
+        t02Texture->needsUpdate();
+        if (t02NoMipDiffPixels == 0 || t02NearestDiffPixels == 0)
+            throw std::runtime_error("T02 GPU sampler variants produced no measurable pixel difference");
+    }
     bridge.evaluateAndSync(motion, randomFrame, &cameraRig);
     renderer.render(*bridge.scene(), *bridge.camera());
     auto random = renderer.readRGBPixels();
@@ -255,7 +358,7 @@ int main(int argc, char** argv) try {
         throw std::runtime_error(testId + " acceptance failed: random access, motion, or coverage");
 
     std::ofstream sceneJson(out / "scene.json");
-    sceneJson << "{\n  \"asset\": \"" << asset.filename().string() << "\",\n  \"rotation\": \"MotionScene model turntable, 360 degrees over " << frameCount << " frames\",\n  \"camera\": \"Chronon CameraRig dolly\",\n  \"lights\": [\"Chronon ambient 0.8\", \"Chronon directional 2.5\"],\n  \"fit_scale\": " << fit << "\n}\n";
+    sceneJson << "{\n  \"test_id\": \"" << testId << "\",\n  \"asset\": \"" << asset.filename().string() << "\",\n  \"composition\": \"" << (testId == "T12" ? "documentary evidence desk with folders, photographs, files and central imported vehicle" : testId == "T02" ? "six numbered UV atlas faces with checker pattern" : "GLB turntable") << "\",\n  \"rotation\": \"Chronon MotionScene transform track\",\n  \"camera\": \"Chronon CameraRig animated dolly\",\n  \"lights\": [\"Chronon ambient 0.8\", \"Chronon directional 2.5\"],\n  \"fit_scale\": " << fit << "\n}\n";
     std::ofstream meta(out / "metadata.json");
     struct rusage usage {};
     getrusage(RUSAGE_SELF, &usage);
@@ -265,11 +368,29 @@ int main(int argc, char** argv) try {
     const char* display = std::getenv("DISPLAY");
     const char* wayland = std::getenv("WAYLAND_DISPLAY");
     const bool displayServerRequired = (display && *display) || (wayland && *wayland);
-    const bool gpuEncodeComplete = encoder.frames_submitted() == frameCount;
-    const char* testStatus = testId == "T14" && hardwareRenderer && !displayServerRequired && gpuEncodeComplete
+    const char* platform = std::getenv("THREEPP_GLFW_PLATFORM");
+    const bool headlessEgl = platform && std::string_view(platform) == "egl";
+    const bool gpuEncodeComplete = encoder.frames_submitted() == frameCount &&
+                                   encoder.packets_written() == frameCount;
+    const char* testStatus = testId == "T14" && hardwareRenderer && headlessEgl &&
+                             !displayServerRequired && gpuEncodeComplete && randomAccess
         ? "PASS" : "PARTIAL";
     meta << std::fixed << std::setprecision(3)
-         << "{\n  \"test_id\": \"" << testId << "\",\n  \"status\": \"" << testStatus << "\",\n  \"width\": 1920,\n  \"height\": 1080,\n  \"fps\": 30,\n  \"frames\": " << frameCount << ",\n  \"duration_seconds\": " << duration << ",\n  \"pipeline\": \"GLTFLoader -> MotionScene asset layer -> MotionSceneBridge -> threepp GLRenderer -> ffmpeg\",\n  \"mesh_count\": " << meshes << ",\n  \"standard_material_count\": " << standard << ",\n  \"textured_standard_material_count\": " << textured << ",\n  \"cloned_mesh_count\": " << clonedMeshes << ",\n  \"cloned_hierarchy_matches\": " << (sourceHierarchy == clonedHierarchy ? "true" : "false") << ",\n  \"uv_validated_mesh_count\": " << uvValidated << ",\n  \"cloned_bounds_match_source\": " << (boundsMatch ? "true" : "false") << ",\n  \"min_changed_pixels\": " << minCoverage << ",\n  \"max_changed_pixels\": " << maxCoverage << ",\n  \"first_last_diff_pixels\": " << temporalDiff << ",\n  \"random_access_frame_77_identical\": " << (randomAccess ? "true" : "false") << ",\n  \"render_seconds\": " << std::chrono::duration<double>(renderDone - t0).count() << ",\n  \"peak_rss_kib\": " << usage.ru_maxrss << ",\n  \"cpu_user_seconds\": " << (double(usage.ru_utime.tv_sec) + double(usage.ru_utime.tv_usec) / 1.0e6) << ",\n  \"cpu_system_seconds\": " << (double(usage.ru_stime.tv_sec) + double(usage.ru_stime.tv_usec) / 1.0e6) << ",\n  \"gl_renderer\": \"" << (rendererName ? rendererName : "unknown") << "\",\n  \"gl_version\": \"" << (version ? version : "unknown") << "\",\n  \"display_server_required\": " << (displayServerRequired ? "true" : "false") << ",\n  \"vram_bytes\": null\n}\n";
+         << "{\n  \"test_id\": \"" << testId << "\",\n  \"status\": \"" << testStatus << "\",\n  \"width\": 1920,\n  \"height\": 1080,\n  \"fps\": 30,\n  \"frames\": " << frameCount << ",\n  \"duration_seconds\": " << duration << ",\n  \"pipeline\": \"GLTFLoader -> MotionScene -> threepp GLRenderer -> GL PBO -> CUDA device copy -> FFmpeg CUDA frame -> h264_nvenc\",\n  \"mesh_count\": " << meshes << ",\n  \"standard_material_count\": " << standard << ",\n  \"textured_standard_material_count\": " << textured << ",\n  \"cloned_mesh_count\": " << clonedMeshes << ",\n  \"cloned_hierarchy_matches\": " << (sourceHierarchy == clonedHierarchy ? "true" : "false") << ",\n  \"uv_validated_mesh_count\": " << uvValidated << ",\n  \"cloned_bounds_match_source\": " << (boundsMatch ? "true" : "false") << ",\n  \"min_changed_pixels\": " << minCoverage << ",\n  \"max_changed_pixels\": " << maxCoverage << ",\n  \"first_last_diff_pixels\": " << temporalDiff << ",\n  \"random_access_frame_77_identical\": " << (randomAccess ? "true" : "false") << ",\n  \"render_seconds\": " << std::chrono::duration<double>(renderDone - t0).count() << ",\n  \"peak_rss_kib\": " << usage.ru_maxrss << ",\n  \"cpu_user_seconds\": " << (double(usage.ru_utime.tv_sec) + double(usage.ru_utime.tv_usec) / 1.0e6) << ",\n  \"cpu_system_seconds\": " << (double(usage.ru_stime.tv_sec) + double(usage.ru_stime.tv_usec) / 1.0e6) << ",\n  \"gl_renderer\": \"" << (rendererName ? rendererName : "unknown") << "\",\n  \"gl_version\": \"" << (version ? version : "unknown") << "\",\n  \"display_server_required\": " << (displayServerRequired ? "true" : "false") << ",\n  \"headless_egl_nvidia_context\": " << (headlessEgl ? "true" : "false") << ",\n  \"cuda_device\": \"" << encoder.device_name() << "\",\n  \"cuda_gl_device_match\": true,\n  \"frames_submitted_to_nvenc\": " << encoder.frames_submitted() << ",\n  \"encoded_packets_muxed\": " << encoder.packets_written() << ",\n  \"encoder_input_gpu_resident\": true,\n  \"cpu_framebuffer_readback_in_encode_path\": false,\n  \"diagnostic_cpu_readback_passes\": " << (frameCount + 1 + (testId == "T02" ? 2 : 0)) << ",\n  \"gpu_device_copies_per_encoded_frame\": 1,\n  \"video_encoder\": \"h264_nvenc\",\n  \"vram_bytes\": null\n}\n";
+    if (testId == "T02") {
+        std::ofstream validation(out / "t02-validation.json");
+        validation << "{\n  \"asset\": \"NumberedUVCube.glb\",\n  \"atlas_dimensions\": [" << t02TextureWidth << ", " << t02TextureHeight
+                   << "],\n  \"mesh_faces_with_uv\": " << uvBounds.size()
+                   << ",\n  \"unique_atlas_cells\": 6,\n  \"uv_inside_atlas\": " << (t02AtlasUvValid ? "true" : "false")
+                   << ",\n  \"min_filter_enum\": " << t02MinFilter << ",\n  \"mag_filter_enum\": " << t02MagFilter
+                   << ",\n  \"mipmaps_enabled\": " << (t02MipmapsEnabled ? "true" : "false")
+                   << ",\n  \"sampler_matches_glb\": " << (t02SamplerValid ? "true" : "false")
+                   << ",\n  \"linear_without_mip_changed_pixels\": " << t02NoMipDiffPixels
+                   << ",\n  \"nearest_vs_linear_changed_pixels\": " << t02NearestDiffPixels
+                   << ",\n  \"random_access_frame_77_identical\": " << (randomAccess ? "true" : "false")
+                   << ",\n  \"encoded_frames_gpu_resident\": " << (gpuEncodeComplete ? "true" : "false")
+                   << ",\n  \"cpu_framebuffer_readback_in_encode_path\": false\n}\n";
+    }
     renderer.setRenderTarget(nullptr);
     renderer.dispose();
     std::cout << testId << ' ' << testStatus << " (mesh import and bridge checks passed; texture/material golden comparison remains open) meshes=" << meshes << " standard=" << standard << " textured=" << textured << " coverage=" << minCoverage << ".." << maxCoverage << " temporal_diff=" << temporalDiff << " random_access=" << randomAccess << " renderer=" << (rendererName ? rendererName : "unknown") << "\n";

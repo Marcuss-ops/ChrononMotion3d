@@ -34,6 +34,9 @@
 #include "threepp/renderers/GLRenderer.hpp"
 
 #include "glad/glad.h"
+#ifdef CHRONONMOTION_HAS_GL_CUDA_NVENC
+#include "gl_cuda_nvenc_encoder.hpp"
+#endif
 
 namespace fs = std::filesystem;
 using namespace threepp;
@@ -94,6 +97,12 @@ namespace {
 }// namespace
 
 int main(int argc, char** argv) {
+#ifndef CHRONONMOTION_HAS_GL_CUDA_NVENC
+    (void)argc;
+    (void)argv;
+    throw std::runtime_error("T11 requires the GL PBO -> CUDA -> NVENC build; CPU encoding fallback is disabled");
+#else
+    chrononmotion::certification::prepare_nvidia_egl_headless();
     const fs::path outputDir = argc > 1 ? argv[1] : "out/threepp_certification/T11";
     fs::create_directories(outputDir);
     const fs::path videoPath = outputDir / "T11_bloom_1080p30.mp4";
@@ -120,13 +129,6 @@ int main(int argc, char** argv) {
     const auto* rendererName = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
     const std::string glRenderer = rendererName ? rendererName : "unknown";
     chrononmotion::certification::require_nvidia_renderer(glRenderer);
-    const char* requireHardware = std::getenv("CHRONON_CERT_REQUIRE_HARDWARE_GPU");
-    if (requireHardware && std::string(requireHardware) == "1" &&
-        (glRenderer.find("llvmpipe") != std::string::npos ||
-         glRenderer.find("softpipe") != std::string::npos ||
-         glRenderer.find("Software") != std::string::npos)) {
-        throw std::runtime_error("hardware GPU required but GL selected: " + glRenderer);
-    }
     renderer.setClearColor(Color(0x080a12));
     renderer.toneMapping = ToneMapping::ACESFilmic;
     renderer.toneMappingExposure = 1.f;
@@ -140,14 +142,16 @@ int main(int argc, char** argv) {
     composer.addPass(std::make_shared<UnrealBloomPass>(
             Vector2(float(kWidth), float(kHeight)), 0.55f, 0.08f, 0.15f));
 
-    const std::string encoder = chrononmotion::certification::require_nvenc_encoder();
-    const std::string encodeArgs = "-c:v h264_nvenc -preset p5 -rc vbr -cq 18 -b:v 0 -pix_fmt yuv420p ";
-    const std::string ffmpeg = "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size " +
-                               std::to_string(kWidth) + "x" + std::to_string(kHeight) + " -framerate " +
-                               std::to_string(kFps) + " -i - -an " + encodeArgs +
-                               shellQuote(videoPath.string());
-    FILE* pipe = popen(ffmpeg.c_str(), "w");
-    if (!pipe) throw std::runtime_error("could not start ffmpeg encoder");
+    chrononmotion::certification::require_nvenc_encoder();
+    chrononmotion::certification::GlCudaNvencEncoder gpuEncoder(kWidth, kHeight, kFps, videoPath.string());
+    for (unsigned frame = 0; frame < kFrames; ++frame) {
+        bridge.evaluateAndSync(motionScene, static_cast<int>(frame), &cameraRig);
+        composer.render(1.f / float(kFps));
+        gpuEncoder.encode_current_target(frame);
+    }
+    gpuEncoder.finish();
+    if (gpuEncoder.frames_submitted() != int(kFrames) || gpuEncoder.packets_written() != int(kFrames))
+        throw std::runtime_error("T11 GPU encoder did not submit and mux all frames");
 
     const auto start = std::chrono::steady_clock::now();
     std::array<unsigned char, 3> background{};
@@ -161,10 +165,8 @@ int main(int argc, char** argv) {
         bridge.evaluateAndSync(motionScene, static_cast<int>(frame), &cameraRig);
         composer.render(1.f / float(kFps));
         auto pixels = composer.readRGBPixels();
-        if (pixels.size() != std::size_t(kWidth) * kHeight * 3) {
-            pclose(pipe);
-            throw std::runtime_error("unexpected RGB readback size");
-        }
+        if (pixels.size() != std::size_t(kWidth) * kHeight * 3)
+            throw std::runtime_error("unexpected diagnostic RGB readback size");
         if (frame == 0) background = {pixels[0], pixels[1], pixels[2]};
         const auto coverage = countChangedPixels(pixels, background);
         minCoverage = std::min(minCoverage, coverage);
@@ -176,10 +178,6 @@ int main(int argc, char** argv) {
         if (frame == 75) middleFrame = pixels;
         if (frame == 149) lastFrame = pixels;
         if (frame == 77) referenceFrame = pixels;
-        if (std::fwrite(pixels.data(), 1, pixels.size(), pipe) != pixels.size()) {
-            pclose(pipe);
-            throw std::runtime_error("ffmpeg pipe closed before all frames were written");
-        }
     }
     const auto sequentialDone = std::chrono::steady_clock::now();
 
@@ -197,10 +195,6 @@ int main(int argc, char** argv) {
     const auto randomAccessFrame = composer.readRGBPixels();
     const bool deterministic = randomAccessFrame == referenceFrame;
 
-    const int encoderStatus = pclose(pipe);
-    if (encoderStatus == -1 || !WIFEXITED(encoderStatus) || WEXITSTATUS(encoderStatus) != 0) {
-        throw std::runtime_error("ffmpeg failed to encode T11 video");
-    }
     const bool animated = firstFrame != lastFrame;
     std::cout << "T11 metrics: coverage=" << minCoverage << ".." << maxCoverage
               << " bloom_changed_pixels=" << bloomDiffPixels
@@ -220,7 +214,7 @@ int main(int argc, char** argv) {
     std::ofstream metadata(metadataPath);
     metadata << std::fixed << std::setprecision(3)
              << "{\n  \"test_id\": \"T11\",\n  \"status\": \"" << "PARTIAL" << "\",\n  \"technical_checks_passed\": true,\n"
-             << "  \"pipeline\": \"MotionScene -> MotionSceneBridge -> threepp GLRenderer -> EffectComposer -> UnrealBloomPass -> ffmpeg\",\n"
+             << "  \"pipeline\": \"MotionScene -> MotionSceneBridge -> threepp GLRenderer -> EffectComposer -> UnrealBloomPass -> GL PBO -> CUDA -> NVENC\",\n"
              << "  \"width\": " << kWidth << ",\n  \"height\": " << kHeight
              << ",\n  \"fps\": " << kFps << ",\n  \"frames\": " << kFrames
              << ",\n  \"duration_seconds\": 5.0,\n  \"tone_mapping\": \"ACESFilmic\",\n  \"msaa_samples\": 4,\n  \"random_access_frame_77_identical\": "
@@ -234,16 +228,21 @@ int main(int argc, char** argv) {
              << ",\n  \"peak_rss_kib\": " << usage.ru_maxrss
              << ",\n  \"gl_renderer\": \"" << glRenderer
              << "\",\n  \"gl_version\": \"" << (glVersion ? glVersion : "unknown")
-             << "\",\n  \"video_encoder\": \"" << encoder
-             << "\",\n  \"hardware_gpu_render\": "
+             << "\",\n  \"video_encoder\": \"h264_nvenc\""
+             << ",\n  \"gpu_device\": \"" << gpuEncoder.device_name() << "\""
+             << ",\n  \"frames_submitted\": " << gpuEncoder.frames_submitted()
+             << ",\n  \"packets_muxed\": " << gpuEncoder.packets_written()
+             << ",\n  \"hardware_gpu_render\": "
              << ((glRenderer.find("llvmpipe") == std::string::npos &&
                   glRenderer.find("softpipe") == std::string::npos &&
                   glRenderer.find("Software") == std::string::npos) ? "true" : "false")
-             << ",\n  \"cpu_framebuffer_readback_before_encode\": true"
+             << ",\n  \"cpu_framebuffer_readback_in_encode_path\": false"
+             << ",\n  \"diagnostic_cpu_readback_passes\": 153"
              << ",\n  \"gpu_resident_zero_copy\": false"
              << ",\n  \"vram_bytes\": null,\n  \"vram_status\": \"not exposed by the GL backend; device telemetry is sampled separately\"\n}\n";
     if (!metadata) throw std::runtime_error("failed to write metadata");
     renderer.dispose();
-    std::cout << "T11 PARTIAL (CPU framebuffer readback before encode): wrote " << videoPath << " with 1080p30, frame snapshots and metadata\n";
+    std::cout << "T11 PARTIAL (GPU-resident encode verified; CPU readbacks are diagnostics only): wrote " << videoPath << " with 1080p30, frame snapshots and metadata\n";
     return 0;
+#endif
 }

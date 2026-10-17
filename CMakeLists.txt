@@ -19,7 +19,7 @@ endif()
 option(CHRONONMOTION_BUILD_TESTS "Build the ChrononMotion smoke tests" ${PROJECT_IS_TOP_LEVEL})
 option(CHRONONMOTION_BUILD_BENCHMARKS "Build the standalone evaluation benchmark" OFF)
 option(CHRONONMOTION_WERROR "Turn compiler warnings into errors" OFF)
-option(CHRONONMOTION_BUILD_RENDER "Build the offscreen GL render module" ${PROJECT_IS_TOP_LEVEL})
+option(CHRONONMOTION_BUILD_RENDER "Build the offscreen GL render module (explicit opt-in; headless core is the default)" OFF)
 set(CHRONON3D_INCLUDE_DIR "" CACHE PATH "Optional sibling Chronon3D include root for building the offline RenderPlan adapter")
 set(CHRONON3D_DEPENDENCY_INCLUDE_DIR "" CACHE PATH "Optional Chronon3D dependency include root")
 

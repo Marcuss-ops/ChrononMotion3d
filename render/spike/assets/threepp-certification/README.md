@@ -8,6 +8,7 @@ directory and used by certification scenes.
 
 | File | Upstream model | License / credit | SHA-256 |
 |---|---|---|---|
+| `NumberedUVCube.glb` | Generated six-face 3×2 UV atlas checker cube | CC0 1.0; generated for ChrononMotion3D T02, reproducible with `render/spike/generate_t02_uv_cube.py` | `b05614eb24d49d957182c10f6fbf46010b180a017c7f1e45689f4121e720b5ce` |
 | `BoxTextured.glb` | Box Textured | CC BY 4.0; Cesium for Everything | `b510eca2e2ef33f62f9ed57d6e7ce2d10ebb2bdebc4a8e59d347719ba81abdf4` |
 | `Avocado.glb` | Avocado | CC0 1.0; Microsoft for Everything | `ccc9c3ce56423720b09399c2351537207cd5a65f859f9e6e2f30922762f3abd4` |
 | `RiggedSimple.glb` | Rigged Simple | CC BY 4.0; Cesium for Everything | `3a79dabb67bb0cd598a18d08b954d9d357c27c30672f82ef5d3f4e7fe6ca3401` |
@@ -23,3 +24,8 @@ The truck's mesh/animation description and Cesium mark notice are in the
 [Khronos CesiumMilkTruck README](https://github.com/KhronosGroup/glTF-Sample-Assets/blob/edc7c9e67c639d230715049ee31f9a96a6babbbe/Models/CesiumMilkTruck/README.md).
 The GLB files are unmodified upstream assets. Preserve their attribution if
 redistributed outside this test fixture.
+
+`NumberedUVCube.glb` is a generated test fixture rather than an upstream model.
+Its six faces sample unique cells in a 3×2 texture atlas with a high-contrast
+face index and checker pattern. It is generated deterministically by the
+adjacent script and carries no third-party geometry, image, font, or texture.

@@ -4,11 +4,11 @@
 
 #include <stdexcept>
 
+namespace {
+    bool gladInitialized = false;
+}
 
 void threepp::loadGlad() {
-
-    static bool gladInitialized = false;
-
     if (!gladInitialized) {
         // Throw rather than exit(): this runs inside a library that is embedded
         // in other hosts (the Python module), where a bare exit kills the
@@ -20,4 +20,12 @@ void threepp::loadGlad() {
         }
         gladInitialized = true;
     }
+}
+
+void threepp::loadGladWithProc(GLADloadproc getProcAddress) {
+    if (gladInitialized) return;
+    if (!getProcAddress || !gladLoadGLLoader(getProcAddress)) {
+        throw std::runtime_error("Failed to initialize GLAD from the requested OpenGL context");
+    }
+    gladInitialized = true;
 }

@@ -9,6 +9,10 @@
 #ifndef __EMSCRIPTEN__
 #include "threepp/utils/LoadGlad.hpp"
 #define GLFW_INCLUDE_NONE
+#ifdef CHRONONMOTION_EGL_HEADLESS
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#endif
 #else
 #include <emscripten.h>
 #endif
@@ -264,6 +268,12 @@ struct Canvas::Impl {
 
     Canvas& scope;
     GLFWwindow* window{nullptr};
+#ifdef CHRONONMOTION_EGL_HEADLESS
+    bool eglBacked{false};
+    EGLDisplay eglDisplay{EGL_NO_DISPLAY};
+    EGLContext eglContext{EGL_NO_CONTEXT};
+    EGLSurface eglSurface{EGL_NO_SURFACE};
+#endif
 
     WindowSize size_;
     Vector2 lastMousePos_;
@@ -282,7 +292,16 @@ struct Canvas::Impl {
         : scope(scope),
           params_(params) {
 
+#ifdef CHRONONMOTION_EGL_HEADLESS
+        if (const char* platform = std::getenv("THREEPP_GLFW_PLATFORM");
+            platform && std::string_view{platform} == "egl") {
+            eglBacked = true;
+        } else {
+            initGLfw(params.headless_);
+        }
+#else
         initGLfw(params.headless_);
+#endif
 
         // Fullscreen takes the monitor's size and ignores any requested one.
         // Headless wins over it: there is no window to make borderless, and a
@@ -305,6 +324,59 @@ struct Canvas::Impl {
     }
 
     void initWindow(GraphicsAPI api) {
+#ifdef CHRONONMOTION_EGL_HEADLESS
+        if (eglBacked) {
+            if (api != GraphicsAPI::OpenGL)
+                throw std::runtime_error("Canvas EGL headless platform supports OpenGL only");
+            if (eglContext != EGL_NO_CONTEXT) return;
+            auto queryDevices = reinterpret_cast<PFNEGLQUERYDEVICESEXTPROC>(eglGetProcAddress("eglQueryDevicesEXT"));
+            auto getPlatformDisplay = reinterpret_cast<PFNEGLGETPLATFORMDISPLAYEXTPROC>(eglGetProcAddress("eglGetPlatformDisplayEXT"));
+            if (!queryDevices || !getPlatformDisplay)
+                throw std::runtime_error("EGL device enumeration extensions are unavailable");
+            EGLint deviceCount = 0;
+            if (queryDevices(0, nullptr, &deviceCount) != EGL_TRUE || deviceCount < 1)
+                throw std::runtime_error("EGL found no headless render devices");
+            std::vector<EGLDeviceEXT> devices(static_cast<size_t>(deviceCount));
+            if (queryDevices(deviceCount, devices.data(), &deviceCount) != EGL_TRUE)
+                throw std::runtime_error("EGL device enumeration failed");
+            for (const EGLDeviceEXT device : devices) {
+                EGLDisplay candidate = getPlatformDisplay(EGL_PLATFORM_DEVICE_EXT, device, nullptr);
+                if (candidate == EGL_NO_DISPLAY) continue;
+                EGLint major = 0, minor = 0;
+                if (eglInitialize(candidate, &major, &minor) != EGL_TRUE) continue;
+                const char* vendor = eglQueryString(candidate, EGL_VENDOR);
+                if (vendor && std::string_view{vendor}.find("NVIDIA") != std::string_view::npos) {
+                    eglDisplay = candidate;
+                    break;
+                }
+                eglTerminate(candidate);
+            }
+            if (eglDisplay == EGL_NO_DISPLAY)
+                throw std::runtime_error("EGL could not initialize a NVIDIA headless device");
+            if (eglBindAPI(EGL_OPENGL_API) != EGL_TRUE)
+                throw std::runtime_error("eglBindAPI(OpenGL) failed");
+            const EGLint configAttributes[]{EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+                EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8,
+                EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 24, EGL_NONE};
+            EGLConfig config{};
+            EGLint configCount = 0;
+            if (eglChooseConfig(eglDisplay, configAttributes, &config, 1, &configCount) != EGL_TRUE || configCount != 1)
+                throw std::runtime_error("EGL could not choose an OpenGL pbuffer config");
+            const EGLint surfaceAttributes[]{EGL_WIDTH, size_.width(), EGL_HEIGHT, size_.height(), EGL_NONE};
+            eglSurface = eglCreatePbufferSurface(eglDisplay, config, surfaceAttributes);
+            if (eglSurface == EGL_NO_SURFACE) throw std::runtime_error("eglCreatePbufferSurface failed");
+            const EGLint contextAttributes[]{EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, 3,
+                EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT, EGL_NONE};
+            eglContext = eglCreateContext(eglDisplay, config, EGL_NO_CONTEXT, contextAttributes);
+            if (eglContext == EGL_NO_CONTEXT) throw std::runtime_error("eglCreateContext(OpenGL 3.3) failed");
+            if (eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext) != EGL_TRUE)
+                throw std::runtime_error("eglMakeCurrent failed");
+            loadGladWithProc([](const char* name) -> void* {
+                return reinterpret_cast<void*>(eglGetProcAddress(name));
+            });
+            return;
+        }
+#endif
         if (window) return; // already initialised
         params_.graphicsApi_ = api;
 
@@ -529,6 +601,18 @@ struct Canvas::Impl {
 
     bool animateOnce(const std::function<void()>& f) {
 
+#ifdef CHRONONMOTION_EGL_HEADLESS
+        if (eglBacked) {
+            if (eglContext == EGL_NO_CONTEXT) initWindow(params_.graphicsApi_);
+            if (close_) return false;
+            insideAnimateLoop_ = true;
+            f();
+            insideAnimateLoop_ = false;
+            if (frameEndCallback_) frameEndCallback_();
+            return !close_;
+        }
+#endif
+
         if (!window) initWindow(params_.graphicsApi_);
 
         if (close_ || glfwWindowShouldClose(window)) {
@@ -573,6 +657,17 @@ struct Canvas::Impl {
     }
 
     ~Impl() {
+#ifdef CHRONONMOTION_EGL_HEADLESS
+        if (eglBacked) {
+            if (eglDisplay != EGL_NO_DISPLAY) {
+                eglMakeCurrent(eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+                if (eglContext != EGL_NO_CONTEXT) eglDestroyContext(eglDisplay, eglContext);
+                if (eglSurface != EGL_NO_SURFACE) eglDestroySurface(eglDisplay, eglSurface);
+                eglTerminate(eglDisplay);
+            }
+            return;
+        }
+#endif
         if (window) {
             // Hand the pointer back BEFORE the window goes away, for apps that
             // grabbed it for mouse-look (GLFW_CURSOR_DISABLED + raw motion —

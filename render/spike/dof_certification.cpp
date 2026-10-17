@@ -19,6 +19,9 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "glad/glad.h"
+#ifdef CHRONONMOTION_HAS_GL_CUDA_NVENC
+#include "gl_cuda_nvenc_encoder.hpp"
+#endif
 #include "stb_image_write.h"
 
 #include "chrononmotion/materials/Descriptors.hpp"
@@ -90,6 +93,12 @@ namespace {
 }// namespace
 
 int main(int argc, char** argv) try {
+#ifndef CHRONONMOTION_HAS_GL_CUDA_NVENC
+    (void)argc;
+    (void)argv;
+    throw std::runtime_error("T10 requires the GL PBO -> CUDA -> NVENC build; CPU encoding fallback is disabled");
+#else
+    chrononmotion::certification::prepare_nvidia_egl_headless();
     const fs::path output = argc > 1 ? argv[1] : "out/threepp_certification/T10";
     fs::create_directories(output);
 
@@ -160,12 +169,6 @@ int main(int argc, char** argv) try {
     const auto* rendererName = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
     const std::string glRenderer = rendererName ? rendererName : "unknown";
     chrononmotion::certification::require_nvidia_renderer(glRenderer);
-    const char* requireHardware = std::getenv("CHRONON_CERT_REQUIRE_HARDWARE_GPU");
-    if (requireHardware && std::string(requireHardware) == "1" &&
-        (glRenderer.find("llvmpipe") != std::string::npos ||
-         glRenderer.find("softpipe") != std::string::npos ||
-         glRenderer.find("Software") != std::string::npos))
-        throw std::runtime_error("hardware GPU required but GL selected: " + glRenderer);
     renderer.setClearColor(Color(0x090d16));
     threepp::motion::MotionSceneBridge bridge(42.f, float(W) / H, 0.1f, 100.f);
     for (std::size_t i = 0; i < subjects.size(); ++i)
@@ -180,11 +183,8 @@ int main(int argc, char** argv) try {
     composer.addPass(bokeh);
 
     const fs::path videoPath = output / "T10_dof_1080p30.mp4";
-    const std::string videoEncoder = chrononmotion::certification::require_nvenc_encoder();
-    const std::string encodeArgs = "-c:v h264_nvenc -preset p5 -rc vbr -cq 18 -b:v 0 -pix_fmt yuv420p ";
-    const std::string command = "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size 1920x1080 -framerate 30 -i - -an " + encodeArgs + shellQuote(videoPath.string());
-    FILE* pipe = popen(command.c_str(), "w");
-    if (!pipe) throw std::runtime_error("could not start ffmpeg");
+    chrononmotion::certification::require_nvenc_encoder();
+    chrononmotion::certification::GlCudaNvencEncoder gpuEncoder(W, H, FPS, videoPath.string());
 
     const std::array<int, 3> roiCenters{395, 960, 1337};
     std::array<std::array<double, 3>, 3> focusScores{};
@@ -199,14 +199,26 @@ int main(int argc, char** argv) try {
         const float seconds = float(frame) / float(FPS);
         bokeh->focus = cameraRig.sample(seconds).focusDistance;
         composer.render(1.f / float(FPS));
+        renderer.setRenderTarget(&composer.readBuffer());
+        gpuEncoder.encode_current_target(frame);
+        renderer.setRenderTarget(nullptr);
+    }
+    gpuEncoder.finish();
+    if (gpuEncoder.frames_submitted() != FRAMES || gpuEncoder.packets_written() != FRAMES)
+        throw std::runtime_error("T10 GPU encoder did not submit and mux all frames");
+
+    for (unsigned frame = 0; frame < FRAMES; ++frame) {
+        bridge.evaluateAndSync(motion, int(frame), &cameraRig);
+        const float seconds = float(frame) / float(FPS);
+        bokeh->focus = cameraRig.sample(seconds).focusDistance;
+        composer.render(1.f / float(FPS));
         const auto pixels = composer.readRGBPixels();
-        if (pixels.size() != std::size_t(W) * H * 3) throw std::runtime_error("unexpected T10 readback size");
+        if (pixels.size() != std::size_t(W) * H * 3) throw std::runtime_error("unexpected T10 diagnostic readback size");
         if (frame == 0) background = {pixels[0], pixels[1], pixels[2]};
         minCoverage = std::min(minCoverage, changedPixels(pixels, background));
         maxCoverage = std::max(maxCoverage, changedPixels(pixels, background));
         if (frame == 0 || frame == 75 || frame == 149) writePng(output / ("frame-" + std::to_string(frame) + ".png"), pixels);
         if (frame == 77) reference77 = pixels;
-        if (std::fwrite(pixels.data(), 1, pixels.size(), pipe) != pixels.size()) throw std::runtime_error("ffmpeg pipe write failed");
 
         for (std::size_t sample = 0; sample < sampleFrames.size(); ++sample) {
             if (frame != unsigned(sampleFrames[sample])) continue;
@@ -219,8 +231,6 @@ int main(int argc, char** argv) try {
     bokeh->focus = cameraRig.sample(77.f / float(FPS)).focusDistance;
     composer.render(1.f / float(FPS));
     const bool randomAccess = composer.readRGBPixels() == reference77;
-    const int encoder = pclose(pipe);
-    if (encoder == -1 || !WIFEXITED(encoder) || WEXITSTATUS(encoder) != 0) throw std::runtime_error("ffmpeg encode failed");
 
     // Compare each same-subject ROI across focus settings. Assets have
     // different intrinsic detail, so comparing different models against one
@@ -257,7 +267,7 @@ int main(int argc, char** argv) try {
     std::ofstream metadata(output / "metadata.json");
     metadata << std::fixed << std::setprecision(3)
              << "{\n  \"test_id\": \"T10\",\n  \"status\": \"" << (pass ? "PARTIAL" : "FAIL") << "\",\n  \"technical_checks_passed\": " << (pass ? "true" : "false") << ",\n"
-             << "  \"pipeline\": \"MotionScene + CameraRig.focusDistance -> MotionSceneBridge -> EffectComposer -> BokehPass -> ffmpeg\",\n"
+             << "  \"pipeline\": \"MotionScene + CameraRig.focusDistance -> MotionSceneBridge -> EffectComposer -> BokehPass -> GL PBO -> CUDA -> NVENC\",\n"
              << "  \"width\": " << W << ",\n  \"height\": " << H << ",\n  \"fps\": " << FPS
              << ",\n  \"frames\": " << FRAMES << ",\n  \"duration_seconds\": 5.0,\n"
              << "  \"focus_distances\": [" << focusDistances[0] << ", " << focusDistances[1] << ", " << focusDistances[2] << "],\n"
@@ -274,20 +284,25 @@ int main(int argc, char** argv) try {
              << ",\n  \"peak_rss_kib\": " << usage.ru_maxrss
              << ",\n  \"gl_renderer\": \"" << glRenderer
              << "\",\n  \"gl_version\": \"" << (glVersion ? glVersion : "unknown")
-             << "\",\n  \"video_encoder\": \"" << videoEncoder
-             << "\",\n  \"hardware_gpu_render\": "
+             << "\",\n  \"video_encoder\": \"h264_nvenc\""
+             << ",\n  \"gpu_device\": \"" << gpuEncoder.device_name() << "\""
+             << ",\n  \"frames_submitted\": " << gpuEncoder.frames_submitted()
+             << ",\n  \"packets_muxed\": " << gpuEncoder.packets_written()
+             << ",\n  \"hardware_gpu_render\": "
              << ((glRenderer.find("llvmpipe") == std::string::npos &&
                   glRenderer.find("softpipe") == std::string::npos &&
                   glRenderer.find("Software") == std::string::npos) ? "true" : "false")
-             << ",\n  \"cpu_framebuffer_readback_before_encode\": true"
+             << ",\n  \"cpu_framebuffer_readback_in_encode_path\": false"
+             << ",\n  \"diagnostic_cpu_readback_passes\": 151"
              << ",\n  \"gpu_resident_zero_copy\": false"
              << ",\n  \"vram_bytes\": null\n}\n";
     renderer.dispose();
-    std::cout << "T10 " << (pass ? "PARTIAL (CPU framebuffer readback before encode)" : "FAIL") << " sharpness=" << focusScores[0][0] << ',' << focusScores[0][1] << ',' << focusScores[0][2]
+    std::cout << "T10 " << (pass ? "PARTIAL (GPU-resident encode verified; diagnostics read back separately)" : "FAIL") << " sharpness=" << focusScores[0][0] << ',' << focusScores[0][1] << ',' << focusScores[0][2]
               << " / " << focusScores[1][0] << ',' << focusScores[1][1] << ',' << focusScores[1][2]
               << " / " << focusScores[2][0] << ',' << focusScores[2][1] << ',' << focusScores[2][2]
               << " random_access=" << randomAccess << "\n";
     return pass ? 0 : 1;
+#endif
 } catch (const std::exception& error) {
     std::cerr << "T10 FAIL: " << error.what() << '\n';
     return 1;
