@@ -6,9 +6,12 @@
 # The core `chrononmotion` library stays dependency-free and renderer-free;
 # this module is its pixel-producing sibling, fed by Motion-baked scenes.
 #
-# Deliberately NOT here: the Vulkan renderer, post-processing, audio,
-# controls/input, physics/sensors, examples, python, the editor. Those stay
+# Deliberately NOT here: the Vulkan renderer, audio, interactive controls
+# (the passive PeripheralsEventSource that Canvas subclasses IS here),
+# physics/sensors, examples, python, the editor. Those stay
 # deleted — Chronon3D already owns compositing, effects and encoding.
+# NOTE: postprocessing (EffectComposer / UnrealBloomPass / BokehPass) lives
+# here: the DoF and scene certification programs consume it.
 #
 # NOTE: this file intentionally lives outside the boundary-guardrail scan
 # (tests/check_motion_boundary.cmake only covers include/, src/, tests/ and
@@ -169,6 +172,40 @@ add_library(chrononmotion_render STATIC
         ${libwebpSources}
 )
 
+option(CHRONONMOTION_BUILD_SPIKE_PROGRAMS
+        "Build render/spike demo + certification programs (default OFF: lean core+renderer build; enable for certification runs)"
+        OFF)
+
+# --- shared CUDA/FFmpeg interop discovery + requirements (used by the
+# --- certification programs below; single INTERFACE target replaces the
+# --- previously repeated 4-line block per executable) ---
+# Keep CUDA/FFmpeg interop optional for build hosts without the NVIDIA SDK,
+# but never substitute a CPU encoder in the certification runner. Such hosts
+# can build ChrononMotion3D; T06/T14 then reports that the GPU route is absent.
+find_path(CHRONON_CUDA_INCLUDE_DIR cuda_gl_interop.h)
+find_library(CHRONON_CUDART_LIBRARY NAMES cudart)
+find_library(CHRONON_CUDA_DRIVER_LIBRARY NAMES cuda)
+find_package(PkgConfig QUIET)
+if (PkgConfig_FOUND)
+    pkg_check_modules(CHRONON_FFMPEG QUIET IMPORTED_TARGET libavcodec libavformat libavutil)
+endif ()
+if (CHRONON_CUDA_INCLUDE_DIR AND CHRONON_CUDART_LIBRARY AND CHRONON_CUDA_DRIVER_LIBRARY AND TARGET PkgConfig::CHRONON_FFMPEG)
+    set(CHRONON_GL_CUDA_NVENC_AVAILABLE TRUE)
+    message(STATUS "threepp certification: enabling GL PBO -> CUDA -> NVENC path")
+else ()
+    message(STATUS "threepp certification: CUDA/FFmpeg interop unavailable; GPU certification runner will refuse to render")
+endif ()
+add_library(chrononmotion_gl_cuda_nvenc INTERFACE)
+target_link_libraries(chrononmotion_gl_cuda_nvenc INTERFACE
+        ${CHRONON_CUDART_LIBRARY} ${CHRONON_CUDA_DRIVER_LIBRARY})
+if (TARGET PkgConfig::CHRONON_FFMPEG)
+    target_link_libraries(chrononmotion_gl_cuda_nvenc INTERFACE PkgConfig::CHRONON_FFMPEG)
+endif ()
+if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
+    target_include_directories(chrononmotion_gl_cuda_nvenc INTERFACE "${CHRONON_CUDA_INCLUDE_DIR}")
+    target_compile_definitions(chrononmotion_gl_cuda_nvenc INTERFACE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
+endif ()
+
 target_include_directories(chrononmotion_render PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${RENDER_GENERATED_DIR}"
@@ -201,6 +238,12 @@ if (TARGET PkgConfig::CHRONON_EGL)
 endif ()
 
 # --- spikes: headless proofs (cube, glb, bridge, image_mesh) -> PPM/MP4 ---
+# Gated: OFF by default so `cmake --build` stops compiling ~25 demo binaries.
+# Certification runs build with -DCHRONONMOTION_BUILD_SPIKE_PROGRAMS=ON.
+if (NOT CHRONONMOTION_BUILD_SPIKE_PROGRAMS)
+    message(STATUS "threepp render: spike/demo programs disabled (CHRONONMOTION_BUILD_SPIKE_PROGRAMS=OFF)")
+    return()
+endif ()
 add_executable(chrononmotion_render_spike spike/cube.cpp)
 target_link_libraries(chrononmotion_render_spike PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_glb spike/glb.cpp)
@@ -210,35 +253,12 @@ add_executable(chrononmotion_render_glb_certification spike/glb_certification.cp
 target_include_directories(chrononmotion_render_glb_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_glb_certification PRIVATE chrononmotion_render)
+target_link_libraries(chrononmotion_render_glb_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_camera_certification spike/camera_certification.cpp)
 target_include_directories(chrononmotion_render_camera_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_camera_certification PRIVATE chrononmotion_render)
-
-# Keep CUDA/FFmpeg interop optional for build hosts without the NVIDIA SDK,
-# but never substitute a CPU encoder in the certification runner. Such hosts
-# can build ChrononMotion3D; T06/T14 then reports that the GPU route is absent.
-find_path(CHRONON_CUDA_INCLUDE_DIR cuda_gl_interop.h)
-find_library(CHRONON_CUDART_LIBRARY NAMES cudart)
-find_library(CHRONON_CUDA_DRIVER_LIBRARY NAMES cuda)
-find_package(PkgConfig QUIET)
-if (PkgConfig_FOUND)
-    pkg_check_modules(CHRONON_FFMPEG QUIET IMPORTED_TARGET libavcodec libavformat libavutil)
-endif ()
-if (CHRONON_CUDA_INCLUDE_DIR AND CHRONON_CUDART_LIBRARY AND CHRONON_CUDA_DRIVER_LIBRARY AND TARGET PkgConfig::CHRONON_FFMPEG)
-    set(CHRONON_GL_CUDA_NVENC_AVAILABLE TRUE)
-    target_include_directories(chrononmotion_render_glb_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_glb_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_glb_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-    target_include_directories(chrononmotion_render_camera_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_camera_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_camera_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-    message(STATUS "threepp certification: enabling GL PBO -> CUDA -> NVENC path")
-else ()
-    message(STATUS "threepp certification: CUDA/FFmpeg interop unavailable; GPU certification runner will refuse to render")
-endif ()
+target_link_libraries(chrononmotion_render_camera_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 
 add_executable(chrononmotion_render_alpha_handoff spike/alpha_handoff.cpp)
 target_include_directories(chrononmotion_render_alpha_handoff PRIVATE
@@ -261,82 +281,42 @@ add_executable(chrononmotion_render_animation_certification spike/animation_cert
 target_include_directories(chrononmotion_render_animation_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_animation_certification PRIVATE chrononmotion_render)
-if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
-    target_include_directories(chrononmotion_render_animation_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_animation_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_animation_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-endif ()
+target_link_libraries(chrononmotion_render_animation_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_humanoid_shadow_certification spike/humanoid_shadow_certification.cpp)
 target_include_directories(chrononmotion_render_humanoid_shadow_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_humanoid_shadow_certification PRIVATE chrononmotion_render)
-if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
-    target_include_directories(chrononmotion_render_humanoid_shadow_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_humanoid_shadow_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_humanoid_shadow_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-endif ()
+target_link_libraries(chrononmotion_render_humanoid_shadow_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_scene_lowpoly_crowd spike/scene01_lowpoly_crowd.cpp)
 target_include_directories(chrononmotion_render_scene_lowpoly_crowd PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_scene_lowpoly_crowd PRIVATE chrononmotion_render)
-if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
-    target_include_directories(chrononmotion_render_scene_lowpoly_crowd PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_scene_lowpoly_crowd PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_scene_lowpoly_crowd PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-endif ()
+target_link_libraries(chrononmotion_render_scene_lowpoly_crowd PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_scene_hoodie_portrait spike/scene02_hoodie_portrait.cpp)
 target_include_directories(chrononmotion_render_scene_hoodie_portrait PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_scene_hoodie_portrait PRIVATE chrononmotion_render)
-if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
-    target_include_directories(chrononmotion_render_scene_hoodie_portrait PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_scene_hoodie_portrait PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_scene_hoodie_portrait PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-endif ()
+target_link_libraries(chrononmotion_render_scene_hoodie_portrait PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_pbr_certification spike/pbr_certification.cpp)
 target_include_directories(chrononmotion_render_pbr_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_pbr_certification PRIVATE chrononmotion_render)
-if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
-    target_include_directories(chrononmotion_render_pbr_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_pbr_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_pbr_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-endif ()
+target_link_libraries(chrononmotion_render_pbr_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_postprocessing spike/postprocessing.cpp)
 target_include_directories(chrononmotion_render_postprocessing PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_postprocessing PRIVATE chrononmotion_render)
-if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
-    target_include_directories(chrononmotion_render_postprocessing PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_postprocessing PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_postprocessing PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-endif ()
+target_link_libraries(chrononmotion_render_postprocessing PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_dof_certification spike/dof_certification.cpp)
 target_include_directories(chrononmotion_render_dof_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_dof_certification PRIVATE chrononmotion_render)
-if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
-    target_include_directories(chrononmotion_render_dof_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_dof_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_dof_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-endif ()
+target_link_libraries(chrononmotion_render_dof_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_shadow_certification spike/shadow_certification.cpp)
 target_include_directories(chrononmotion_render_shadow_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
-target_link_libraries(chrononmotion_render_shadow_certification PRIVATE chrononmotion_render)
-if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
-    target_include_directories(chrononmotion_render_shadow_certification PRIVATE "${CHRONON_CUDA_INCLUDE_DIR}")
-    target_link_libraries(chrononmotion_render_shadow_certification PRIVATE "${CHRONON_CUDART_LIBRARY}" "${CHRONON_CUDA_DRIVER_LIBRARY}" PkgConfig::CHRONON_FFMPEG)
-    target_compile_definitions(chrononmotion_render_shadow_certification PRIVATE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
-endif ()
+target_link_libraries(chrononmotion_render_shadow_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_portrait_mesh spike/portrait_mesh.cpp)
 target_link_libraries(chrononmotion_render_portrait_mesh PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_mrbeast_rig spike/mrbeast_rig.cpp)
