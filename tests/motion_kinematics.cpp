@@ -6,6 +6,7 @@
 // derivative, and a derivative that is wrong by a key spacing is worse than none.
 
 #include "chrononmotion/chrononmotion.hpp"
+#include "chrononmotion/motion/CameraRig.hpp"
 
 #include "motion_check.hpp"
 
@@ -146,6 +147,94 @@ namespace {
         const Easing stepped = Easing::steps(4);
         checkNear(stepped.derivative(0.3f), 0.f, 1e-6f, "steps derivative is flat mid-level");
         check(std::isfinite(stepped.derivative(0.25f)), "steps derivative is finite on a boundary");
+    }
+
+    void cameraRigDerivative() {
+
+        section("camera rig derivative (shutter form)");
+
+        // A dolly along the view axis toward a fixed target: the position
+        // channel moves, but the view axis f itself does not — the re-aim
+        // reports no rotation, so a real dolly must not fake rotational blur.
+        CameraRig dolly(1);
+        dolly.setPosition({0.f, 0.f, 10.f});
+        dolly.setTarget({0.f, 0.f, 0.f});
+        dolly.positionTrack().add(0.f, Vector3{0.f, 0.f, 60.f}, Easing::linear());
+        dolly.positionTrack().add(1.f, Vector3{0.f, 0.f, 20.f}, Easing::linear());
+        const CameraPoseDerivative straight = dolly.sampleDerivative(0.5f);
+        checkNear(straight.angularVelocity.length(), 0.f, 1e-6f,
+                  "a pure dolly along the view axis fakes no re-aim swing");
+
+        // A translation with a transverse component does swing: a lateral pan
+        // through the axis at fixed target distance spins the view axis at
+        // our early speed over distance — 16 units/s from distance 10 → 1.6 rad/s.
+        CameraRig pan(2);
+        pan.positionTrack().add(0.f, Vector3{-8.f, 0.f, 10.f}, Easing::linear());
+        pan.positionTrack().add(1.f, Vector3{8.f, 0.f, 10.f}, Easing::linear());
+        pan.setTarget({0.f, 0.f, 0.f});
+        checkNear(pan.sampleDerivative(0.5f).angularVelocity.length(), 1.6f, 5e-3f,
+                  "a lateral pan's re-aim ω equals transverse speed over distance");
+
+        // Finite-difference agreement: the analytic ω must match the sampled
+        // rotation rate of the resolved pose.
+        const float dt = 1e-3f;
+        const CameraPose a = pan.sample(0.5f);
+        const CameraPose b = pan.sample(0.5f + dt);
+        Quaternion delta;
+        delta.multiplyQuaternions(b.orientation, Quaternion(a.orientation).invert());
+        delta.normalize();
+        const float angle = 2.f * std::atan2(
+                std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z), delta.w);
+        const CameraPoseDerivative analytic = pan.sampleDerivative(0.5f);
+        checkNear(analytic.angularVelocity.length(), angle / dt, 8e-3f,
+                  "the re-aim ω matches the finite-difference rotation rate of the pose");
+
+        // Without a target the orientation channel drives ω again: a static
+        // position with a keyed spin must keep its channel rate.
+        CameraRig spin(4);
+        spin.setPosition({0.f, 0.f, 10.f});
+        spin.orientationTrack().add(0.f, Quaternion{0.f, 0.f, 0.f, 1.f}, Easing::linear());
+        spin.orientationTrack().add(1.f,
+                Quaternion{0.f, 0.f, 0.f, 1.f}.setFromAxisAngle(Vector3{0.f, 1.f, 0.f}, 3.14159265f),
+                Easing::linear());
+        checkNear(spin.sampleDerivative(0.5f).angularVelocity.length(), 3.14159265f, 5e-3f,
+                  "an unaimed spin keeps the orientation channel's ω");
+
+        // Roll composes with the aim: a target-locked orbit with a roll track
+        // reports spin about the backward view axis on top of the swing.
+        CameraRig rolled(5);
+        rolled.positionTrack().add(0.f, Vector3{0.f, 0.f, 10.f}, Easing::linear());
+        rolled.setTarget({0.f, 0.f, 0.f});
+        rolled.rollTrack().add(0.f, 0.f, Easing::linear());
+        rolled.rollTrack().add(1.f, 1.f, Easing::linear());
+        const CameraPoseDerivative withRoll = rolled.sampleDerivative(0.2f);
+        // Stationary position and target: pure swing is zero, roll is 1 rad/s,
+        // so all of ω is roll about the camera's backward (out-of-frame) axis.
+        checkNear(withRoll.angularVelocity.length(), 1.f, 5e-3f,
+                  "a stationary aim rolls at the authored roll rate");
+        checkNear(withRoll.angularVelocity.z, 1.f, 5e-3f,
+                  "the roll rate points along the camera's backward view axis");
+
+        // Nothing authored is genuinely still, not "unknown".
+        CameraRig still(6);
+        still.setPosition({3.f, 4.f, 5.f});
+        still.setTarget({0.f, 0.f, 0.f});
+        const CameraPoseDerivative idle = still.sampleDerivative(1.f);
+        checkNear(idle.angularVelocity.length(), 0.f, 1e-6f,
+                  "a static aim has no re-aim ω");
+        checkNear(idle.linearVelocity.length(), 0.f, 1e-6f,
+                  "a static rig has no linear velocity");
+
+        // The lens-contract px→UV bridge: aperture and maxBlur are authored in
+        // canvas pixels of the RenderPlan contract, the GL bokeh preview in UV
+        // fractions of the canvas height, so the bridge is exactly a divide.
+        CameraPose lensPose;
+        lensPose.aperture = 0.25f;
+        lensPose.maxBlur = 54.f;
+        checkNear(bokehPreviewAperture(lensPose, 1080.f), 0.25f / 1080.f, 1e-9f,
+                  "the aperture bridge divides the strength by the canvas height");
+        checkNear(bokehPreviewMaxBlur(lensPose, 1080.f), 54.f / 1080.f, 1e-9f,
+                  "the maxBlur bridge divides the pixel clamp by the canvas height");
     }
 
     void trackVelocity() {
@@ -527,6 +616,7 @@ int main() {
         easingShapes();
         easingDerivative();
         trackVelocity();
+        cameraRigDerivative();
         subFrameTime();
         sceneMotion();
         subFrameEvaluation();
