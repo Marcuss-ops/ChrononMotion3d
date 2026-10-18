@@ -267,11 +267,44 @@ namespace chrononmotion::motion {
             d.rollRate = rollTrack_.velocity(seconds);
         }
 
-        // ω = 2·q·q̇·q⁻¹ : the world-space angular velocity of the orientation
-        // channel. The track reports the rate as a quaternion delta in the
-        // segment's local frame (q̇ ∝ q·Δq_local/2), so the world-space vector
-        // needs one extra sandwich. This is the form a shutter/blur integrator consumes.
-        if (!layer_.tracks.orientation.empty()) {
+        // The effective orientation `sample()` renders is look-at-then-roll
+        // when a target is authored, and the orientation channel otherwise.
+        const bool aims = hasTarget_ || !targetTrack_.empty();
+        if (aims) {
+            // With a target, `sample()` overwrites the orientation channel with
+            // the look-at rotation, so the shutter-relevant rotation is the
+            // re-aim itself: the view axis f = normalize(target − position)
+            // spins at ω = f × ḟ (the minimal rotation carrying f → f + ḟ·dt
+            // under the fixed-up constraint). Report *that*, not the overridden
+            // channel's rate, or a dolly toward a fixed target — the camera
+            // visibly swinging to keep the subject framed — integrates as zero
+            // motion blur in a consumer that trusts this derivative.
+            const bool positionMoves = !layer_.tracks.position.empty();
+            const bool targetMoves = !targetTrack_.empty();
+            if (positionMoves || targetMoves) {
+                const Vector3 position = positionMoves ? layer_.tracks.position.sample(seconds)
+                                                       : layer_.transform.position;
+                const Vector3 target = targetMoves ? targetTrack_.sample(seconds) : target_;
+                Vector3 separation;
+                separation.subVectors(target, position);
+                const float lengthSquared = separation.lengthSq();
+                if (lengthSquared > 1e-12f) {
+                    const float length = std::sqrt(lengthSquared);
+                    Vector3 axis = separation;
+                    axis.multiplyScalar(1.f / length);
+                    Vector3 relative = d.targetVelocity;
+                    relative.sub(d.linearVelocity);
+                    Vector3 directionRate = relative;
+                    directionRate.multiplyScalar(1.f / length);
+                    directionRate.addScaledVector(axis, -axis.dot(relative) / length);
+                    d.angularVelocity.crossVectors(axis, directionRate);
+                }
+            }
+        } else if (!layer_.tracks.orientation.empty()) {
+            // ω = 2·q·q̇·q⁻¹ : the world-space angular velocity of the orientation
+            // channel. The track reports the rate as a quaternion delta in the
+            // segment's local frame (q̇ ∝ q·Δq_local/2), so the world-space vector
+            // needs one extra sandwich. This is the form a shutter/blur integrator consumes.
             const Quaternion q = layer_.tracks.orientation.sample(seconds);
             const Quaternion dq = layer_.tracks.orientation.velocity(seconds);
             Quaternion worldRate;
@@ -291,6 +324,31 @@ namespace chrononmotion::motion {
                 const float s = angle / vl;
                 d.angularVelocity.set(worldRate.x * s, worldRate.y * s, worldRate.z * s);
             }
+        }
+
+        // The roll channel turns the camera about its local +Z, which is the
+        // backward view axis (look-at orients +Z away from the target, so the
+        // camera looks down −Z). Express that axis in world space at the
+        // pre-roll orientation and add the roll rate as an angular velocity.
+        if (d.rollRate != 0.f) {
+            const Vector3 aimPosition = layer_.tracks.position.empty()
+                                            ? layer_.transform.position
+                                            : layer_.tracks.position.sample(seconds);
+            const Vector3 aimTarget = aims ? (targetTrack_.empty() ? target_ : targetTrack_.sample(seconds))
+                                           : Vector3();
+            Quaternion base;
+            if (aims) {
+                CameraPose aimed;
+                aimed.position = aimPosition;
+                lookAtPose(aimed, aimTarget);
+                base = aimed.orientation;
+            } else {
+                base = layer_.tracks.orientation.empty() ? layer_.transform.orientation
+                                                         : layer_.tracks.orientation.sample(seconds);
+            }
+            Vector3 backward(0.f, 0.f, 1.f);
+            backward.applyQuaternion(base);
+            d.angularVelocity.addScaledVector(backward, d.rollRate);
         }
 
         return d;
