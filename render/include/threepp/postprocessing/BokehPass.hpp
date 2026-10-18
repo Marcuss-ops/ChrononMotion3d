@@ -25,11 +25,15 @@ namespace threepp {
         // Distance to the focus plane, in world units along the view axis.
         float focus;
 
-        // Strength of the defocus. Larger is shallower — less in focus.
+        // Strength of the defocus, in UV units per world unit of focus miss:
+        // blur_uv = |focus_miss_world| x aperture, with the radius scaled in
+        // UV fractions of the canvas height (see shaders/BokehShader.hpp).
+        // Convert from CameraRig RenderPlan-contract values with
+        // CameraRig::bokehPreviewAperture / bokehPreviewMaxBlur.
         float aperture;
 
-        // Ceiling on the blur radius, in UV units. Without it a distant
-        // background smears across the whole frame.
+        // Ceiling on the blur radius, in UV units of the canvas height.
+        // Without it a distant background smears across the whole frame.
         float maxblur;
 
         // Horizontal:vertical scale for the sample ring, so the bokeh stays

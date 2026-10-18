@@ -40,11 +40,16 @@ namespace chrononmotion::motion {
 
         /// Lens data for depth of field. Each 0 means "not authored": the motion
         /// side carries the numbers and never interprets them, so a renderer
-        /// applies what is present and leaves the rest to its own optics.
-        float aperture{0.f};      ///< Entrance pupil diameter, in millimetres.
-        float focusDistance{0.f}; ///< Distance to the focal plane, in world units.
-        float maxBlur{0.f};        ///< Maximum blur radius in pixels; 0 means not authored.
-        float fStop{0.f};         ///< Aperture as f/N.
+        /// applies what is present and leaves the rest to its own optics. The
+        /// units are the RenderPlan Chronon3D consumer contract:
+        /// `aperture` is the legacy defocus strength (blur in pixels grows as
+        /// defocus_world_units · aperture, clamped by `maxBlur`) and must stay
+        /// in [0, 1] for `lowerToRenderPlan`; physical lenses also author
+        /// `fStop` (f/N), which the physical model consumes instead.
+        float aperture{0.f};      ///< Defocus strength per world unit of miss, in [0, 1]; 0 = not authored.
+        float focusDistance{0.f}; ///< Distance to the focal plane along the view axis, world units.
+        float maxBlur{0.f};        ///< Blur clamp in pixels of the target canvas; 0 means not authored.
+        float fStop{0.f};         ///< Physical aperture as f/N (0.7..32); 0 means not authored.
         int irisBlades{0};        ///< Bokeh iris blades; 0 means circular.
         float highlightGain{0.f}; ///< Gain for bright out-of-focus highlights.
 
@@ -140,10 +145,13 @@ namespace chrononmotion::motion {
 
         /// The analytic derivative of the pose at `seconds`. Reports zero for
         /// every channel without keys at the requested time (outside the keyed
-        /// range a track holds its value, so its rate is zero), and zero
-        /// angular velocity when the orientation channel is empty. The
-        /// quaternion rate is converted to the world-space angular velocity
-        /// vector ω = 2·q̇·q⁻¹, the form a shutter/blur integrator consumes.
+        /// range a track holds its value, so its rate is zero). The angular
+        /// velocity is the world-space ω a shutter/blur integrator consumes:
+        /// with a target authored, that is the re-aim rotation ω = f × ḟ of the
+        /// view axis itself (the look-at overrides the orientation channel and
+        /// a dolly toward a fixed target still swings the camera), plus the
+        /// roll rate about the backward view axis; without a target, it is the
+        /// orientation channel's ω = 2·q̇·q⁻¹ plus the same roll term.
         [[nodiscard]] CameraPoseDerivative sampleDerivative(float seconds) const;
 
         /// Sample and write into a camera node, optionally under a parent world
@@ -201,6 +209,32 @@ namespace chrononmotion::motion {
         float nearPlane_{0.1f};
         float farPlane_{2000.f};
     };
+
+    /// One aperture unit for every consumer, in one place. The rig and the
+    /// RenderPlan author `aperture` as the legacy defocus strength (blur in
+    /// canvas pixels grows as focus_miss_world_units · aperture, in [0, 1],
+    /// clamped by `maxBlur` canvas pixels) and the GL bokeh preview consumes
+    /// UV fractions of the canvas height per world unit of miss. These two
+    /// helpers are the only sanctioned px→UV bridge; a preview that sets the
+    /// BokehPass uniforms from a rig pose goes through them.
+    ///
+    /// `canvasHeight` is the height in pixels of the view that renders the
+    /// rig — for RenderPlan-world scenes that is the plan canvas height; a
+    /// physical-scale GL certification scene passes its own px-per-world
+    /// aperture, so do not feed it the rig values raw.
+    /// boundary-guardrail: allowed — pure optics up-to-unit arithmetic on
+    /// authored lens numbers, no content tooling involved.
+    [[nodiscard]] inline float bokehPreviewAperture(const CameraPose& pose,
+                                                    float canvasHeight) {
+        return pose.aperture / canvasHeight;
+    }
+
+    /// `maxBlur` is authored in canvas pixels; the preview clamp is a UV
+    /// fraction of the canvas height, so the bridge divides by that height.
+    [[nodiscard]] inline float bokehPreviewMaxBlur(const CameraPose& pose,
+                                                   float canvasHeight) {
+        return pose.maxBlur / canvasHeight;
+    }
 
 }// namespace chrononmotion::motion
 

@@ -1636,6 +1636,27 @@ void testTypedChronon3dLowering() {
     const auto dofHandoffPlan = lowerToRenderPlan(cameraOnlyScene, dofHandoffOptions);
     check(dofHandoffPlan.camera && dofHandoffPlan.camera->dof_enabled,
           "camera lowering enables DOF in the base plan when aperture becomes active after frame zero");
+
+    // Regression pin: an entirely static lens (no DOF track keys at all) must
+    // still lower every authored field into the base plan camera. The values
+    // arrive via the frame-zero pose, so a refactor of lowerToRenderPlan that
+    // loses them would render plans without the authored lens silently.
+    CameraRig staticLensRig(28, 50.f, 16.f / 9.f, 0.1f, 2000.f);
+    staticLensRig.setPosition({0.f, 0.f, -8.f});
+    staticLensRig.setAperture(0.05f).setFocusDistance(480.f).setMaxBlur(30.f);
+    staticLensRig.setFStop(2.8f).setIrisBlades(6).setHighlightGain(1.5f);
+    auto staticLensOptions = animatedDofOptions;
+    staticLensOptions.cameraRig = &staticLensRig;
+    const auto staticLensPlan = lowerToRenderPlan(cameraOnlyScene, staticLensOptions);
+    check(staticLensPlan.camera && staticLensPlan.camera->dof_enabled,
+          "a fully static lens still enables DOF in the lowered base camera");
+    check(staticLensPlan.camera && staticLensPlan.camera->dof_aperture == 0.05f &&
+          staticLensPlan.camera->dof_focus_distance == 488.f &&
+          staticLensPlan.camera->dof_max_blur == 30.f &&
+          staticLensPlan.camera->dof_f_stop == 2.8f &&
+          staticLensPlan.camera->dof_iris_blades == 6 &&
+          staticLensPlan.camera->dof_highlight_gain == 1.5f,
+          "every statically authored lens field reaches the lowered base camera");
     (void)loweredCameraPoseDof;
     check(throwsInvalid([&] {
         const std::array<BakedPath, 2> missingIdentity{
