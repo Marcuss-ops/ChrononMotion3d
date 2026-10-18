@@ -58,14 +58,18 @@ except:
 
 ## Deliberately NOT here
 
-Vulkan renderer, audio, controls/input (except the passive
-event source Canvas links against), physics, examples, python, editor.
-Compositing, effects and encoding stay in Chronon3D.
+Vulkan renderer, audio, interactive controls (the passive
+`PeripheralsEventSource` that `Canvas` subclasses IS here), physics,
+sensors, examples, python, editor. Compositing, effects and encoding
+stay in Chronon3D. The spike/demo/certification binaries defined in
+`render/CMakeLists.txt` are not built by default: enable them with
+`-DCHRONONMOTION_BUILD_SPIKE_PROGRAMS=ON`.
 
 ## Build & headless proofs
 
 ```shell
 cmake --preset dev
+cmake --preset dev -DCHRONONMOTION_BUILD_SPIKE_PROGRAMS=ON   # enables the SPIKE/proof binaries
 cmake --build --preset dev --target \
   chrononmotion_render_spike \
   chrononmotion_render_glb \
