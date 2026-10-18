@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <numeric>
 #include <optional>
 #include <stdexcept>
@@ -666,6 +667,7 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     }
     std::vector<std::vector<ResolvedPose>> samples(scene.layerCount());
     for (auto& layerSamples : samples) layerSamples.reserve(frameCount);
+    std::map<Layer::Id, std::vector<LightState>> lightSamples;
     const bool restoreEvaluation = scene.hasEvaluated();
     const MotionTime previousTime = scene.lastEvaluatedTime();
     struct SceneEvaluationRestore {
@@ -677,6 +679,11 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     for (std::size_t frame = 0; frame < frameCount; ++frame) {
         scene.evaluate(static_cast<int>(frame));
         const CompiledScene compiled = scene.compile();
+        for (const LightState& light : compiled.lights) {
+            auto& frames = lightSamples[light.sample.id];
+            if (frames.empty()) frames.reserve(frameCount);
+            frames.push_back(light);
+        }
         if (compiled.transforms.size() != layerPointers.size())
             throw std::invalid_argument("lowerToRenderPlan: compiled scene omitted authored layer transforms");
         for (const auto& transform : compiled.transforms) {
@@ -717,6 +724,84 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         }
     }
     RenderPlan plan = lowerSamplesToRenderPlan(scene.fps(), frameCount, resolvedOptions, metadata, samples);
+    for (const auto& [lightId, frames] : lightSamples) {
+        if (frames.size() != frameCount)
+            throw std::invalid_argument("lowerToRenderPlan: light sample count changed during frame evaluation");
+        const LightSample& firstSample = frames.front().sample;
+        if (firstSample.kind == LightKind::Ambient) {
+            plan.warnings.emplace_back("Ambient Motion lights are not representable as RenderPlan light layers");
+            continue;
+        }
+
+        LayerPlan layer;
+        layer.id = "motion_light_" + std::to_string(lightId);
+        layer.type = LayerType::Light;
+        layer.start_frame = chronon3d::Frame{0};
+        layer.duration_frames = chronon3d::Frame{static_cast<std::int64_t>(frameCount)};
+        layer.position = {frames.front().position.x, frames.front().position.y,
+                          -frames.front().position.z};
+        layer.position_dimensions = 3;
+        layer.enable_3d = true;
+
+        LightLayerPlan payload;
+        payload.kind = firstSample.kind == LightKind::Point ? LightKindPlan::Point
+                     : firstSample.kind == LightKind::Spot ? LightKindPlan::Spot
+                     : LightKindPlan::Directional;
+        payload.radius = 256.f;
+        payload.color = {firstSample.color.r, firstSample.color.g, firstSample.color.b, 1.f};
+        payload.intensity = firstSample.intensity;
+        payload.direction = {frames.front().direction.x, frames.front().direction.y,
+                            -frames.front().direction.z};
+        payload.range = firstSample.range;
+        payload.decay = firstSample.decay;
+        payload.angle = firstSample.angle > 0.f ? firstSample.angle : 0.7853981634f;
+        payload.penumbra = firstSample.penumbra;
+        payload.cast_shadow = firstSample.castsShadow;
+        payload.shadow_radius = firstSample.shadowRadius;
+        payload.shadow_bias = firstSample.shadowBias;
+        layer.light = payload;
+
+        AnimationPlan animation;
+        AnimationTrackPlan positionTrack;
+        positionTrack.property = "position";
+        AnimationTrackPlan intensityTrack;
+        intensityTrack.property = "light_intensity";
+        AnimationTrackPlan colorTrack;
+        colorTrack.property = "light_color";
+        AnimationTrackPlan directionTrack;
+        directionTrack.property = "light_direction";
+        bool positionChanges = false, intensityChanges = false, colorChanges = false, directionChanges = false;
+        for (std::size_t frame = 0; frame < frames.size(); ++frame) {
+            const LightState& state = frames[frame];
+            const LightSample& value = state.sample;
+            const auto key = chronon3d::Frame{static_cast<std::int64_t>(frame)};
+            const std::array<float, 3> position{
+                state.position.x - frames.front().position.x,
+                state.position.y - frames.front().position.y,
+                -(state.position.z - frames.front().position.z)};
+            positionTrack.keyframes.push_back(makePlanKeyframe(key,
+                {position[0], position[1], position[2]}));
+            intensityTrack.keyframes.push_back(makePlanKeyframe(key, {value.intensity}));
+            colorTrack.keyframes.push_back(makePlanKeyframe(key,
+                {value.color.r, value.color.g, value.color.b, 1.f}));
+            directionTrack.keyframes.push_back(makePlanKeyframe(key,
+                {state.direction.x, state.direction.y, -state.direction.z}));
+            positionChanges = positionChanges || position[0] != 0.f || position[1] != 0.f || position[2] != 0.f;
+            intensityChanges = intensityChanges || value.intensity != firstSample.intensity;
+            colorChanges = colorChanges || value.color.r != firstSample.color.r ||
+                           value.color.g != firstSample.color.g || value.color.b != firstSample.color.b;
+            directionChanges = directionChanges || state.direction.x != frames.front().direction.x ||
+                               state.direction.y != frames.front().direction.y ||
+                               state.direction.z != frames.front().direction.z;
+        }
+        if (positionChanges) animation.tracks.push_back(std::move(positionTrack));
+        if (intensityChanges) animation.tracks.push_back(std::move(intensityTrack));
+        if (colorChanges) animation.tracks.push_back(std::move(colorTrack));
+        if (directionChanges && payload.kind != LightKindPlan::Point)
+            animation.tracks.push_back(std::move(directionTrack));
+        if (!animation.tracks.empty()) layer.animation = std::move(animation);
+        plan.layers.push_back(std::move(layer));
+    }
     if (options.temporalMotionBlur) {
         const auto& blur = *options.temporalMotionBlur;
         if (plan.schema != kRenderPlanSchemaV3)
