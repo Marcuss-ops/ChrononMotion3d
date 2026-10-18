@@ -37,6 +37,9 @@ namespace chrononmotion::motion {
         // Caller-supplied content/shape/style identity, keyed by layer id.
         std::unordered_map<std::string, chronon3d::render_plan::LayerPlan> contentLayers{};
         std::optional<chronon3d::render_plan::CameraPlan> camera{};
+        /// Optional full-scene shutter accumulation (RenderPlan V3 only).
+        /// Requires shutter_angle in (0, 360] and samples in [2, 64].
+        std::optional<chronon3d::render_plan::MotionBlurPlan> temporalMotionBlur{};
         /// Optional rig supplies deterministic time-varying pose samples during lowering.
         const CameraRig* cameraRig{nullptr};
     };

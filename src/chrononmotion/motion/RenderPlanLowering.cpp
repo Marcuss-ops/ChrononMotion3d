@@ -717,6 +717,15 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         }
     }
     RenderPlan plan = lowerSamplesToRenderPlan(scene.fps(), frameCount, resolvedOptions, metadata, samples);
+    if (options.temporalMotionBlur) {
+        const auto& blur = *options.temporalMotionBlur;
+        if (plan.schema != kRenderPlanSchemaV3)
+            throw std::invalid_argument("lowerToRenderPlan: temporal motion blur requires RenderPlan V3");
+        if (!std::isfinite(blur.shutter_angle) || blur.shutter_angle <= 0.f || blur.shutter_angle > 360.f ||
+            blur.samples < 2 || blur.samples > 64)
+            throw std::invalid_argument("lowerToRenderPlan: temporal motion blur requires shutter_angle in (0, 360] and samples in [2, 64]");
+        plan.temporal_motion_blur = blur;
+    }
     if (options.cameraRig) {
         const std::size_t last = plan.canvas.duration.integral() > 0
             ? static_cast<std::size_t>(plan.canvas.duration.integral() - 1) : 0;
