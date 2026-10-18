@@ -639,8 +639,15 @@ revision — not into the core library, but as the separate `render/` module
 (`chrononmotion_render`, `threepp::` namespace, own third-party deps).
 The core stays dependency-free and renderer-free; the boundary guardrail
 explicitly scopes `render/` out while still pinning `include/`/`src/`/`tests/`.
-Dropped on re-entry: stale mixer/action sources, Vulkan-coupled objects,
-window icon stub.
+Dropped on re-entry: Vulkan-coupled objects, the vendor Vulkan renderer and
+URDF loader, and the unused extras (terrain, physx, fauna, vegetation, road,
+architecture, uav, kinematics, imgui, sensors, effects, conveyor). The
+animation runtime (`AnimationAction`/`AnimationMixer`/`PropertyBinding`/
+`PropertyMixer`) and the postprocessing passes (`EffectComposer`,
+`UnrealBloomPass`, `BokehPass`) were later restored from the same pinned
+revision — see `render/README.md`. Spike/demo/certification render programs
+compile behind `-DCHRONONMOTION_BUILD_SPIKE_PROGRAMS=ON` (default OFF; the
+child builds core + renderer library only).
 
 Proven across four headless offscreen executables:
 * `chrononmotion_render_spike` — textured Lambert-lit cube to PPM.
