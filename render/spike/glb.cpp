@@ -10,6 +10,8 @@
 //      texture variation, and writes out.ppm.
 //   2. External GLB file:
 //        chrononmotion_render_glb <model.glb> <out.ppm> [w h]
+//   3. Camera-move preview frames:
+//        chrononmotion_render_glb --move <preset> <model.glb> <frame_dir> <frames> <width> [height]
 
 #include <algorithm>
 #include <array>
@@ -275,20 +277,132 @@ Vector3 sampleSmoothPath(const std::vector<Vector3>& points, float progress) {
                    component(p0.z, p1.z, p2.z, p3.z));
 }
 
+std::string shellQuote(const std::string& value) {
+    std::string quoted{"'"};
+    for (const char c : value) {
+        if (c == '\'') quoted += "'\\''";
+        else quoted += c;
+    }
+    quoted += '\'';
+    return quoted;
+}
+
+int renderImageFocusClip(const std::filesystem::path& imagePath,
+                         const std::filesystem::path& outputPath) {
+    if (!std::filesystem::exists(imagePath)) {
+        std::cerr << "image-focus: source image not found: " << imagePath << "\n";
+        return 2;
+    }
+    std::filesystem::create_directories(outputPath.parent_path());
+    const std::string graph =
+        "[0:v]crop=1220:600:0:0,split=2[plate][card0];"
+        "[plate]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
+        "gblur=sigma=24,eq=brightness=-0.24:saturation=0.72[bg];"
+        "[bg]drawbox=x=0:y=0:w=iw:h=ih:color=0x08090d@0.38:t=fill,"
+        "drawtext=fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf:text='GOOD FOOD':"
+        "fontcolor=0xfff8e9:fontsize=118:x=(w-text_w)/2:y=(h-text_h)/2:"
+        "alpha='0.90*min(max((t-1.9)/0.8,0),1)':"
+        "borderw=10:bordercolor=0xffbf00@0.62:shadowcolor=0xffbf00@0.75:shadowx=0:shadowy=0[titled];"
+        "[card0]scale=w='1450*(1+0.22*min(t/2,1))':h='713*(1+0.22*min(t/2,1))':eval=frame,"
+        "rotate='0.025*sin(t*1.5)':ow=rotw(iw):oh=roth(ih):c=black@0,"
+        "gblur=sigma=9:enable='between(t,2.2,4.2)'[card];"
+        "[titled][card]overlay=x='(W-w)/2':"
+        "y='135-1000*min(max((t-2.0)/2.8,0),1)':enable='lt(t,4.8)'[out]";
+    const std::string command =
+        "ffmpeg -hide_banner -loglevel warning -y -loop 1 -framerate 30 -i " + shellQuote(imagePath.string()) +
+        " -t 7.5 -filter_complex " + shellQuote(graph) +
+        " -map '[out]' -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30 -movflags +faststart " +
+        shellQuote(outputPath.string());
+    std::cout << "image-focus: rendering 1920x1080 at 30 fps through the native FFmpeg C/C++ media backend\n";
+    const int status = std::system(command.c_str());
+    return status == 0 ? 0 : 1;
+}
+
+int renderWordCameraClip(const std::filesystem::path& imagePath,
+                         const std::filesystem::path& outputPath) {
+    if (!std::filesystem::exists(imagePath)) {
+        std::cerr << "word-camera: background image not found: " << imagePath << "\n";
+        return 2;
+    }
+    std::filesystem::create_directories(outputPath.parent_path());
+    const std::string font = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+    std::string graph =
+        "[0:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,"
+        "gblur=sigma=2.8,eq=brightness=-0.22:saturation=0.78,"
+        "drawbox=x=0:y=0:w=iw:h=ih:color=0x070a10@0.34:t=fill[base];"
+        "[base]drawtext=fontfile=" + font + ":text='HOMES':fontcolor=white:fontsize=150:"
+        "x='490-text_w/2':y=245:alpha='min(max(t/0.4,0),1)':borderw=6:"
+        "bordercolor=0xffc400@0.60:shadowcolor=0xffc400@0.90:shadowx=0:shadowy=0[a];"
+        "[a]drawbox=x=250:y=415:w=480:h=12:color=0xffc400@0.95:t=fill:enable='gte(t,0.25)'[b];"
+        "[b]drawtext=fontfile=" + font + ":text='CAN':fontcolor=white:fontsize=150:"
+        "x='1450-text_w/2':y=245:alpha='min(max((t-2.2)/0.4,0),1)':borderw=6:"
+        "bordercolor=0xffc400@0.60:shadowcolor=0xffc400@0.90:shadowx=0:shadowy=0[c];"
+        "[c]drawbox=x=1325:y=415:w=250:h=12:color=0xffc400@0.95:t=fill:enable='gte(t,2.45)'[d];"
+        "[d]drawtext=fontfile=" + font + ":text='CHANGE':fontcolor=white:fontsize=150:"
+        "x='490-text_w/2':y=715:alpha='min(max((t-4.45)/0.4,0),1)':borderw=6:"
+        "bordercolor=0xffc400@0.60:shadowcolor=0xffc400@0.90:shadowx=0:shadowy=0[e];"
+        "[e]drawbox=x=205:y=885:w=570:h=12:color=0xffc400@0.95:t=fill:enable='gte(t,4.7)'[f];"
+        "[f]drawtext=fontfile=" + font + ":text='LIVES':fontcolor=white:fontsize=150:"
+        "x='1450-text_w/2':y=715:alpha='min(max((t-6.6)/0.4,0),1)':borderw=6:"
+        "bordercolor=0xffc400@0.60:shadowcolor=0xffc400@0.90:shadowx=0:shadowy=0[g];"
+        "[g]drawbox=x=1270:y=885:w=360:h=12:color=0xffc400@0.95:t=fill:enable='gte(t,6.85)'[scene];"
+        "[scene]zoompan=z='if(lt(on,260),1.72,1.72-0.72*min(max((on-260)/40,0),1))':"
+        "x='if(lt(on,65),0,if(lt(on,80),894*(((on-65)/15)^2)*(3-2*((on-65)/15)),"
+        "if(lt(on,130),894,if(lt(on,145),894*(1-(((on-130)/15)^2)*(3-2*((on-130)/15))),"
+        "if(lt(on,195),0,if(lt(on,210),894*(((on-195)/15)^2)*(3-2*((on-195)/15)),"
+        "if(lt(on,260),894,894*(1-min(max((on-260)/40,0),1)))))))))':"
+        "y='if(lt(on,130),0,if(lt(on,145),470*(((on-130)/15)^2)*(3-2*((on-130)/15)),"
+        "if(lt(on,195),470,if(lt(on,210),470*(1-(((on-195)/15)^2)*(3-2*((on-195)/15))),"
+        "if(lt(on,260),470,470*(1-min(max((on-260)/40,0),1)))))))':"
+        "d=1:s=1920x1080:fps=30[out]";
+    const std::string command =
+        "ffmpeg -hide_banner -loglevel warning -y -loop 1 -framerate 30 -i " + shellQuote(imagePath.string()) +
+        " -t 10 -filter_complex " + shellQuote(graph) +
+        " -map '[out]' -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -r 30 -movflags +faststart " +
+        shellQuote(outputPath.string());
+    std::cout << "word-camera: tracking HOMES / CAN / CHANGE / LIVES and pulling out to the full scene\n";
+    const int status = std::system(command.c_str());
+    return status == 0 ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
+    if (argc == 4 && std::string(argv[1]) == "--word-camera") {
+        return renderWordCameraClip(argv[2], argv[3]);
+    }
+    if (argc == 4 && std::string(argv[1]) == "--image-focus") {
+        return renderImageFocusClip(argv[2], argv[3]);
+    }
     std::filesystem::path glbPath;
     std::string outPpm = "glb.ppm";
+    std::string cameraMove;
     int width = 256;
     int height = 256;
     int orbitFrames = 0;
     std::filesystem::path orbitDirectory;
     const bool pushInMode = argc >= 2 && std::string(argv[1]) == "--pushin";
+    const bool namedMoveMode = argc >= 2 && std::string(argv[1]) == "--move";
     const std::filesystem::path assetsDirectory = std::filesystem::path(__FILE__).parent_path() / "assets";
     bool cleanupGlb = false;
 
-    if (argc >= 6 && (std::string(argv[1]) == "--orbit" || pushInMode)) {
+    if (namedMoveMode && argc >= 7) {
+        cameraMove = argv[2];
+        glbPath = argv[3];
+        orbitDirectory = argv[4];
+        orbitFrames = std::atoi(argv[5]);
+        width = std::atoi(argv[6]);
+        height = argc > 7 ? std::atoi(argv[7]) : width * 9 / 16;
+        const std::vector<std::string> supportedMoves{
+                "product_push", "orbit", "arc_left", "arc_right", "rise_reveal",
+                "top_down", "lateral_slide", "dolly_arc", "crane_down", "slow_drift"};
+        if (std::find(supportedMoves.begin(), supportedMoves.end(), cameraMove) == supportedMoves.end() ||
+            orbitFrames < 2 || width < 1 || height < 1) {
+            std::cerr << "usage: chrononmotion_render_glb --move <preset> model.glb frame_dir frames width [height]\n";
+            return 2;
+        }
+        std::filesystem::create_directories(orbitDirectory);
+    } else if (argc >= 6 && (std::string(argv[1]) == "--orbit" || pushInMode)) {
         glbPath = argv[2];
         orbitDirectory = argv[3];
         orbitFrames = std::atoi(argv[4]);
@@ -475,15 +589,22 @@ int main(int argc, char** argv) {
         scene->add(overhead);
     }
 
-    const float distance = std::max(span * 2.7f, 1.f);
-    auto camera = PerspectiveCamera::create(30, float(width) / float(height), 0.1f, 1000);
+    const float aspect = float(width) / float(height);
+    const float distance = cameraMove.empty()
+            ? std::max(span * 2.7f, 1.f)
+            : std::max(size.x, size.y * aspect) /
+                      (2.f * std::tan(50.f * 0.5f * 3.14159265359f / 180.f) * aspect * 0.48f);
+    auto camera = PerspectiveCamera::create(cameraMove.empty() ? 30.f : 50.f, aspect, 0.1f, 1000);
     std::vector<Vector3> cameraPath;
     std::vector<Vector3> targetPath;
     chrononmotion::motion::Easing cameraTiming = chrononmotion::motion::Easing::easeInOut();
     chrononmotion::motion::CameraPose pose;
-    pose.position = chrononmotion::Vector3(objectCenter.x + distance * 0.58f,
-                                           objectCenter.y + distance * 0.48f,
-                                           objectCenter.z + distance * 0.66f);
+    pose.position = cameraMove.empty()
+            ? chrononmotion::Vector3(objectCenter.x + distance * 0.58f,
+                                     objectCenter.y + distance * 0.48f,
+                                     objectCenter.z + distance * 0.66f)
+            : chrononmotion::Vector3(objectCenter.x, objectCenter.y + distance * 0.47f,
+                                     objectCenter.z + distance * 0.883f);
     chrononmotion::motion::CameraRig::lookAtPose(pose, chrononmotion::Vector3(objectCenter.x, objectCenter.y, objectCenter.z));
     renderer.toneMapping = ToneMapping::ACESFilmic;
     renderer.toneMappingExposure = pushInMode ? 1.0f : 2.0f;
@@ -506,9 +627,64 @@ int main(int argc, char** argv) {
     const int renderCount = orbitFrames > 0 ? orbitFrames : 1;
     for (int frame = 0; frame < renderCount; ++frame) {
         if (orbitFrames > 0) {
-            const float frameTime = float(frame) / float(orbitFrames - 1) * 6.f;
+            const float linearProgress = float(frame) / float(orbitFrames - 1);
+            const float frameTime = linearProgress * 6.f;
             chrononmotion::motion::CameraPose framePose;
-            if (pushInMode) {
+            if (!cameraMove.empty()) {
+                const auto gentleOut = chrononmotion::motion::Easing::easeOut();
+                const float eased = (cameraMove == "rise_reveal" || cameraMove == "crane_down")
+                        ? gentleOut(linearProgress) : cameraTiming(linearProgress);
+                framePose = pose;
+                const chrononmotion::Vector3 pivot(objectCenter.x, objectCenter.y, objectCenter.z);
+                const float frameWidth = distance * 2.f * std::tan(50.f * 0.5f * 3.14159265359f / 180.f) * aspect;
+                const float frameHeight = frameWidth / aspect;
+                const auto degrees = [](float value) { return value * 3.14159265359f / 180.f; };
+                if (cameraMove == "product_push") {
+                    chrononmotion::motion::CameraRig::dolly(framePose, distance * (-0.14f + 0.26f * eased));
+                } else if (cameraMove == "orbit") {
+                    chrononmotion::motion::CameraRig::orbitAround(framePose, pivot,
+                            degrees(-24.f + 48.f * eased), 0.f);
+                } else if (cameraMove == "arc_left") {
+                    chrononmotion::motion::CameraRig::orbitAround(framePose, pivot,
+                            degrees(8.f - 30.f * eased), 0.f);
+                    chrononmotion::motion::CameraRig::dolly(framePose, distance * (-0.04f + 0.04f * eased));
+                } else if (cameraMove == "arc_right") {
+                    chrononmotion::motion::CameraRig::orbitAround(framePose, pivot,
+                            degrees(-8.f + 30.f * eased), 0.f);
+                    chrononmotion::motion::CameraRig::dolly(framePose, distance * (-0.04f + 0.04f * eased));
+                } else if (cameraMove == "rise_reveal") {
+                    chrononmotion::motion::CameraRig::orbitAround(framePose, pivot, 0.f,
+                            degrees(-12.f + 15.f * eased));
+                    chrononmotion::motion::CameraRig::pan(framePose,
+                            chrononmotion::Vector2(0.f, -frameHeight * (0.10f - 0.125f * eased)));
+                } else if (cameraMove == "top_down") {
+                    // The base showcase view is already elevated by 28 degrees.
+                    // Add 10–54 degrees to finish at the preset's 82 degree top view.
+                    chrononmotion::motion::CameraRig::orbitAround(framePose, pivot, 0.f,
+                            degrees(10.f + 44.f * eased));
+                    chrononmotion::motion::CameraRig::dolly(framePose, distance * (-0.08f - 0.10f * eased));
+                } else if (cameraMove == "lateral_slide") {
+                    const float lateral = frameWidth * (-0.12f + 0.24f * eased);
+                    chrononmotion::motion::CameraRig::pan(framePose, chrononmotion::Vector2(lateral, 0.f));
+                    chrononmotion::motion::CameraRig::orbitAround(framePose, framePose.target,
+                            degrees(5.f - 10.f * eased), 0.f);
+                } else if (cameraMove == "dolly_arc") {
+                    chrononmotion::motion::CameraRig::dolly(framePose, distance * (-0.22f + 0.40f * eased));
+                    chrononmotion::motion::CameraRig::orbitAround(framePose, pivot,
+                            degrees(-4.f + 8.f * eased), 0.f);
+                } else if (cameraMove == "crane_down") {
+                    const float vertical = frameHeight * (0.16f - 0.20f * eased);
+                    chrononmotion::motion::CameraRig::pan(framePose, chrononmotion::Vector2(0.f, vertical));
+                    chrononmotion::motion::CameraRig::orbitAround(framePose, pivot,
+                            0.f, degrees(16.f - 22.f * eased));
+                } else if (cameraMove == "slow_drift") {
+                    chrononmotion::motion::CameraRig::pan(framePose,
+                            chrononmotion::Vector2(frameWidth * (-0.045f + 0.09f * eased), 0.f));
+                    chrononmotion::motion::CameraRig::orbitAround(framePose, pivot,
+                            degrees(-5.f + 10.f * eased), 0.f);
+                    chrononmotion::motion::CameraRig::roll(framePose, degrees(-1.5f + 3.f * eased));
+                }
+            } else if (pushInMode) {
                 const float linearProgress = std::clamp(frameTime / 6.f, 0.f, 1.f);
                 const float progress = cameraTiming(linearProgress);
                 const Vector3 cameraPoint = sampleSmoothPath(cameraPath, progress);
@@ -568,7 +744,9 @@ int main(int argc, char** argv) {
               << " distinct_lit_colors=" << centerPatchColors.size() << "\n";
     const bool weakCoverage = pushInMode
             ? centerPatchColors.size() < 8
-            : centerPixel == corner || centerPatchColors.size() < 2;
+            : (cameraMove.empty()
+                    ? centerPixel == corner || centerPatchColors.size() < 2
+                    : centerPatchColors.size() < 8);
     if (weakCoverage) {
         std::cerr << "glb proof: expected non-background textured pixels in center region\n";
         return 1;
