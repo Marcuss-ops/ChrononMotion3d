@@ -607,6 +607,38 @@ void testTypedChronon3dLowering() {
     check(sameLoweredPlan(v3, repeatedV3),
           "typed V3 lowering repeats every emitted transform and keyframe bit-exactly");
 
+    chronon3d::render_plan::MotionBlurPlan scenePlanBlur;
+    scenePlanBlur.shutter_angle = 180.f;
+    scenePlanBlur.samples = 8;
+    RenderPlanLoweringOptions blurOptions = options;
+    blurOptions.temporalMotionBlur = scenePlanBlur;
+    const auto blurred = lowerToRenderPlan(scene, blurOptions);
+    check(blurred.temporal_motion_blur.has_value() &&
+              blurred.temporal_motion_blur->shutter_angle == 180.f &&
+              blurred.temporal_motion_blur->samples == 8,
+          "lowering passes an authored V3 temporal motion blur through to the RenderPlan");
+    check(!v3.temporal_motion_blur.has_value(),
+          "lowering without an authored blur emits no temporal motion blur");
+    check(throwsInvalid([&] {
+              RenderPlanLoweringOptions v2Blur = options;
+              v2Blur.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
+              v2Blur.temporalMotionBlur = scenePlanBlur;
+              (void)lowerToRenderPlan(scene, v2Blur);
+          }),
+          "temporal motion blur requires RenderPlan V3");
+    check(throwsInvalid([&] {
+              RenderPlanLoweringOptions badSamples = blurOptions;
+              badSamples.temporalMotionBlur->samples = 1;
+              (void)lowerToRenderPlan(scene, badSamples);
+          }),
+          "temporal motion blur rejects fewer than two samples");
+    check(throwsInvalid([&] {
+              RenderPlanLoweringOptions badAngle = blurOptions;
+              badAngle.temporalMotionBlur->shutter_angle = 400.f;
+              (void)lowerToRenderPlan(scene, badAngle);
+          }),
+          "temporal motion blur rejects a shutter angle above 360 degrees");
+
     MotionScene videoScene("time remap", 30.f);
     auto& video = videoScene.addContent(31, "video", ContentRef::video("source-video", {640.f, 360.f}));
     video.lifetime = FrameRange::between(0, 3);
