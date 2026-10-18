@@ -154,6 +154,16 @@ if(CHRONON3D_INCLUDE_DIR)
         target_compile_options(chrononmotion_plan_showreel PRIVATE -Werror)
     endif()
 
+    # The word rack-focus generator: the reference Screenrecording proof of
+    # item 3, one place authors the united camera+DoF scene and lowers it V3.
+    add_executable(chrononmotion_plan_word_rack_focus tools/plan_word_rack_focus.cpp)
+    target_link_libraries(chrononmotion_plan_word_rack_focus PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
+    target_compile_features(chrononmotion_plan_word_rack_focus PRIVATE cxx_std_20)
+    target_compile_options(chrononmotion_plan_word_rack_focus PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_plan_word_rack_focus PRIVATE -Werror)
+    endif()
+
     # The map flyover generator: the geospatial counterpart of the showreel, and
     # the only place a georeferenced Motion scene becomes a renderable plan.
     add_executable(chrononmotion_map_flyover tools/plan_map_flyover.cpp)

@@ -885,6 +885,21 @@ namespace chrononmotion::motion {
             const chronon3d::Color color{light.color[0], light.color[1], light.color[2], light.color[3]};
             const auto hex = textSpanColorHex(color);
             writer.key("color"); writer.text(hex ? hex->substr(0, 7) : "#FFFFFF");
+            const char* kind = light.kind == chronon3d::render_plan::LightKindPlan::Point ? "point"
+                : light.kind == chronon3d::render_plan::LightKindPlan::Spot ? "spot"
+                : light.kind == chronon3d::render_plan::LightKindPlan::Directional ? "directional" : "radial";
+            writer.key("kind"); writer.token(kind);
+            if (light.kind != chronon3d::render_plan::LightKindPlan::Radial) {
+                writer.key("direction");
+                writeFloats(writer, light.direction, light.direction.size());
+            }
+            if (light.range != 0.f) { writer.key("range"); writer.number(light.range); }
+            if (light.decay != 1.f) { writer.key("decay"); writer.number(light.decay); }
+            if (light.angle != 0.78539816339744830962f) { writer.key("angle"); writer.number(light.angle); }
+            if (light.penumbra != 0.f) { writer.key("penumbra"); writer.number(light.penumbra); }
+            if (light.cast_shadow) { writer.key("cast_shadow"); writer.boolean(true); }
+            if (light.shadow_radius != 1.f) { writer.key("shadow_radius"); writer.number(light.shadow_radius); }
+            if (light.shadow_bias != 0.f) { writer.key("shadow_bias"); writer.number(light.shadow_bias); }
             writer.endObject();
         }
 

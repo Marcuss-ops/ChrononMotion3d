@@ -144,6 +144,8 @@ failure cannot return.
    1920×1080, 30 fps clip at playback size; use sampled frames as evidence, not
    substitutes for the video. Preserve scene configs, logs, metrics, and honest
    status scope with each incremental Drive upload.
+- [x] **Final proof — 3-word camera FOV + lens rack-focus (DoF) animation (`1920×1080` MP4) with the new `ChrononMotion3D` camera:**
+   recreate the reference animation from [Drive folder `18Tck0Y_JNB02ruVmtuzxxaAQV9iKoTHV`](https://drive.google.com/drive/folders/18Tck0Y_JNB02ruVmtuzxxaAQV9iKoTHV) (`frame_0001.png`–`frame_0029.png`) using the newly updated `ChrononMotion3D` `CameraRig` + V3 `lowerToRenderPlan` camera tracks (`PositionX/Y/Z`, `RotationX/Y/Z`, `FovDeg`, `FocusDistance`, `Aperture`, `MaxBlur`, `FocalLengthMM`, `FStop`, `temporalMotionBlur`): a background image plate, three foreground words (`"food"`, `"houses"`, `"see"`) with yellow lower-third highlight bars placed in 3D space, and an animated camera panning/adjusting FOV across each word while shifting the lens focal point (Bokeh/DoF rack focus) onto the active word in `1920×1080` MP4.
 
 ## Test matrix
 
