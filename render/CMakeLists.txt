@@ -246,6 +246,46 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_test(NAME chrononmotion_render_pixel_certification COMMAND chrononmotion_render_pixel_certification)
     set_tests_properties(chrononmotion_render_pixel_certification PROPERTIES
             ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
+
+    add_executable(chrononmotion_t16_camera_truth tests/t16_camera_truth.cpp)
+    target_include_directories(chrononmotion_t16_camera_truth PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+            "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+    target_compile_definitions(chrononmotion_t16_camera_truth PRIVATE
+            CHRONONMOTION_T16_SUBJECT="${CMAKE_CURRENT_SOURCE_DIR}/spike/assets/mrbeast_chromo/mrbeast_cutout.png")
+    target_link_libraries(chrononmotion_t16_camera_truth PRIVATE chrononmotion_render)
+    target_compile_options(chrononmotion_t16_camera_truth PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_t16_camera_truth PRIVATE -Werror
+                -Wno-error=reorder -Wno-error=unused-parameter)
+    endif()
+    add_test(NAME chrononmotion_t16_camera_truth
+            COMMAND chrononmotion_t16_camera_truth
+                    "${CMAKE_CURRENT_BINARY_DIR}/T16_Camera_Truth")
+    set_tests_properties(chrononmotion_t16_camera_truth PROPERTIES
+            ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
+
+    add_executable(chrononmotion_t19b_camera_rig_contract tests/t19b_camera_rig_contract.cpp)
+    target_link_libraries(chrononmotion_t19b_camera_rig_contract PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_t19b_camera_rig_contract PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_t19b_camera_rig_contract PRIVATE -Werror)
+    endif()
+    add_test(NAME chrononmotion_t19b_camera_rig_contract
+            COMMAND chrononmotion_t19b_camera_rig_contract
+                    "${CMAKE_CURRENT_SOURCE_DIR}/spike/assets/t19b_apollo/camera_keys.csv"
+                    "${CMAKE_CURRENT_BINARY_DIR}/T19B_CameraRig_samples.csv"
+                    "${CMAKE_CURRENT_BINARY_DIR}/T19B_CameraRig_report.json")
+
+    add_executable(chrononmotion_t19b_plan_tool tools/t19b_plan_tool.cpp)
+    target_include_directories(chrononmotion_t19b_plan_tool PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb")
+    if(CHRONON3D_DEPENDENCY_INCLUDE_DIR)
+        target_include_directories(chrononmotion_t19b_plan_tool SYSTEM PRIVATE "${CHRONON3D_DEPENDENCY_INCLUDE_DIR}")
+    endif()
+    target_link_libraries(chrononmotion_t19b_plan_tool PRIVATE chrononmotion_render)
+    target_compile_features(chrononmotion_t19b_plan_tool PRIVATE cxx_std_20)
+    target_compile_options(chrononmotion_t19b_plan_tool PRIVATE -Wall -Wextra)
 endif()
 
 find_package(PkgConfig QUIET)
