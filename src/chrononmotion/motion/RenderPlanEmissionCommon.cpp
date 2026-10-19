@@ -24,7 +24,6 @@ using chronon3d::render_plan::ShapeContentTypePlan;
                 case LayerType::Light: return "light";
                 case LayerType::Adjustment: return "adjustment";
                 case LayerType::Mesh: return "mesh";
-                case LayerType::Null: return "null";
             }
             return "unknown";
         }

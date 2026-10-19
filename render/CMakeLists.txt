@@ -227,6 +227,27 @@ target_include_directories(chrononmotion_render BEFORE PRIVATE
 )
 target_link_libraries(chrononmotion_render PUBLIC glfw chrononmotion)
 target_compile_features(chrononmotion_render PUBLIC cxx_std_20)
+
+# Headless pixel-level invariants for perspective compensation, random-access
+# rendering, and the renderer-to-motion screen-coordinate bridge. This test is
+# part of the opt-in renderer lane and does not pull in the demo binaries.
+if(CHRONONMOTION_BUILD_TESTS)
+    add_executable(chrononmotion_render_pixel_certification tests/pixel_certification.cpp)
+    target_link_libraries(chrononmotion_render_pixel_certification PRIVATE chrononmotion_render)
+    target_compile_options(chrononmotion_render_pixel_certification PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_render_pixel_certification PRIVATE -Werror)
+        # The pinned threepp headers trigger these warnings in consumer TUs;
+        # keep this certification strict for its own code without promoting
+        # those existing vendor-header diagnostics to errors.
+        target_compile_options(chrononmotion_render_pixel_certification PRIVATE
+                -Wno-error=reorder -Wno-error=unused-parameter)
+    endif()
+    add_test(NAME chrononmotion_render_pixel_certification COMMAND chrononmotion_render_pixel_certification)
+    set_tests_properties(chrononmotion_render_pixel_certification PROPERTIES
+            ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
+endif()
+
 find_package(PkgConfig QUIET)
 if (PkgConfig_FOUND)
     pkg_check_modules(CHRONON_EGL QUIET IMPORTED_TARGET egl)

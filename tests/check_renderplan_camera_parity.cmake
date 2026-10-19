@@ -66,8 +66,8 @@ foreach(_index RANGE 0 ${_last_index})
         # Chronon3D's camera_v1 DoF descriptor stores physical f-stop on its
         # shared lens model, not in DofSettings. The compiler must route both
         # camera.f_stop and camera.dof.f_stop there and enable physical DoF.
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "descriptor.base.lens.f_stop = authored_fstop")
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "descriptor.base.dof.use_physical_model = true")
+        require_source_token("Chronon camera lowering" "${_compiler_text}" "descriptor.base.lens.f_stop = authored_f_stop")
+        require_source_token("Chronon camera lowering" "${_compiler_text}" "descriptor.base.dof.use_physical_model = physical")
         continue()
     else()
         set(_descriptor_field "${_field}")
