@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -38,6 +39,36 @@ static void writePlan(const json& p,const fs::path& path) {
 static json load(const fs::path& p) { std::ifstream f(p); if(!f) throw std::runtime_error("cannot read "+p.string()); return json::parse(f); }
 
 struct CameraSample { float x,y,z,tx,ty,tz,focus,fov; };
+static std::array<float,2> projectScreen(const CameraSample& camera,
+                                        float x,float y,float z,
+                                        float width,float height) {
+    const auto normalize=[](std::array<float,3> v) {
+        const float n=std::sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+        if(n<1e-6f) throw std::runtime_error("degenerate CameraRig basis");
+        for(auto& c:v) c/=n;
+        return v;
+    };
+    const auto dot=[](const auto& a,const auto& b) {
+        return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+    };
+    const auto cross=[](const auto& a,const auto& b) {
+        return std::array<float,3>{a[1]*b[2]-a[2]*b[1],
+                                   a[2]*b[0]-a[0]*b[2],
+                                   a[0]*b[1]-a[1]*b[0]};
+    };
+    const auto forward=normalize(std::array<float,3>{camera.tx-camera.x,
+                                                      camera.ty-camera.y,
+                                                      camera.tz-camera.z});
+    const auto right=normalize(cross(std::array<float,3>{0.f,1.f,0.f},forward));
+    const auto up=normalize(cross(forward,right));
+    const std::array<float,3> rel{x-camera.x,y-camera.y,z-camera.z};
+    const float depth=dot(rel,forward);
+    if(depth<=1e-3f) return {std::numeric_limits<float>::quiet_NaN(),
+                             std::numeric_limits<float>::quiet_NaN()};
+    const float focal=(height*0.5f)/std::tan(camera.fov*3.14159265358979323846f/360.f);
+    return {width*0.5f+dot(rel,right)*focal/depth,
+            height*0.5f-dot(rel,up)*focal/depth};
+}
 static std::vector<CameraSample> readSamples(const fs::path& path) {
     std::ifstream in(path); if(!in) throw std::runtime_error("cannot read CameraRig samples: "+path.string());
     std::string line; std::getline(in,line); std::vector<CameraSample> samples;
@@ -99,11 +130,26 @@ int main(int argc,char**argv) try {
                 if(l.contains("style")) l["style"].erase("shadow");
             }
             if(id==stem+"-caption") {
+                // Text rasterization is screen-space in Chronon3D. Preserve
+                // the supported path and project the 3D label anchor through
+                // every CameraRig sample so the caption follows its photo.
                 l["screen_space"]=true;
                 l["enable_3d"]=false;
-                l.erase("animation");
-                l["position"]={screenX[i],720.f};
+                const float labelY=(540.f-720.f)*d/focal;
+                json keys=json::array();
+                for(size_t frame=0;frame<cameraSamples.size();++frame) {
+                    const auto projected=projectScreen(cameraSamples[frame],x,labelY,z,1920.f,1080.f);
+                    if(!std::isfinite(projected[0]) || !std::isfinite(projected[1]))
+                        throw std::runtime_error("caption anchor moved behind the CameraRig");
+                    // Primitive position tracks are authored relative to the
+                    // canvas centre; static layer positions remain top-left.
+                    keys.push_back({{"frame",frame},{"value",{projected[0]-960.f,
+                                                                  projected[1]-540.f}}});
+                }
+                l["position"]={projectScreen(cameraSamples.front(),x,labelY,z,1920.f,1080.f)[0],
+                                projectScreen(cameraSamples.front(),x,labelY,z,1920.f,1080.f)[1]};
                 l["size"]={screenW[i]+30.f,42.f};
+                l["animation"]={{"tracks",json::array({{{"property","position"},{"easing","linear"},{"keyframes",std::move(keys)}}})}};
                 l["style"]["font_size"]=std::max(13.f,18.f*d/focal);
             }
         }
@@ -113,11 +159,22 @@ int main(int argc,char**argv) try {
         p["layers"].erase(std::remove_if(p["layers"].begin(),p["layers"].end(),[&](const json& l){return l.value("id","").rfind("stress-star-",0)==0;}),p["layers"].end());
         if(count==30) for(int i=0;i<6;++i) p["layers"].push_back({{"id","stress-star-"+std::to_string(i+1)},{"type","shape"},{"screen_space",true},{"position",{120+i*330,std::array<int,6>{300,780,240,700,350,760}[i]}},{"size",{8,8}},{"shape",{{"type","ellipse"},{"fill",{0.78,0.86,0.88,0.55}}}},{"start_frame",0},{"duration_frames",300}});
         p["camera"]["dof"]["enabled"]=dof;
-        p["camera"]["dof"]["aperture"]=0.0015;
+        // Keep the legacy CoC subordinate to the graphic hierarchy: screen HUD
+        // lives at world Z=0 and otherwise receives an 11 px blur at the initial
+        // camera position. 0.003 keeps it readable while producing a measurable
+        // 1–4 px rack-focus separation across the five authored depth planes.
+        p["camera"]["dof"]["aperture"]=0.003;
         p["camera"]["dof"]["max_blur"]=12;
         p["camera"]["fov_deg"]=fov;
         if(focusMode>=0) p["camera"]["dof"]["focus_distance"]=std::array<int,3>{550,1150,1750}[focusMode];
-        if(!camera) p.erase("camera_animation");
+        if(!camera) {
+            p.erase("camera_animation");
+            // The camera ablation must freeze its projected scene labels too.
+            for(auto& layer:p["layers"])
+                if(layer.value("id","").size()>=8 &&
+                   layer.value("id","").ends_with("-caption"))
+                    layer.erase("animation");
+        }
         else {
             json tracks=json::array();
             const auto addTrack=[&](const std::string& property,const auto& getter) {
@@ -172,5 +229,34 @@ int main(int argc,char**argv) try {
     result("B17","30-layer stress","NOT_RUN","30-layer stress V3 plan generated; render cost and memory not measured");
     std::ofstream report(out/"T19B_Test_Report.json"); if(!report) throw std::runtime_error("cannot write T19-B test report");
     report<<json{{"suite","T19-B CameraRig + DOF"},{"backend","Chronon3D software"},{"resolution","1920x1080"},{"fps",30},{"frames",300},{"tests",std::move(tests)}}.dump(2)<<'\n';
+    const std::array<float,5> planeZ={-650.f,-350.f,-50.f,230.f,550.f};
+    const auto focusRadii=[&](const CameraSample& sample) {
+        json radii=json::array();
+        for(const float z:planeZ) {
+            const float depth=z-sample.z;
+            radii.push_back(std::min(12.f,std::abs(depth-sample.focus)*0.003f));
+        }
+        return radii;
+    };
+    std::ofstream focusReport(out/"T19B_Focus_Parallax_Report.json");
+    if(!focusReport) throw std::runtime_error("cannot write T19-B focus/parallax report");
+    focusReport<<json{
+        {"authority","ChrononMotion3D CameraRig samples and Chronon3D software projection model"},
+        {"status","PREDICTIONS_PENDING_VISUAL_METRICS"},
+        {"aperture",0.003},
+        {"max_blur_px",12},
+        {"world_plane_z",planeZ},
+        {"camera_z_frame_105",cameraSamples[105].z},
+        {"camera_z_frame_165",cameraSamples[165].z},
+        {"focus_distance_frame_105",cameraSamples[105].focus},
+        {"focus_distance_frame_165",cameraSamples[165].focus},
+        {"predicted_blur_radius_px_frame_105_near_to_far",focusRadii(cameraSamples[105])},
+        {"predicted_blur_radius_px_frame_165_near_to_far",focusRadii(cameraSamples[165])},
+        {"parallax_camera_shift_world_units",80},
+        {"predicted_parallax_near_px",parallaxNear},
+        {"predicted_parallax_far_px",parallaxFar},
+        {"predicted_near_far_ratio",parallaxNear/parallaxFar},
+        {"visual_sharpness_measurements","pending final decoded PNG samples"}
+    }.dump(2)<<'\n';
     return 0;
 } catch(const std::exception& e) { std::cerr<<"t19b_plan_tool: "<<e.what()<<'\n'; return 1; }

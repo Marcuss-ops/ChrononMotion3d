@@ -423,7 +423,11 @@ int renderScene(const fs::path& roomPath, const fs::path& output, const fs::path
     scene->add(fillTarget);
     scene->add(fill);
 
-    Canvas canvas(Canvas::Parameters().size(width, height).headless(true));
+    // The scene is rendered through EffectComposer, so the Canvas default
+    // framebuffer AA does not cover the geometry pass. Enable MSAA on the
+    // composer's internal targets to stabilize the thin page silhouette as
+    // its projected edges move across pixels during the push-in.
+    Canvas canvas(Canvas::Parameters().size(width, height).antialiasing(4).headless(true));
     GLRenderer renderer(canvas);
     renderer.setClearColor(Color(0x343b45));
     renderer.toneMapping = ToneMapping::ACESFilmic;
@@ -456,7 +460,9 @@ int renderScene(const fs::path& roomPath, const fs::path& output, const fs::path
     cameraRig.focusDistanceTrack().add(10.f, 1.18f);
     threepp::motion::applyCameraPose(cameraRig.sample(0.f), *camera, nullptr, 0.1f, 100.f);
     scene->updateMatrixWorld(true);
-    EffectComposer composer(renderer);
+    EffectComposer::Options composerOptions;
+    composerOptions.samples = 4;
+    EffectComposer composer(renderer, composerOptions);
     composer.renderToScreen = true;
     composer.setSize(width, height);
     composer.addPass(std::make_shared<RenderPass>(*scene, *camera));
