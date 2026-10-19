@@ -84,6 +84,47 @@ production-pixel claims. Tracked `.mp4` review evidence under `render/spike/`
 is grandfathered; new binaries need a contract note like
 `render/spike/assets/scene03/` has.
 
+## V2 additions (landed after the V1 closeout)
+
+- **Project files: closed.** `motion/SceneImport.hpp` (`sceneFromJson`) is the
+  strict reader for the `sceneToJson` export: export → import → re-export is
+  byte-identical and both scenes evaluate identically. Unknown
+  format/version/fields, duplicate ids and malformed values fail closed.
+  Three export shapes stay unresolvable by design and are rejected, never
+  approximated: sampled constraint-path polylines, name-only precomp
+  references, and geometry-bearing meshes (buffers are never serialized).
+  Pinned by `chrononmotion_scene_import`.
+- **Tool interaction: engine side landed, GUI stays out.**
+  `motion/Interaction.hpp` gives tool builders nearest-anchor picking, exact
+  camera-plane gizmo deltas (translate/rotate/scale) and a deterministic
+  `ScrubSession` cursor — pure math over evaluated state, no window, no
+  picking framebuffer. Quad-accurate content picking stays a future
+  content-aware layer. Pinned by `chrononmotion_interaction`.
+- **FK retargeting landed; painting stays in the DCC.**
+  `motion/RigRetarget.hpp` (`retargetPose`) transfers joint motion between
+  differently proportioned rigs: verbatim rotations, bind-length-ratio
+  position scaling, bind fallback for unmapped joints, fail-closed map
+  validation. Weight painting, skin transfer and IK re-solving are Blender's
+  job (glTF interchange, headless baking) — never this tree's. Pinned by
+  `chrononmotion_retarget`.
+- **One JSON reader.** The strict document model previously copied inside the
+  glTF reader now lives in `src/chrononmotion/motion/JsonDom.hpp` and is
+  shared by the glTF, rig-serialization and scene-import readers.
+
+## Known open, pre-existing (not V2 scope)
+
+- **`chrononmotion_showcase_all / same_seed_golden` fails on a clean tree.**
+  The `same_seed_golden` hash in `tests/showcase_golden.json` does not match
+  what the tree computes — deterministically (the actual hash
+  `7783a8faa934ac3f` is stable across runs and build types, Debug and
+  Release). The producing code (`Procedural.cpp`, track/easing/showcase
+  sources, the golden file itself) is byte-identical since the golden was
+  recorded, and the golden arrived with the repo import commit, so it never
+  validated on this tree. Reproduced on an unmodified `HEAD` worktree; the
+  V2 additions do not influence it (identical actual hash with and without
+  them). Not re-baselined here on purpose: a golden is re-recorded only with
+  owner review of why the values moved, never to make the gate green.
+
 ## Hygiene
 
 - Local build trees (`build/`, `build-*/`) are ignored, never tracked.
