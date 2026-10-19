@@ -18,7 +18,7 @@ Canvas 1920×1080, 30 fps, 300 frames. Chronon3D world convention: camera starts
 
 ## Required layers
 
-24-layer scene: night field; five RGBA frames; five photos; five captions; three SVG path layers; two focus rings; title; HUD; atmospheric overlay. Stress plan adds six small elements to reach 30 layers. The no-DOF and no-camera variants preserve the same composition.
+24-layer scene: night field; five RGBA frames; five photos; five captions; three SVG path layers; two focus rings; title; HUD; atmospheric overlay. Stress plan adds six small elements to reach 30 layers. The no-DOF and no-camera variants preserve the same composition. Projected photo and frame layers omit style shadows because the software 2.5D shadow path produced stale rectangular bands during CameraRig motion; the alpha-backed frame supplies separation without that effect.
 
 ## Elements excluded
 
@@ -26,4 +26,4 @@ No fabricated Apollo imagery, 3D characters, GLB meshes, Blender scene, remote a
 
 ## Preview acceptance
 
-At least four photo subjects must be identifiable in the 854×480 preview (or its 1920×1080 source), the title and all captions must be readable, all five photo planes must remain inside frame, frames must show transparent centers, and the initial astronaut image must retain visible detail with DOF enabled. Full-video acceptance additionally requires visible parallax at frames 0/75/150/225/299, a measurable rack-focus sharpness change, stable 30 fps/300-frame output, and inspection of PNG samples every 15 frames. Camera interpolation success alone does not certify the cinematic shot.
+At least four photo subjects must be identifiable in the 854×480 preview (or its 1920×1080 source), the title and all captions must be readable, all five photo planes must remain inside frame, frames must show transparent centers, and the initial astronaut image must retain visible detail with DOF enabled. Projected scenes must clear the full destination each frame so prior camera bounds cannot remain visible after movement. Full-video acceptance additionally requires visible parallax at frames 0/75/150/225/299, a measurable rack-focus sharpness change, stable 30 fps/300-frame output, and inspection of PNG samples every 15 frames. Camera interpolation success alone does not certify the cinematic shot.
