@@ -6,6 +6,9 @@
 //   Layer         identity, parent, content, in/out lifetime, animated transform
 //   MotionScene   hierarchy (Parent, Null) + deterministic frame/PTS evaluation
 //   SceneExport   deterministic JSON export of space and time, never content
+//   SceneImport   strict project-file reader: the way back from an export
+//   Interaction   picking, gizmo deltas and scrub session for tool builders
+//   RigRetarget   FK motion transfer between differently scaled rigs
 //   Track         + modifiers: loop / posterize / delay / cross-layer link
 //   MotionPath    line / cubic Bézier / Catmull-Rom + orient-to-path
 //   MotionPlane   2.5D text and image planes, Z depth, perspective + parallax
@@ -25,6 +28,9 @@
 #include "chrononmotion/motion/Layer.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
 #include "chrononmotion/motion/SceneExport.hpp"
+#include "chrononmotion/motion/SceneImport.hpp"
+#include "chrononmotion/motion/Interaction.hpp"
+#include "chrononmotion/motion/RigRetarget.hpp"
 #include "chrononmotion/motion/MotionPath.hpp"
 #include "chrononmotion/motion/MotionPlane.hpp"
 #include "chrononmotion/motion/CameraRig.hpp"
