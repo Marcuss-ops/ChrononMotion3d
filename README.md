@@ -238,6 +238,10 @@ The result is one static library, `chrononmotion` (alias
 | `chrononmotion_authoring` | authoring bakers and the optional RenderPlan adapter |
 | `chrononmotion_offline_golden` | fixed-value and repeated-run offline-baking checks |
 | `chrononmotion_boundary` | the architectural guardrail (CTest script, not a test executable) |
+| `chrononmotion_render_scope` | the render-sibling scope guard (CTest script, not a test executable) |
+| `chrononmotion_scene_import` | project-file round trip: export → import → identical bytes and evaluated state, plus fail-closed rejections |
+| `chrononmotion_interaction` | anchor picking, exact gizmo deltas and the deterministic scrub session |
+| `chrononmotion_retarget` | FK motion transfer between rigs, bind fallback and validation |
 | `chrononmotion_gltf` | static glTF/GLB geometry import and fail-closed validation |
 | `chrononmotion_upstream_regressions` | adapted retained threepp math/core/animation regression assertions |
 
