@@ -366,6 +366,14 @@ if(CHRONONMOTION_BUILD_TESTS)
             -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_motion_boundary.cmake)
 
+    # Render-sibling scope guard: render/ is a look-dev and proof harness,
+    # never a production renderer. See docs/SCOPE_CLOSEOUT.md and
+    # tests/check_render_scope.cmake.
+    add_test(NAME chrononmotion_render_scope
+            COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_render_scope.cmake)
+
     if(CHRONON3D_INCLUDE_DIR)
         add_executable(chrononmotion_renderplan_easing_parity tests/motion_renderplan_easing_parity.cpp)
         target_link_libraries(chrononmotion_renderplan_easing_parity PRIVATE chrononmotion_chronon3d_adapter)
