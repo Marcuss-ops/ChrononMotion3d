@@ -77,6 +77,42 @@ void checkFocal(float viewportH, float fovDeg) {
     checkNear(focal.x, expected, 1e-3f, "renderer focal is square-pixel symmetric");
 }
 
+void checkPhysicalLensParity(float viewportW, float viewportH, float focalLengthMm) {
+    constexpr float sensorWidthMm = 35.f;
+    const float aspect = viewportW / viewportH;
+    const float sensorHeightMm = sensorWidthMm / aspect;
+    const float fovDeg = 2.f * std::atan(sensorHeightMm / (2.f * focalLengthMm)) *
+                         180.f / 3.14159265358979323846f;
+
+    CameraPose pose;
+    pose.position = Vector3(0.f, 0.f, 1500.f);
+    pose.fov = fovDeg;
+    ScreenCameraIntrinsics intrinsics;
+    intrinsics.viewport = Vector2(viewportW, viewportH);
+    intrinsics.fovDegrees = fovDeg;
+
+    chronon3d::Camera2_5D camera;
+    camera.position = chronon3d::Vec3(0.f, 0.f, -1500.f);
+    camera.optics_mode = chronon3d::CameraOpticsMode::PhysicalLens;
+    camera.lens.focal_length = focalLengthMm;
+    camera.lens.sensor_width = sensorWidthMm;
+    camera.lens.sensor_height = sensorHeightMm;
+
+    for (const auto& point : {Vector3(-320.f, -120.f, 0.f), Vector3(0.f, 0.f, 0.f),
+                              Vector3(240.f, 180.f, 0.f)}) {
+        const Vector2 motion = projectToScreen(point, pose, intrinsics);
+        const auto render = chronon3d::camera_math::project_world_point(
+            camera, chronon3d::Vec3(point.x, point.y, point.z),
+            chronon3d::camera_math::Viewport2D{viewportW, viewportH});
+        check(render.visible, "physical-lens parity point is visible");
+        if (!render.visible) continue;
+        checkNear(motion.x, render.screen.x, kEpsPx,
+                  "35 mm physical-lens horizontal projection matches Motion FOV");
+        checkNear(motion.y, render.screen.y, kEpsPx,
+                  "35 mm physical-lens vertical projection matches Motion FOV");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -98,6 +134,23 @@ int main() {
                 }
             }
         }
+        checkPhysicalLensParity(widths[v], heights[v], 50.f);
     }
+
+    section("CAM-01 FOV changes framing on the same projected subject");
+    chronon3d::Camera2_5D wide;
+    wide.position = chronon3d::Vec3(0.f, 0.f, -1000.f);
+    wide.optics_mode = chronon3d::CameraOpticsMode::FieldOfView;
+    wide.fov_deg = 50.f;
+    auto narrow = wide;
+    narrow.fov_deg = 30.f;
+    const chronon3d::camera_math::Viewport2D viewport{1920.f, 1080.f};
+    const chronon3d::Vec3 offAxisPoint{250.f, 120.f, 0.f};
+    const auto wideFrame = chronon3d::camera_math::project_world_point(wide, offAxisPoint, viewport);
+    const auto narrowFrame = chronon3d::camera_math::project_world_point(narrow, offAxisPoint, viewport);
+    check(wideFrame.visible && narrowFrame.visible, "CAM-01 subject is inside both FOVs");
+    if (wideFrame.visible && narrowFrame.visible)
+        check(std::abs(wideFrame.screen.x - narrowFrame.screen.x) > 100.f,
+              "CAM-01 changing FOV from 50 to 30 degrees measurably changes framing");
     return chrononmotion_test::report();
 }

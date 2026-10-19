@@ -110,14 +110,15 @@ Scene contract for the first end-to-end documentary room shot:
 
 The mannequin in the supplied GLB is a single static mesh with no skin or animation clips. Its procedural idle moves the full mesh gently; it does not articulate the head or arms.
 
-## Scene 03 composition contract: low-poly seated character at desk
+## Scene 03 composition contract: ChrononTemplate desk introduction
 
-- **Subject and assets:** supplied blank room GLB and a scene-authored low-poly human character. Build the body from shaped profile meshes and tapered limbs: glossy featureless white head and hands, slim red short-sleeve shirt, dark trousers and dark shoes. Do not use the previous primitive mannequin or downloaded person models.
-- **Composition:** seated upright in the office chair; thighs angle forward, shins drop below the desktop, both elbows bend and both hands rest visibly on the desk. Match the supplied reference's centered, medium-wide view.
-- **Motion and timing:** after the composition is approved, make a slow 180-degree camera move. Keep the character pose fixed.
-- **Layers:** beauty render using the room's plywood texture on the desk, a procedural cloth weave, soft shadow mapping, ACES tone mapping and shallow depth of field.
-- **Must not appear:** facial features, extra characters, titles or unrelated props.
-- **Preview approval:** inspect the 854×480 still for a complete head and feet, slim connected silhouette, readable bent seated pose, hands in contact with the desk, visible chair and no wall intersection before producing the orbit or final 1920×1080 video.
+- **Subject and assets:** supplied blank room GLB, Quaternius Universal Animation Library Standard GLB, plywood desk texture, and Ubuntu Italic title mask. Preserve the same room, desk, chair and character geometry across the three comparison variants. Asset licenses and font attribution are recorded in `render/spike/assets/scene03/`.
+- **Composition:** begin on the seated character and desk; move through a modest lateral orbit and push toward the white page. End with “Benvenuti in ChrononTemplate” readable on the page while part of the seated character remains visible above it.
+- **Coordinates and camera:** metres; Y up; X screen horizontal; +Z points from the subject toward camera. The deterministic ChrononMotion `CameraRig` uses keyed position, target and focus distance at 0, 2.8, 6.3, 8.4 and 10 seconds. FOV 41 degrees; near/far 0.1/100. Camera positions: `(-0.06,1.32,2.78)`, `(-0.74,1.30,2.62)`, `(-0.63,1.24,2.02)`, `(-0.47,1.29,1.64)`, held to 10 seconds. Targets move from `(-0.5,0.98,0.22)` through `(-0.5,0.91,0.24)` and `(-0.5,0.83,0.51)` to the page at `(-0.5,0.78,0.59)`.
+- **Motion and timing:** 10 seconds, 30 fps, 300 frames. Variant 1 uses the camera move with base lighting/materials; variant 2 adds shaped key/rim lighting, shadows and rack focus; variant 3 adds a deterministic crossfade from `Sitting_Idle_Loop` to `Sitting_Talking_Loop` and progressive title reveal from 5.4 to 9.0 seconds. `Scene03_Chronon3D_FilmFinish.plan.json` defines the Chronon3D video-plus-overlay composite and validates. The installed Chronon3D CLI build has native FFmpeg decoding disabled, so the delivered master applies the same restrained vignette/grain PNG overlay with FFmpeg after the 3D render.
+- **Lighting and layers:** matte porcelain character; low ambient fill, warm overhead key, cool rim and soft shadow mapping; ACES tone mapping and BokehPass. The rack focus is measured from the seated character at about 2.82 m toward the page at about 1.18 m, with restrained blur. Room and chair retain dark matte clay, desk retains plywood texture, and the page stays opaque and thin.
+- **Must not appear:** facial features, extra characters, unrelated props or writing other than the requested title.
+- **Review evidence:** compare the three 10-second variants at identical geometry and framing. Inspect all frames at 0.5-second intervals in the final contact sheet and measure character/page ROI sharpness at opening, handoff and ending; check temporal change, title legibility and wall intersections before delivery.
 
 # Milestone 3: MotionScene + CameraRig -> MotionSceneBridge -> multi-frame GL render
 xvfb-run -a ./build/dev/render/chrononmotion_render_bridge /tmp/bridge.ppm 256 256

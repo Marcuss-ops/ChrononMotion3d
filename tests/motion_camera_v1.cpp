@@ -15,6 +15,7 @@
 #include "chrononmotion/chrononmotion.hpp"
 #include "motion_check.hpp"
 
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -88,6 +89,54 @@ namespace {
 
         float focManual = CameraFocusResolver::resolveFocus(CameraFocusMode::Manual, cam, tgtA, tgtB, 0.f, 42.5f);
         checkNear(focManual, 42.5f, 1e-4f, "CameraFocusResolver Manual returns authored distance");
+    }
+
+    void testT16CameraTruthProjection() {
+        section("T16 Camera Truth — FOV, dolly scale, and three-plane parallax");
+
+        CameraRig rig(990, 45.f, 16.f / 9.f, 0.1f, 100.f);
+        rig.setTarget(Vector3(0.f, 0.f, 0.f));
+        rig.positionTrack().add(0.f, Vector3(-0.8f, 0.1f, 12.f));
+        rig.positionTrack().add(149.f / kFps, Vector3(0.8f, 0.15f, 10.f));
+
+        const std::array<Vector3, 3> anchors{
+            Vector3(-1.1f, 0.f, 2.f), Vector3(0.f, 0.f, -0.5f),
+            Vector3(1.1f, 0.f, -3.f)};
+        std::array<Vector2, 3> first{};
+        std::array<Vector2, 3> last{};
+        for (std::size_t i = 0; i < anchors.size(); ++i) {
+            first[i] = projectTo1080p(anchors[i], rig, rig.sample(at(0)));
+            last[i] = projectTo1080p(anchors[i], rig, rig.sample(at(149)));
+        }
+        const float nearShift = last[0].x - first[0].x;
+        const float farShift = last[2].x - first[2].x;
+        check(std::abs(nearShift - farShift) > 30.f,
+              "CAM-03 orbit/push produces measurable relative parallax across depth planes");
+
+        const auto nearLeft = projectTo1080p(Vector3(-1.6f, 0.f, 2.f), rig, rig.sample(at(0)));
+        const auto nearRight = projectTo1080p(Vector3(-0.6f, 0.f, 2.f), rig, rig.sample(at(0)));
+        const auto farLeft = projectTo1080p(Vector3(0.6f, 0.f, -3.f), rig, rig.sample(at(0)));
+        const auto farRight = projectTo1080p(Vector3(1.6f, 0.f, -3.f), rig, rig.sample(at(0)));
+        check(std::abs(nearRight.x - nearLeft.x) > std::abs(farRight.x - farLeft.x),
+              "CAM-02 nearer plane projects larger than an equal-sized far plane");
+
+        rig.setFov(50.f);
+        const auto wide = projectTo1080p(Vector3(2.f, 0.f, 0.f), rig, rig.sample(at(75)));
+        rig.setFov(30.f);
+        const auto narrow = projectTo1080p(Vector3(2.f, 0.f, 0.f), rig, rig.sample(at(75)));
+        check(std::abs(narrow.x - wide.x) > 100.f,
+              "CAM-01 changing FOV from 50 to 30 degrees changes subject framing");
+
+        const auto frame30 = rig.sample(at(30));
+        const auto frame75 = rig.sample(at(75));
+        const auto frame120 = rig.sample(at(120));
+        const auto frame149 = rig.sample(at(149));
+        checkNear(frame30.position, rig.sample(at(30)).position, 1e-6f,
+                  "CAM-07 repeated random-access samples are deterministic");
+        check(frame75.position.distanceTo(frame30.position) > 0.f &&
+              frame120.position.distanceTo(frame75.position) > 0.f &&
+              frame149.position.distanceTo(frame120.position) > 0.f,
+              "CAM-07 all required T16 sample times advance the camera");
     }
 
     // ------------------------------------------------------------- 2. Target Lock & Safe Framing
@@ -502,6 +551,7 @@ namespace {
 
 int main() {
     testCameraMotionPrimitives();
+    testT16CameraTruthProjection();
     testCameraTargetLockAndSafeFraming();
     testCameraDofCanary();
     testCameraOrbit90Reveal();
