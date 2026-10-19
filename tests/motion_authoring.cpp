@@ -1330,8 +1330,8 @@ void testTypedChronon3dLowering() {
     const auto loweredDofCamera = lowerToRenderPlan(cameraScene, dofCameraOptions);
     check(loweredDofCamera.camera && loweredDofCamera.camera->dof_enabled &&
           loweredDofCamera.camera->dof_aperture == 0.035f &&
-          loweredDofCamera.camera->dof_focus_distance == 433.f,
-          "CameraRig focus distance lowers to the RenderPlan world-Z focal plane");
+          loweredDofCamera.camera->dof_focus_distance == 425.f,
+          "CameraRig focus distance lowers to the RenderPlan camera-space focus distance unchanged");
     auto styledImagePlan = cameraPlan;
     auto& styledImage = styledImagePlan.layers.front();
     LayerStylePlan imageStyle;
@@ -1557,16 +1557,19 @@ void testTypedChronon3dLowering() {
     cameraPose.focusDistance = 480.f;
     const auto dofCamera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
     check(dofCamera.dof_enabled && dofCamera.dof_aperture == 0.04f &&
-          dofCamera.dof_focus_distance == 483.f,
-          "camera pose lowering converts optical-axis distance to RenderPlan world-Z focus");
+          dofCamera.dof_focus_distance == 480.f,
+          "camera pose lowering preserves the optical-axis focus distance in RenderPlan space");
     cameraPose.position = {0.f, 0.f, 480.00006f};
     cameraPose.focusDistance = 480.f;
     const auto nearZeroFocusPlane = lowerCameraPose(cameraPose, 0.1f, 2000.f);
-    check(nearZeroFocusPlane.dof_focus_distance == 0.001f,
-          "camera lowering clamps near-zero focus-plane roundoff to the schema epsilon");
-    cameraPose.position.z = 481.f;
+    check(nearZeroFocusPlane.dof_focus_distance == 480.f,
+          "camera lowering preserves small focus distances without plane epsilon clamping");
+    cameraPose.focusDistance = -5.f;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
-          "camera lowering still rejects materially negative RenderPlan focal planes");
+          "camera lowering still rejects negative focus distances outside the RenderPlan contract");
+    cameraPose.focusDistance = 0.f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "camera lowering rejects a zero focus distance while the aperture enables depth of field");
     cameraPose.position = {1.f, 2.f, -3.f};
     cameraPose.focusDistance = 480.f;
     cameraPose.focalLength = 50.f;
@@ -1611,8 +1614,8 @@ void testTypedChronon3dLowering() {
     check(animatedDofPlan.camera && animatedDofPlan.camera->dof_enabled && focusTrack && apertureTrack && maxBlurTrack,
           "camera lowering enables and emits typed animated depth-of-field channels");
     check(focusTrack && focusTrack->keyframes.size() > 1 &&
-          focusTrack->keyframes.front().value.front() == 488.f &&
-          focusTrack->keyframes.back().value.front() == 728.f &&
+          focusTrack->keyframes.front().value.front() == 480.f &&
+          focusTrack->keyframes.back().value.front() == 720.f &&
           apertureTrack && apertureTrack->keyframes.front().value.front() == 0.04f &&
           apertureTrack->keyframes.back().value.front() == 0.06f &&
           maxBlurTrack && maxBlurTrack->keyframes.front().value.front() == 12.f &&
@@ -1651,7 +1654,7 @@ void testTypedChronon3dLowering() {
     check(staticLensPlan.camera && staticLensPlan.camera->dof_enabled,
           "a fully static lens still enables DOF in the lowered base camera");
     check(staticLensPlan.camera && staticLensPlan.camera->dof_aperture == 0.05f &&
-          staticLensPlan.camera->dof_focus_distance == 488.f &&
+          staticLensPlan.camera->dof_focus_distance == 480.f &&
           staticLensPlan.camera->dof_max_blur == 30.f &&
           staticLensPlan.camera->dof_f_stop == 2.8f &&
           staticLensPlan.camera->dof_iris_blades == 6 &&

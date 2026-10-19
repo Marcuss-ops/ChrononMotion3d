@@ -563,8 +563,12 @@ namespace chrononmotion::motion {
                 case Field2DGenerator::Radial: return "radial";
                 case Field2DGenerator::Conic: return "conic";
                 case Field2DGenerator::Burst: return "burst";
-                case Field2DGenerator::Value: return "value";
-                case Field2DGenerator::Ridged: return "ridged";
+                // Chronon3D's in-memory field vocabulary is wider than the
+                // RenderPlan contract. Reject unsupported values explicitly
+                // instead of silently serializing them as Perlin.
+                case Field2DGenerator::Value:
+                case Field2DGenerator::Ridged:
+                    throw std::invalid_argument("writeField: field generator is not expressible in RenderPlan");
             }
             return "perlin";
         }
@@ -576,12 +580,10 @@ namespace chrononmotion::motion {
             writer.key("seed"); writer.unsignedInteger(field.seed);
             writer.key("frequency"); writer.number(field.frequency);
             if (field.generator == chronon3d::graphics::Field2DGenerator::Fractal ||
-                field.generator == chronon3d::graphics::Field2DGenerator::Ridged ||
                 field.generator == chronon3d::graphics::Field2DGenerator::Burst) {
                 writer.key("octaves"); writer.unsignedInteger(field.octaves);
             }
-            if (field.generator == chronon3d::graphics::Field2DGenerator::Fractal ||
-                field.generator == chronon3d::graphics::Field2DGenerator::Ridged) {
+            if (field.generator == chronon3d::graphics::Field2DGenerator::Fractal) {
                 writer.key("persistence"); writer.number(field.persistence);
                 writer.key("lacunarity"); writer.number(field.lacunarity);
             }
@@ -606,10 +608,6 @@ namespace chrononmotion::motion {
                             break;
                         case Field2DOperatorKind::Invert:
                             writer.key("kind"); writer.token("invert");
-                            break;
-                        case Field2DOperatorKind::Quantize:
-                            writer.key("kind"); writer.token("quantize");
-                            writer.key("levels"); writer.number(op.scalar);
                             break;
                         case Field2DOperatorKind::DomainWarp:
                         case Field2DOperatorKind::Warp:

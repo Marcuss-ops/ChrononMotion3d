@@ -719,9 +719,6 @@ namespace chrononmotion::motion {
                                 (op.kind == Field2DOperatorKind::Smoothstep &&
                                  (!std::isfinite(op.edge) || op.edge < 0.f || op.edge > 1.f ||
                                   !std::isfinite(op.softness) || op.softness <= 0.f || op.softness > 1.f)) ||
-                                (op.kind == Field2DOperatorKind::Quantize &&
-                                 (!std::isfinite(op.scalar) || op.scalar < 2.f || op.scalar > 256.f ||
-                                  std::floor(op.scalar) != op.scalar)) ||
                                 op.kind == Field2DOperatorKind::Translate ||
                                 op.kind == Field2DOperatorKind::Scale || op.kind == Field2DOperatorKind::Rotate ||
                                 op.kind == Field2DOperatorKind::Repeat || op.kind == Field2DOperatorKind::Add ||
@@ -1159,8 +1156,8 @@ namespace chrononmotion::motion {
             const auto transitionProblem = [&](const std::optional<chronon3d::render_plan::TransitionPlan>& transition) {
                 if (!transition) return std::string{};
                 static constexpr std::array<std::string_view, 11> kinds{
-                    "none", "crossfade", "slide", "zoom", "wipe_linear", "smooth_wipe",
-                    "circle_iris", "flash", "procedural_remotion", "remotion", "fly_under_fade"};
+                    "none", "crossfade", "dip_to_black", "slide", "zoom", "wipe_linear", "smooth_wipe",
+                    "circle_iris", "flash", "procedural_remotion", "remotion"};
                 if (std::find(kinds.begin(), kinds.end(), transition->kind) == kinds.end() ||
                     transition->duration_frames.integral() < 1 || transition->duration_frames.integral() > 1'000'000 ||
                     transition->delay_frames.integral() < 0 || transition->delay_frames.integral() > 1'000'000 ||
@@ -1243,6 +1240,20 @@ namespace chrononmotion::motion {
                 camera.dof_aperture < 0.f || camera.dof_aperture > 1.f ||
                 !finite(camera.dof_max_blur) || camera.dof_max_blur < 0.f || camera.dof_max_blur > 256.f)
                 return "the camera has depth-of-field values outside the RenderPlan contract";
+            if (!finite(camera.focal_length_mm) ||
+                (camera.focal_length_mm != 0.f &&
+                 (camera.focal_length_mm < 12.f || camera.focal_length_mm > 200.f)) ||
+                !finite(camera.f_stop) ||
+                (camera.f_stop != 0.f && (camera.f_stop < 0.7f || camera.f_stop > 32.f)) ||
+                camera.iris_blades < 0 || camera.iris_blades > 12)
+                return "the camera has lens values outside the RenderPlan contract";
+            if (!finite(camera.dof_f_stop) ||
+                (camera.dof_f_stop != 0.f &&
+                 (camera.dof_f_stop < 0.7f || camera.dof_f_stop > 32.f)) ||
+                camera.dof_iris_blades < 0 || camera.dof_iris_blades > 12 ||
+                !finite(camera.dof_highlight_gain) ||
+                camera.dof_highlight_gain < 0.f || camera.dof_highlight_gain > 8.f)
+                return "the camera has physical depth-of-field values outside the RenderPlan contract";
             return {};
         }
 

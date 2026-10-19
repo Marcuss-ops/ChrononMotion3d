@@ -1047,27 +1047,10 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
         !std::isfinite(orientation.z) || !std::isfinite(orientation.w))
         throw std::invalid_argument("lowerCameraPose: orientation must be finite and normalized");
     orientation.normalize();
-    // RenderPlan V2's legacy DOF channel stores a world-space Z focus plane,
-    // while CameraRig authors a distance along the camera's optical axis.
-    // Resolve that focal point in Motion coordinates, then mirror Z into the
-    // RenderPlan camera convention just as we do for the camera position.
-    float renderPlanFocusPlane = 0.f;
-    if (pose.focusDistance > 0.f) {
-        Vector3 motionForward(0.f, 0.f, -1.f);
-        motionForward.applyQuaternion(orientation);
-        const float motionFocusZ = pose.position.z + motionForward.z * pose.focusDistance;
-        renderPlanFocusPlane = -motionFocusZ;
-        if (!std::isfinite(renderPlanFocusPlane) || renderPlanFocusPlane < -1e-3f)
-            throw std::invalid_argument("lowerCameraPose: the focal plane must map to positive "
-                "RenderPlan camera-space depth (camera_z=" + std::to_string(pose.position.z) +
-                ", forward_z=" + std::to_string(motionForward.z) +
-                ", focus_distance=" + std::to_string(pose.focusDistance) +
-                ", plane_z=" + std::to_string(renderPlanFocusPlane) + ")");
-        // RenderPlan currently requires a strictly positive value. Its legacy
-        // DOF path measures blur from world Z, where a subject on z=0 is valid;
-        // use a negligible epsilon for that exact plane.
-        renderPlanFocusPlane = std::max(renderPlanFocusPlane, 0.001f);
-    }
+    // RenderPlan dof.focus_distance carries the camera-space distance along
+    // the optical axis exactly as authored (CameraRig focusDistance contract).
+    // World-space focus planes are derived downstream with the camera pose,
+    // so the lowering passes the distance through unchanged.
     orientation.invert(); // RenderPlan camera forward is +Z; Motion camera forward is -Z.
     Matrix4 rotation;
     rotation.makeRotationFromQuaternion(orientation);
@@ -1085,7 +1068,7 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     if (depthOfFieldAuthored) {
         camera.dof_enabled = depthOfFieldEnabled;
         camera.dof_aperture = pose.aperture;
-        if (pose.focusDistance > 0.f) camera.dof_focus_distance = renderPlanFocusPlane;
+        if (pose.focusDistance > 0.f) camera.dof_focus_distance = pose.focusDistance;
         if (pose.maxBlur > 0.f) camera.dof_max_blur = pose.maxBlur;
         camera.dof_f_stop = pose.fStop;
         camera.dof_iris_blades = pose.irisBlades;
