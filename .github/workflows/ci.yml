@@ -34,3 +34,41 @@ jobs:
       # tests/check_motion_boundary.cmake.
       - name: Test
         run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+  interop-adapter:
+    # Best-effort RenderPlan interop lane: builds the optional Chronon3D
+    # adapter (RenderPlanLowering) against the sibling checkout and runs the
+    # adapter parity gates (easing/projection/camera-bake round-trips). If the
+    # sibling is unreachable (private or offline), the lane reports a skip
+    # instead of failing: the full producer-to-consumer proof
+    # (tools/check_render_plan_consumer_canary.sh, needs chronon3d_cli +
+    # ffmpeg) stays a host-held gate. See docs/SCOPE_CLOSEOUT.md.
+    name: interop-adapter
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GLM (Chronon3D header dependency)
+        run: sudo apt-get update && sudo apt-get install -y libglm-dev
+
+      - name: Check out sibling Chronon3D (best effort)
+        id: sibling
+        run: |
+          if git clone --depth 1 https://github.com/Marcuss-ops/Chronon3d.git "$GITHUB_WORKSPACE/../Chronon3d"; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Sibling Chronon3D unavailable; interop lane skipped."
+          fi
+
+      - name: Configure with adapter
+        if: steps.sibling.outputs.present == 'true'
+        run: cmake --preset dev -DCHRONON3D_INCLUDE_DIR="$GITHUB_WORKSPACE/../Chronon3d/include"
+
+      - name: Build
+        if: steps.sibling.outputs.present == 'true'
+        run: cmake --build --preset dev
+
+      - name: Test (adapter parity gates included)
+        if: steps.sibling.outputs.present == 'true'
+        run: ctest --preset dev --output-on-failure -R 'authoring|parity|canary|renderplan|bridge|geospatial|rig_pipeline'
