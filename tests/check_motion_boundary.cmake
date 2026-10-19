@@ -62,6 +62,8 @@ file(GLOB_RECURSE _sources
         "${SOURCE_DIR}/tests/*.cmake"
         "${SOURCE_DIR}/*.txt")
 list(FILTER _sources EXCLUDE REGEX "${SOURCE_DIR}/build/.*")
+# Local build trees (build-*/) are ignored build output, never source.
+list(FILTER _sources EXCLUDE REGEX "${SOURCE_DIR}/build-[^/]*/.*")
 # The offscreen GL render sibling (render/) is deliberately out of scope: it is
 # a separate static library whose whole job is pixels (GL renderer, image
 # decoders, windowing for headless contexts). The guardrail pins the CORE
@@ -69,9 +71,10 @@ list(FILTER _sources EXCLUDE REGEX "${SOURCE_DIR}/build/.*")
 # machinery is allowed to live, fed only by Motion-baked data.
 list(FILTER _sources EXCLUDE REGEX "${SOURCE_DIR}/render/.*")
 
-# This script names every forbidden token it looks for, so it would trivially
-# fail on itself.
+# These scripts name every forbidden token they look for, so they would
+# trivially fail on themselves.
 list(FILTER _sources EXCLUDE REGEX "check_motion_boundary\\.cmake$")
+list(FILTER _sources EXCLUDE REGEX "check_render_scope\\.cmake$")
 
 if(NOT _sources)
     message(FATAL_ERROR "check_motion_boundary: no sources found under ${SOURCE_DIR}")
