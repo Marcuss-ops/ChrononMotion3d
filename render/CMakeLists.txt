@@ -370,6 +370,8 @@ target_include_directories(chrononmotion_render_postprocessing PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
 target_link_libraries(chrononmotion_render_postprocessing PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
+add_executable(chrononmotion_render_effects_showcase spike/effects_showcase.cpp)
+target_link_libraries(chrononmotion_render_effects_showcase PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_dof_certification spike/dof_certification.cpp)
 target_include_directories(chrononmotion_render_dof_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"

@@ -132,3 +132,29 @@ xvfb-run -a ./build/dev/render/chrononmotion_render_image_mesh <input.png> /tmp/
 xvfb-run -a ./build/dev/render/chrononmotion_render_postprocessing /tmp/bloom.ppm 512 512
 ```
 
+### Chronon finishing effects
+
+`threepp/postprocessing/shaders/ChrononPostProcessShader.hpp` provides a
+single full-screen finishing shader for scanlines, glass grid, radial RGB
+separation, VHS jitter/chroma bleed, halation, lens distortion, edge softening,
+horizontal streak bloom, and midtone-weighted grain. It is exposed by
+`threepp/postprocessing/postprocessing.hpp`. The pass expects the caller to
+bind `tDiffuse`, a preblurred full-frame `tBackdrop`, and a blurred bright-pass
+`tHighlights`; disable effects by leaving their intensity uniforms at zero.
+
+For a chain, render the source, extract highlights with
+`chrononHighlightExtractShader()` (`uThreshold`/`uKnee`), and blur into separate
+ping-pong targets with `chrononGaussianBlurShader()`. Set `uDirection` to a
+horizontal then vertical pixel radius. Use a reduced-resolution target for
+wide halation and streaks; use a full-size blur target for backdrop glass and
+edge softening. Finally run `chrononPostProcessShader()` once at output size.
+`uResolution` is in pixels, `uTime` is seconds, and the effect uniforms are
+intensities (zero disables each effect). For directional streaks, the caller
+can blur highlights horizontally only and bind that result to
+`tHighlights`. This keeps convolution in dedicated passes and combines the
+single-sample effects in one pass.
+
+Temporal posterization must be applied before scene evaluation: call
+`chrononSteppedTime(timeSeconds, targetFps)` and evaluate the scene at the
+returned time while keeping the export frame rate unchanged. Default is 15 fps.
+
