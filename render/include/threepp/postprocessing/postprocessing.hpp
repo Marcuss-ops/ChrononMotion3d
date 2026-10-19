@@ -22,6 +22,7 @@
 
 #include "threepp/postprocessing/shaders/BokehShader.hpp"
 #include "threepp/postprocessing/shaders/CopyShader.hpp"
+#include "threepp/postprocessing/shaders/ChrononPostProcessShader.hpp"
 #include "threepp/postprocessing/shaders/LuminosityHighPassShader.hpp"
 
 #endif//THREEPP_POSTPROCESSING_HPP
