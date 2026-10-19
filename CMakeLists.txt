@@ -79,6 +79,9 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/Layer.cpp
         src/chrononmotion/motion/MotionScene.cpp
         src/chrononmotion/motion/SceneExport.cpp
+        src/chrononmotion/motion/SceneImport.cpp
+        src/chrononmotion/motion/Interaction.cpp
+        src/chrononmotion/motion/RigRetarget.cpp
         src/chrononmotion/motion/MotionPath.cpp
         src/chrononmotion/motion/MotionPlane.cpp
         src/chrononmotion/motion/CameraRig.cpp
@@ -184,6 +187,10 @@ endif()
 target_include_directories(chrononmotion PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
+# Internal translation-unit headers (JsonDom, JsonWriter): shared by motion
+# sources across directories, never installed, never public API.
+target_include_directories(chrononmotion PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/chrononmotion/motion)
 
 target_compile_features(chrononmotion PUBLIC cxx_std_20)
 
@@ -373,6 +380,21 @@ if(CHRONONMOTION_BUILD_TESTS)
             COMMAND ${CMAKE_COMMAND}
             -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_render_scope.cmake)
+
+    # Project-file round trip: export -> import -> identical bytes and state.
+    add_executable(chrononmotion_scene_import tests/motion_scene_import.cpp)
+    target_link_libraries(chrononmotion_scene_import PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_scene_import COMMAND chrononmotion_scene_import)
+
+    # Tool-builder interaction: picking, gizmo deltas and the scrub session.
+    add_executable(chrononmotion_interaction tests/motion_interaction.cpp)
+    target_link_libraries(chrononmotion_interaction PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_interaction COMMAND chrononmotion_interaction)
+
+    # FK retargeting between rigs.
+    add_executable(chrononmotion_retarget tests/motion_retarget.cpp)
+    target_link_libraries(chrononmotion_retarget PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_retarget COMMAND chrononmotion_retarget)
 
     if(CHRONON3D_INCLUDE_DIR)
         add_executable(chrononmotion_renderplan_easing_parity tests/motion_renderplan_easing_parity.cpp)
