@@ -30,10 +30,21 @@ except:
   the OpenGL renderer, no Vulkan.
 - `postprocessing/`: threepp's OpenGL `EffectComposer`, image-space passes,
   `UnrealBloomPass` and `BokehPass`, restored from the same pinned revision.
+  `GTAOPass` and `OutlinePass` are backported from upstream threepp commit
+  `8518a6c22d051775c45dbd0c04a3ba92e92a5366` (tag `2026-10-11`), preserving
+  their upstream headers and implementation. GTAO provides screen-space
+  contact/corner occlusion; OutlinePass provides selected-object silhouettes,
+  including a separate hidden-edge color. They run in the existing GL
+  `EffectComposer`; they do not add a renderer or change the core boundary.
   These process a rendered 3D scene; Chronon3D still owns video-layer
   composition, project effects and final encoding.
 - `materials/` (full set — the zoo is small next to the renderer; use
   Basic/Lambert/Standard), `lights/`, `textures/`, `geometries/`.
+- `motion/CinematicSceneLook.hpp`: reusable lighting, shadow-map, fog and
+  optional clay-material composition for imported scenes. It uses existing
+  threepp `AmbientLight`, `HemisphereLight`, `SpotLight`, `DirectionalLight`,
+  `FogExp2`, `Scene::overrideMaterial` and renderer shadow-map APIs; it is a
+  look preset, not a new material or renderer.
 - `loaders/`: GLTFLoader, ImageLoader, TextureLoader (+ ModelLoader,
   MaterialVariants, AssetSource). No FBX/OBJ/COLLADA/USD zoo.
 - `canvas/`: headless GLFW canvas (Null platform, no display server for the
@@ -82,6 +93,31 @@ xvfb-run -a ./build/dev/render/chrononmotion_render_spike /tmp/cube.ppm 256 256
 
 # Milestone 2: Embedded-texture GLB 2.0 import -> PPM (or pass <model.glb> <out.ppm>)
 xvfb-run -a ./build/dev/render/chrononmotion_render_glb /tmp/glb.ppm 256 256
+
+# Cinematic scene-look preview: orbit, shadow map, fog and GTAO -> frame sequence
+xvfb-run -a ./build/dev/render/chrononmotion_render_glb --scene-orbit <room.glb> /tmp/lookdev 8 854 480
+
+## First production room shot: thinking mannequin
+
+Scene contract for the first end-to-end documentary room shot:
+
+- **Subject and assets:** the user-provided `Room_Blank_with_Mannequin.glb`, with its textured room and orange mannequin.
+- **Composition:** the mannequin stays near frame center, shown at a human-scale distance from inside the room; camera FOV is 48 degrees.
+- **Motion and timing:** a 12-second, 30 fps, deterministic 96-degree orbit; the static `MannequinPlacement` node receives a very slow whole-body idle sway and subtle bob sampled from absolute timeline time.
+- **Layers:** one beauty render with imported materials, shadow map, GTAO, depth fog and ACES tone mapping.
+- **Must not appear:** camera views from outside the room, wall cut-throughs, titles or extra props.
+- **Preview check:** inspect the opening, middle and ending contact sheet for framing, wall intersections and subject visibility before delivering the video.
+
+The mannequin in the supplied GLB is a single static mesh with no skin or animation clips. Its procedural idle moves the full mesh gently; it does not articulate the head or arms.
+
+## Scene 03 composition contract: low-poly seated character at desk
+
+- **Subject and assets:** supplied blank room GLB and a scene-authored low-poly human character. Build the body from shaped profile meshes and tapered limbs: glossy featureless white head and hands, slim red short-sleeve shirt, dark trousers and dark shoes. Do not use the previous primitive mannequin or downloaded person models.
+- **Composition:** seated upright in the office chair; thighs angle forward, shins drop below the desktop, both elbows bend and both hands rest visibly on the desk. Match the supplied reference's centered, medium-wide view.
+- **Motion and timing:** after the composition is approved, make a slow 180-degree camera move. Keep the character pose fixed.
+- **Layers:** beauty render using the room's plywood texture on the desk, a procedural cloth weave, soft shadow mapping, ACES tone mapping and shallow depth of field.
+- **Must not appear:** facial features, extra characters, titles or unrelated props.
+- **Preview approval:** inspect the 854×480 still for a complete head and feet, slim connected silhouette, readable bent seated pose, hands in contact with the desk, visible chair and no wall intersection before producing the orbit or final 1920×1080 video.
 
 # Milestone 3: MotionScene + CameraRig -> MotionSceneBridge -> multi-frame GL render
 xvfb-run -a ./build/dev/render/chrononmotion_render_bridge /tmp/bridge.ppm 256 256

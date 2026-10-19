@@ -43,10 +43,16 @@
 #include "threepp/objects/Group.hpp"
 #include "threepp/objects/Mesh.hpp"
 #include "threepp/renderers/GLRenderer.hpp"
+#include "threepp/scenes/Scene.hpp"
 #include "threepp/renderers/RenderTarget.hpp"
+#include "threepp/postprocessing/EffectComposer.hpp"
+#include "threepp/postprocessing/RenderPass.hpp"
+#include "threepp/postprocessing/GTAOPass.hpp"
 #include "threepp/textures/DataTexture.hpp"
 #include "chrononmotion/motion/CameraRig.hpp"
 #include "threepp/motion/MotionBridge.hpp"
+#include "threepp/motion/CinematicSceneLook.hpp"
+#include "threepp/motion/ProceduralIdlePose.hpp"
 
 using namespace threepp;
 
@@ -382,6 +388,7 @@ int main(int argc, char** argv) {
     int orbitFrames = 0;
     std::filesystem::path orbitDirectory;
     const bool pushInMode = argc >= 2 && std::string(argv[1]) == "--pushin";
+    const bool sceneOrbitMode = argc >= 2 && std::string(argv[1]) == "--scene-orbit";
     const bool namedMoveMode = argc >= 2 && std::string(argv[1]) == "--move";
     const std::filesystem::path assetsDirectory = std::filesystem::path(__FILE__).parent_path() / "assets";
     bool cleanupGlb = false;
@@ -402,14 +409,14 @@ int main(int argc, char** argv) {
             return 2;
         }
         std::filesystem::create_directories(orbitDirectory);
-    } else if (argc >= 6 && (std::string(argv[1]) == "--orbit" || pushInMode)) {
+    } else if (argc >= 6 && (std::string(argv[1]) == "--orbit" || pushInMode || sceneOrbitMode)) {
         glbPath = argv[2];
         orbitDirectory = argv[3];
         orbitFrames = std::atoi(argv[4]);
         width = std::atoi(argv[5]);
         height = argc > 6 ? std::atoi(argv[6]) : width * 9 / 16;
         if (orbitFrames < 2 || width < 1 || height < 1) {
-            std::cerr << "usage: chrononmotion_render_glb --orbit|--pushin model.glb frame_dir frames width [height]\n";
+            std::cerr << "usage: chrononmotion_render_glb --orbit|--pushin|--scene-orbit model.glb frame_dir frames width [height]\n";
             return 2;
         }
         std::filesystem::create_directories(orbitDirectory);
@@ -456,11 +463,9 @@ int main(int argc, char** argv) {
     const float centeredTop = bounds.max().y - objectCenter.y;
     const float centeredBottom = bounds.min().y - objectCenter.y;
     const Vector3 pivot(objectCenter.x, 0.f, objectCenter.z);
-    auto scene = pushInMode ? Group::create() : modelScene;
-    if (pushInMode) {
-        modelScene->position.y -= objectCenter.y;
-        scene->add(modelScene);
-    }
+    auto scene = Scene::create();
+    if (pushInMode) modelScene->position.y -= objectCenter.y;
+    scene->add(modelScene);
     std::shared_ptr<MeshBasicMaterial> paperMaterial;
     std::shared_ptr<Mesh> paperMesh;
     std::array<std::shared_ptr<MeshBasicMaterial>, 5> animatedMastheadMaterials{};
@@ -533,9 +538,6 @@ int main(int argc, char** argv) {
         }
     }
 
-    auto target = RenderTarget::create(width, height, RenderTarget::Options{});
-    renderer.setRenderTarget(target.get());
-
     // Preserve GLTFLoader's imported materials and textures. This proof is meant
     // to exercise the actual imported PBR path rather than replacing it with a
     // simpler material for a brighter screenshot.
@@ -564,19 +566,33 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    scene->add(AmbientLight::create(Color(0xffffff), pushInMode ? 2.1f : 8.0f));
-    auto light = DirectionalLight::create(pushInMode ? Color(0xe0e0e0) : Color(0xffe4c4), pushInMode ? 5.0f : 24.0f);
-    light->position.set(objectCenter.x - span * 1.4f,
-                        pushInMode ? centeredTop + span * 1.7f : objectCenter.y + span * 1.8f,
-                        pushInMode ? objectCenter.z - span * 1.2f : objectCenter.z + span * 1.1f);
-    auto lightTarget = Group::create();
-    lightTarget->position.set(pivot.x, pushInMode ? centeredTop : objectCenter.y, pivot.z);
-    scene->add(lightTarget);
-    light->setTarget(*lightTarget);
-    scene->add(light);
+    if (sceneOrbitMode) {
+        motion::CinematicSceneLookOptions look;
+        look.ambientIntensity = 2.0f;
+        look.hemisphereIntensity = 1.55f;
+        look.keyIntensity = 58.f;
+        look.keyAngleRadians = 0.78f;
+        look.enableRimFill = true;
+        look.rimFillIntensity = 2.5f;
+        look.enableDepthFog = true;
+        look.fogDensityPerEnvironmentRadius = 0.018f;
+        motion::applyCinematicSceneLook(*scene, renderer,
+                Vector3(objectCenter.x, 1.0f, objectCenter.z), 1.9f, span, look);
+    } else {
+        scene->add(AmbientLight::create(Color(0xffffff), pushInMode ? 2.1f : 8.0f));
+        auto light = DirectionalLight::create(pushInMode ? Color(0xe0e0e0) : Color(0xffe4c4), pushInMode ? 5.0f : 24.0f);
+        light->position.set(objectCenter.x - span * 1.4f,
+                            pushInMode ? centeredTop + span * 1.7f : objectCenter.y + span * 1.8f,
+                            pushInMode ? objectCenter.z - span * 1.2f : objectCenter.z + span * 1.1f);
+        auto lightTarget = Group::create();
+        lightTarget->position.set(pivot.x, pushInMode ? centeredTop : objectCenter.y, pivot.z);
+        scene->add(lightTarget);
+        light->setTarget(*lightTarget);
+        scene->add(light);
+    }
 
-    // A localized overhead spotlight creates the actual pool of light on the
-    // tabletop; the side key remains low to preserve the dark room around it.
+    // The push-in proof keeps its specialized tabletop key. Production
+    // documentary scenes use the reusable scene-look lighting above.
     if (pushInMode) {
         auto overhead = SpotLight::create(Color(0xfff1dc), 320.f, span * 6.f, 0.95f, 0.72f, 2.f);
         overhead->position.set(pivot.x - span * 0.08f, centeredTop + span * 1.45f,
@@ -591,23 +607,60 @@ int main(int argc, char** argv) {
 
     const float aspect = float(width) / float(height);
     const float distance = cameraMove.empty()
-            ? std::max(span * 2.7f, 1.f)
+            ? std::max(span * (sceneOrbitMode ? 0.31f : 2.7f), 1.f)
             : std::max(size.x, size.y * aspect) /
                       (2.f * std::tan(50.f * 0.5f * 3.14159265359f / 180.f) * aspect * 0.48f);
-    auto camera = PerspectiveCamera::create(cameraMove.empty() ? 30.f : 50.f, aspect, 0.1f, 1000);
+    auto camera = PerspectiveCamera::create(sceneOrbitMode ? 48.f : (cameraMove.empty() ? 30.f : 50.f), aspect, 0.1f, 1000);
     std::vector<Vector3> cameraPath;
     std::vector<Vector3> targetPath;
     chrononmotion::motion::Easing cameraTiming = chrononmotion::motion::Easing::easeInOut();
     chrononmotion::motion::CameraPose pose;
-    pose.position = cameraMove.empty()
+    const Vector3 orbitTarget(objectCenter.x, sceneOrbitMode ? 1.0f : objectCenter.y, objectCenter.z);
+    std::unique_ptr<motion::ProceduralIdlePose> idlePose;
+    if (sceneOrbitMode) {
+        if (auto* placement = modelScene->getObjectByName("MannequinPlacement")) {
+            idlePose = std::make_unique<motion::ProceduralIdlePose>(*placement,
+                    motion::ProceduralIdlePose::Options{
+                            .cycleSeconds = 8.5f,
+                            .yawRadians = 0.018f,
+                            .leanRadians = 0.009f,
+                            .bobAmplitude = 0.0035f,
+                            .phaseRadians = 0.35f});
+            std::cout << "glb proof: procedural idle enabled on MannequinPlacement\n";
+        } else {
+            std::cerr << "glb proof: scene has no MannequinPlacement; idle motion skipped\n";
+        }
+    }
+    pose.position = sceneOrbitMode
+            ? chrononmotion::Vector3(orbitTarget.x + distance * 0.30f,
+                                     orbitTarget.y + distance * 0.20f,
+                                     orbitTarget.z + distance * 0.97f)
+            : cameraMove.empty()
             ? chrononmotion::Vector3(objectCenter.x + distance * 0.58f,
                                      objectCenter.y + distance * 0.48f,
                                      objectCenter.z + distance * 0.66f)
             : chrononmotion::Vector3(objectCenter.x, objectCenter.y + distance * 0.47f,
                                      objectCenter.z + distance * 0.883f);
-    chrononmotion::motion::CameraRig::lookAtPose(pose, chrononmotion::Vector3(objectCenter.x, objectCenter.y, objectCenter.z));
+    chrononmotion::motion::CameraRig::lookAtPose(pose, chrononmotion::Vector3(orbitTarget.x, orbitTarget.y, orbitTarget.z));
     renderer.toneMapping = ToneMapping::ACESFilmic;
-    renderer.toneMappingExposure = pushInMode ? 1.0f : 2.0f;
+    renderer.toneMappingExposure = (pushInMode || sceneOrbitMode) ? 1.0f : 2.0f;
+
+    std::unique_ptr<EffectComposer> composer;
+    std::unique_ptr<RenderTarget> target;
+    if (sceneOrbitMode) {
+        composer = std::make_unique<EffectComposer>(renderer);
+        composer->renderToScreen = false;
+        composer->setSize(static_cast<unsigned int>(width), static_cast<unsigned int>(height));
+        composer->addPass(std::make_shared<RenderPass>(*scene, *camera));
+        auto gtao = std::make_shared<GTAOPass>(*scene, *camera,
+                static_cast<unsigned int>(width), static_cast<unsigned int>(height),
+                GTAOParameters{.radius = 0.16f, .scale = 1.15f, .samples = 8},
+                PoissonDenoiseParameters{.radius = 6.f, .samples = 8});
+        composer->addPass(gtao);
+    } else {
+        target = RenderTarget::create(width, height, RenderTarget::Options{});
+        renderer.setRenderTarget(target.get());
+    }
     if (pushInMode) {
         cameraPath = {
                 Vector3(pivot.x + 8.f, 3.2f, pivot.z + 12.f),
@@ -628,7 +681,7 @@ int main(int argc, char** argv) {
     for (int frame = 0; frame < renderCount; ++frame) {
         if (orbitFrames > 0) {
             const float linearProgress = float(frame) / float(orbitFrames - 1);
-            const float frameTime = linearProgress * 6.f;
+            const float frameTime = linearProgress * (sceneOrbitMode ? 12.f : 6.f);
             chrononmotion::motion::CameraPose framePose;
             if (!cameraMove.empty()) {
                 const auto gentleOut = chrononmotion::motion::Easing::easeOut();
@@ -705,18 +758,28 @@ int main(int argc, char** argv) {
                         std::clamp((frameTime - 5.05f) / 0.48f, 0.f, 1.f);
                 pose = framePose;
             } else {
-                const float yaw = (float(frame) / float(orbitFrames - 1)) * 6.28318530718f;
+                const float yaw = sceneOrbitMode
+                        ? (-48.f + (float(frame) / float(orbitFrames - 1)) * 96.f) * 3.14159265359f / 180.f
+                        : (float(frame) / float(orbitFrames - 1)) * 6.28318530718f;
                 framePose = pose;
                 chrononmotion::motion::CameraRig::orbitAround(framePose,
-                        chrononmotion::Vector3(objectCenter.x, objectCenter.y, objectCenter.z), yaw, 0.f);
+                        chrononmotion::Vector3(orbitTarget.x, orbitTarget.y, orbitTarget.z), yaw, 0.f);
             }
             threepp::motion::applyCameraPose(framePose, *camera);
+            if (idlePose) idlePose->apply(frameTime);
         } else {
             threepp::motion::applyCameraPose(pose, *camera);
+            if (idlePose) idlePose->apply(0.f);
         }
         scene->updateMatrixWorld(true);
-        renderer.render(*scene, *camera);
-        const auto pixels = renderer.readRGBPixels();
+        std::vector<unsigned char> pixels;
+        if (composer) {
+            composer->render(1.f / 30.f);
+            pixels = composer->readRGBPixels();
+        } else {
+            renderer.render(*scene, *camera);
+            pixels = renderer.readRGBPixels();
+        }
         if (int(pixels.size()) != width * height * 3) {
             std::cerr << "glb proof: readback size " << pixels.size() << "\n";
             return 1;
@@ -744,7 +807,7 @@ int main(int argc, char** argv) {
               << " distinct_lit_colors=" << centerPatchColors.size() << "\n";
     const bool weakCoverage = pushInMode
             ? centerPatchColors.size() < 8
-            : (cameraMove.empty()
+            : (cameraMove.empty() && !sceneOrbitMode
                     ? centerPixel == corner || centerPatchColors.size() < 2
                     : centerPatchColors.size() < 8);
     if (weakCoverage) {
@@ -765,5 +828,6 @@ int main(int argc, char** argv) {
 
     renderer.setRenderTarget(nullptr);
     renderer.dispose();
+    if (target) renderer.setRenderTarget(nullptr);
     return 0;
 }
