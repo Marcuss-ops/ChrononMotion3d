@@ -65,12 +65,12 @@ namespace {
         shot.withTarget(ShotAnchor::world(Vector3(0.f, 0.f, 0.f)))
             .withFraming(Framing::CloseUp)
             .withFov(50.f)
-            .withFocus(CameraFocusMode::TargetDistance, 0.f, 12.f);
+            .withFocus(CameraFocusMode::TargetDistance, 0.f, 0.12f);
 
         CameraPose shotPose = shot.evaluatePose(&scene, 0.f);
         checkNear(shotPose.target, Vector3(0.f, 0.f, 0.f), 1e-4f, "CameraShot aims at its target anchor");
         checkNear(shotPose.fov, 50.f, 1e-4f, "CameraShot preserves authored FOV");
-        checkNear(shotPose.aperture, 12.f, 1e-4f, "CameraShot preserves authored aperture");
+        checkNear(shotPose.aperture, 0.12f, 1e-4f, "CameraShot preserves normalized defocus strength");
         checkNear(shotPose.position.distanceTo(shotPose.target), 5.0f, 1e-4f, "CloseUp framing sets distance to 5 units");
 
         // CameraFocusResolver
@@ -185,18 +185,18 @@ namespace {
         const ShotAnchor subjectA = ShotAnchor::world(Vector3(0.f, 0.f, 0.f));
         const ShotAnchor subjectB = ShotAnchor::world(Vector3(0.f, 0.f, -300.f));
 
-        cameraRackFocusDuo(rig, subjectA, subjectB, 0, 60, 16.f, kFps);
+        cameraRackFocusDuo(rig, subjectA, subjectB, 0, 60, 0.16f, kFps);
 
         CameraPose p0 = rig.sample(at(0));
         CameraPose p60 = rig.sample(at(60));
 
         // Frame 0: focusDistance ≈ dist(camera, A) = 50.f
         checkNear(p0.focusDistance, 50.f, 0.1f, "Frame 0: focusDistance matches distance to subject A");
-        checkNear(p0.aperture, 16.f, 0.01f, "Frame 0: aperture is set for shallow DOF");
+        checkNear(p0.aperture, 0.16f, 0.001f, "Frame 0: normalized defocus strength is set");
 
         // Frame 60: focusDistance ≈ dist(camera, B) = 350.f
         checkNear(p60.focusDistance, 350.f, 0.1f, "Frame 60: focusDistance matches distance to subject B");
-        checkNear(p60.aperture, 16.f, 0.01f, "Frame 60: aperture is maintained for background bokeh");
+        checkNear(p60.aperture, 0.16f, 0.001f, "Frame 60: normalized defocus strength is maintained");
 
         // Camera position remains unchanged
         checkNear(p0.position, p60.position, 1e-4f, "Rack focus preserves stationary camera position");
@@ -278,9 +278,9 @@ namespace {
         ShotAnchor sB = ShotAnchor::world(Vector3(10.f, 2.f, -15.f));
 
         CameraShot shotA;
-        shotA.withTarget(sA).withDistance(8.f).withFov(55.f).withFocus(CameraFocusMode::TargetDistance, 0.f, 8.f);
+        shotA.withTarget(sA).withDistance(8.f).withFov(55.f).withFocus(CameraFocusMode::TargetDistance, 0.f, 0.08f);
         CameraShot shotB;
-        shotB.withTarget(sB).withDistance(12.f).withFov(45.f).withFocus(CameraFocusMode::TargetDistance, 0.f, 14.f);
+        shotB.withTarget(sB).withDistance(12.f).withFov(45.f).withFocus(CameraFocusMode::TargetDistance, 0.f, 0.14f);
 
         CameraTransition trans;
         trans.fromShot = shotA;
@@ -320,7 +320,7 @@ namespace {
         ShotAnchor sA = ShotAnchor::world(Vector3(0.f, 0.f, 0.f));
         ShotAnchor sB = ShotAnchor::world(Vector3(10.f, 0.f, 5.f));
 
-        cameraDollyFocusHandoff(rig, sA, sB, 0, 90, Vector3(4.f, 1.f, -3.f), 10.f, kFps);
+        cameraDollyFocusHandoff(rig, sA, sB, 0, 90, Vector3(4.f, 1.f, -3.f), 0.10f, kFps);
 
         // Sequential sampling
         for (int f = 0; f <= 90; ++f) {
@@ -330,7 +330,7 @@ namespace {
 
         // Fresh rig sampled directly at frame 90
         CameraRig freshRig(1, 60.f, 16.f / 9.f);
-        cameraDollyFocusHandoff(freshRig, sA, sB, 0, 90, Vector3(4.f, 1.f, -3.f), 10.f, kFps);
+        cameraDollyFocusHandoff(freshRig, sA, sB, 0, 90, Vector3(4.f, 1.f, -3.f), 0.10f, kFps);
         CameraPose directPose90 = freshRig.sample(at(90));
 
         checkNear(seqPose90.position, directPose90.position, 1e-6f, "Direct sampling at frame 90 matches sequential sampling");
@@ -381,15 +381,15 @@ namespace {
         // 8. camera_foreground_pass_reveal
         {
             CameraRig rig(8);
-            cameraForegroundPassReveal(rig, sA, sB, 0, 40, Vector3(5.f, 0.f, -6.f), 14.f, kFps);
+            cameraForegroundPassReveal(rig, sA, sB, 0, 40, Vector3(5.f, 0.f, -6.f), 0.14f, kFps);
             check(rig.sample(at(0)).position.z > sA.resolve().z, "ForegroundPass starts in front of A");
-            checkNear(rig.sample(at(0)).aperture, 14.f, 1e-3f, "ForegroundPass maintains shallow DOF aperture");
+            checkNear(rig.sample(at(0)).aperture, 0.14f, 1e-3f, "ForegroundPass maintains normalized defocus strength");
         }
 
         // 9. camera_depth_peel
         {
             CameraRig rig(9);
-            cameraDepthPeel(rig, {sA, sB, sC}, 0, 60, 5.f, 12.f, kFps);
+            cameraDepthPeel(rig, {sA, sB, sC}, 0, 60, 5.f, 0.12f, kFps);
             check(rig.sample(at(60)).position.z < rig.sample(at(0)).position.z, "DepthPeel moves forward through Z layers");
         }
 
@@ -430,7 +430,7 @@ namespace {
         // 14. camera_parallax_gallery
         {
             CameraRig rig(14);
-            cameraParallaxGallery(rig, {sA, sB, sC}, 0, 60, 8.f, 10.f, kFps);
+            cameraParallaxGallery(rig, {sA, sB, sC}, 0, 60, 8.f, 0.10f, kFps);
             check(rig.sample(at(60)).position.x > rig.sample(at(0)).position.x, "ParallaxGallery travels laterally");
         }
 
@@ -465,10 +465,10 @@ namespace {
             CameraRig linearRig(29);
             CameraRig easedRig(29);
             cameraSlalomCardWeave(
-                linearRig, {sA, sB}, 0, 60, 4.5f, 18.f, kFps,
+                linearRig, {sA, sB}, 0, 60, 4.5f, 0.18f, kFps,
                 Easing::linear());
             cameraSlalomCardWeave(
-                easedRig, {sA, sB}, 0, 60, 4.5f, 18.f, kFps,
+                easedRig, {sA, sB}, 0, 60, 4.5f, 0.18f, kFps,
                 Easing::easeInOut());
             check(linearRig.sample(at(15)).position.distanceTo(
                       easedRig.sample(at(15)).position) > 0.1f,
@@ -501,10 +501,10 @@ namespace {
         const ShotAnchor overviewAnchor = ShotAnchor::world(Vector3(15.f, 5.f, -20.f));
 
         // 1. Focus push on A
-        cameraFocusPush(rig, anchorA, 0, 60, 3.f, 4.f, 14.f, kFps);
+        cameraFocusPush(rig, anchorA, 0, 60, 3.f, 0.04f, 0.14f, kFps);
 
         // 2. Rack focus to B
-        cameraRackFocusDuo(rig, anchorA, anchorB, 60, 60, 14.f, kFps);
+        cameraRackFocusDuo(rig, anchorA, anchorB, 60, 60, 0.14f, kFps);
 
         // 3. Lateral camera travel towards C
         cameraLateralSubjectToSubject(rig, anchorA, anchorC, 120, 60, kFps);
