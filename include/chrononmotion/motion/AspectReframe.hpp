@@ -215,8 +215,8 @@ intrinsicsFor(pose.fov, format));
                 out.focusDistanceTrack().add(time, pose.focusDistance * (sol.reframedDistance / d),
                                              Easing::linear());
             }
-            if (pose.aperture > 0.f) {
-                out.apertureTrack().add(time, pose.aperture, Easing::linear());
+            if (pose.legacyDefocusStrength > 0.f) {
+                out.legacyDefocusStrengthTrack().add(time, pose.legacyDefocusStrength, Easing::linear());
             }
             if (pose.fStop > 0.f) {
                 out.fStopTrack().add(time, pose.fStop, Easing::linear());

@@ -42,11 +42,11 @@ namespace chrononmotion::motion {
         /// side carries the numbers and never interprets them, so a renderer
         /// applies what is present and leaves the rest to its own optics. The
         /// units are the RenderPlan Chronon3D consumer contract:
-        /// `aperture` is the legacy defocus strength (blur in pixels grows as
-        /// defocus_world_units · aperture, clamped by `maxBlur`) and must stay
+        /// `legacyDefocusStrength` is normalized legacy blur gain (blur in
+        /// pixels grows as defocus_world_units · strength, clamped by `maxBlur`) and must stay
         /// in [0, 1] for `lowerToRenderPlan`; physical lenses also author
         /// `fStop` (f/N), which the physical model consumes instead.
-        float aperture{0.f};      ///< Defocus strength per world unit of miss, in [0, 1]; 0 = not authored.
+        float legacyDefocusStrength{0.f}; ///< Normalized legacy blur gain in [0, 1]; 0 = not authored.
         float focusDistance{0.f}; ///< Distance to the focal plane along the view axis, world units.
         float maxBlur{0.f};        ///< Blur clamp in pixels of the target canvas; 0 means not authored.
         float fStop{0.f};         ///< Physical aperture as f/N (0.7..32); 0 means not authored.
@@ -95,7 +95,9 @@ namespace chrononmotion::motion {
         CameraRig& setAspect(float widthOverHeight);
         CameraRig& setFocalLength(float millimetres);
         CameraRig& setRoll(float radians);
-        CameraRig& setAperture(float millimetres);
+        CameraRig& setLegacyDefocusStrength(float strength);
+        [[deprecated("use setLegacyDefocusStrength; this is not a physical aperture")]]
+        CameraRig& setAperture(float strength) { return setLegacyDefocusStrength(strength); }
         CameraRig& setFocusDistance(float distance);
         CameraRig& setMaxBlur(float pixels);
         CameraRig& setFStop(float fStop);
@@ -109,7 +111,9 @@ namespace chrononmotion::motion {
         [[nodiscard]] Vector3 target() const { return target_; }
         [[nodiscard]] float fov() const { return fov_; }
         [[nodiscard]] float roll() const { return roll_; }
-        [[nodiscard]] float aperture() const { return aperture_; }
+        [[nodiscard]] float legacyDefocusStrength() const { return legacyDefocusStrength_; }
+        [[deprecated("use legacyDefocusStrength; this is not a physical aperture")]]
+        [[nodiscard]] float aperture() const { return legacyDefocusStrength_; }
         [[nodiscard]] float focusDistance() const { return focusDistance_; }
         [[nodiscard]] float maxBlur() const { return maxBlur_; }
         [[nodiscard]] float fStop() const { return fStop_; }
@@ -131,8 +135,12 @@ namespace chrononmotion::motion {
         [[nodiscard]] Track<float>& focalLengthTrack() { return focalTrack_; }
         [[nodiscard]] const Track<float>& focalLengthTrack() const { return focalTrack_; }
         [[nodiscard]] Track<float>& rollTrack() { return rollTrack_; }
-        [[nodiscard]] Track<float>& apertureTrack() { return apertureTrack_; }
-        [[nodiscard]] const Track<float>& apertureTrack() const { return apertureTrack_; }
+        [[nodiscard]] Track<float>& legacyDefocusStrengthTrack() { return legacyDefocusStrengthTrack_; }
+        [[nodiscard]] const Track<float>& legacyDefocusStrengthTrack() const { return legacyDefocusStrengthTrack_; }
+        [[deprecated("use legacyDefocusStrengthTrack; this is not a physical aperture")]]
+        [[nodiscard]] Track<float>& apertureTrack() { return legacyDefocusStrengthTrack_; }
+        [[deprecated("use legacyDefocusStrengthTrack; this is not a physical aperture")]]
+        [[nodiscard]] const Track<float>& apertureTrack() const { return legacyDefocusStrengthTrack_; }
         [[nodiscard]] Track<float>& focusDistanceTrack() { return focusDistanceTrack_; }
         [[nodiscard]] const Track<float>& focusDistanceTrack() const { return focusDistanceTrack_; }
         [[nodiscard]] Track<float>& maxBlurTrack() { return maxBlurTrack_; }
@@ -195,13 +203,13 @@ namespace chrononmotion::motion {
         Track<float> fovTrack_;
         Track<float> focalTrack_;
         Track<float> rollTrack_;
-        float aperture_{0.f};
+        float legacyDefocusStrength_{0.f};
         float focusDistance_{0.f};
         float maxBlur_{0.f};
         float fStop_{0.f};
         int irisBlades_{0};
         float highlightGain_{0.f};
-        Track<float> apertureTrack_;
+        Track<float> legacyDefocusStrengthTrack_;
         Track<float> focusDistanceTrack_;
         Track<float> maxBlurTrack_;
         Track<float> fStopTrack_;
@@ -210,9 +218,9 @@ namespace chrononmotion::motion {
         float farPlane_{2000.f};
     };
 
-    /// One aperture unit for every consumer, in one place. The rig and the
-    /// RenderPlan author `aperture` as the legacy defocus strength (blur in
-    /// canvas pixels grows as focus_miss_world_units · aperture, in [0, 1],
+    /// One legacy defocus strength unit for every consumer, in one place. The
+    /// rig authors normalized blur gain (blur in canvas pixels grows as
+    /// focus_miss_world_units · strength, in [0, 1],
     /// clamped by `maxBlur` canvas pixels) and the GL bokeh preview consumes
     /// UV fractions of the canvas height per world unit of miss. These two
     /// helpers are the only sanctioned px→UV bridge; a preview that sets the
@@ -226,7 +234,7 @@ namespace chrononmotion::motion {
     /// authored lens numbers, no content tooling involved.
     [[nodiscard]] inline float bokehPreviewAperture(const CameraPose& pose,
                                                     float canvasHeight) {
-        return pose.aperture / canvasHeight;
+        return pose.legacyDefocusStrength / canvasHeight;
     }
 
     /// `maxBlur` is authored in canvas pixels; the preview clamp is a UV

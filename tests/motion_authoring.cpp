@@ -1324,7 +1324,7 @@ void testTypedChronon3dLowering() {
           loweredPositionTrack.keyframes.back().value[2] == 12.f,
           "3D layer anchor and its baked transform use the same mirrored RenderPlan depth");
     CameraRig dofRig(24, 50.f, 16.f / 9.f, 0.1f, 2000.f);
-    dofRig.setPosition({1.f, 2.f, -8.f}).setAperture(0.035f).setFocusDistance(425.f);
+    dofRig.setPosition({1.f, 2.f, -8.f}).setLegacyDefocusStrength(0.035f).setFocusDistance(425.f);
     auto dofCameraOptions = cameraOptions;
     dofCameraOptions.cameraRig = &dofRig;
     const auto loweredDofCamera = lowerToRenderPlan(cameraScene, dofCameraOptions);
@@ -1420,11 +1420,8 @@ void testTypedChronon3dLowering() {
     check(documentaryAdapterPlan && (documentaryAdapterPlan << renderPlanToJson(styledImagePlan)),
           "documentary image look plan can be written for Chronon3D's native decoder");
     CameraRig invalidDofRig(25, 50.f, 16.f / 9.f, 0.1f, 2000.f);
-    invalidDofRig.setAperture(2.8f).setFocusDistance(425.f);
-    auto invalidDofCameraOptions = cameraOptions;
-    invalidDofCameraOptions.cameraRig = &invalidDofRig;
-    check(throwsInvalid([&] { (void)lowerToRenderPlan(cameraScene, invalidDofCameraOptions); }),
-          "CameraRig camera lowering rejects aperture values outside Chronon3D RenderPlan bounds");
+    check(throwsInvalid([&] { invalidDofRig.setLegacyDefocusStrength(2.8f); }),
+          "legacy defocus strength rejects physical f-stop values");
     check(cameraPlan.canvas.duration.integral() == 4,
           "camera animation extends the composition duration when its keys outlive scene content");
 
@@ -1553,7 +1550,7 @@ void testTypedChronon3dLowering() {
           "camera pose lowering maps Motion -Z depth to RenderPlan +Z-forward coordinates");
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 2.f, 1.f); }),
           "camera lowering rejects an invalid clipping interval");
-    cameraPose.aperture = 0.04f;
+    cameraPose.legacyDefocusStrength = 0.04f;
     cameraPose.focusDistance = 480.f;
     const auto dofCamera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
     check(dofCamera.dof_enabled && dofCamera.dof_aperture == 0.04f &&
@@ -1583,10 +1580,10 @@ void testTypedChronon3dLowering() {
           physicalDofCamera.dof_enabled,
           "camera lowering preserves physical f-stop and enables the RenderPlan physical DoF contract");
     cameraPose.fStop = 0.f;
-    cameraPose.aperture = 2.8f;
+    cameraPose.legacyDefocusStrength = 2.8f;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
           "camera lowering rejects depth-of-field values outside the RenderPlan schema bounds");
-    cameraPose.aperture = 0.04f;
+    cameraPose.legacyDefocusStrength = 0.04f;
     cameraPose.focusDistance = 480.f;
     cameraPose.focalLength = 0.f;
     cameraPose.fStop = 0.f;
@@ -1594,8 +1591,8 @@ void testTypedChronon3dLowering() {
     auto cameraOnlyScene = MotionScene("camera DoF parity", 30.f);
     cameraOnlyScene.evaluate(0);
     CameraRig animatedDofRig(26, 50.f, 16.f / 9.f, 0.1f, 2000.f);
-    animatedDofRig.setPosition({0.f, 0.f, -8.f}).setAperture(0.04f).setFocusDistance(480.f);
-    animatedDofRig.apertureTrack().add(0.f, 0.04f).add(1.f, 0.06f);
+    animatedDofRig.setPosition({0.f, 0.f, -8.f}).setLegacyDefocusStrength(0.04f).setFocusDistance(480.f);
+    animatedDofRig.legacyDefocusStrengthTrack().add(0.f, 0.04f).add(1.f, 0.06f);
     animatedDofRig.focusDistanceTrack().add(0.f, 480.f).add(1.f, 720.f);
     animatedDofRig.setMaxBlur(12.f).maxBlurTrack().add(0.f, 12.f).add(1.f, 20.f);
     RenderPlanLoweringOptions animatedDofOptions;
@@ -1633,7 +1630,7 @@ void testTypedChronon3dLowering() {
           "RenderPlan JSON preserves focus, aperture, and maximum-blur camera track names");
     CameraRig dofHandoffRig(27, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     dofHandoffRig.setPosition({0.f, 0.f, -8.f}).setFocusDistance(480.f);
-    dofHandoffRig.apertureTrack().add(0.f, 0.f).add(1.f, 0.06f);
+    dofHandoffRig.legacyDefocusStrengthTrack().add(0.f, 0.f).add(1.f, 0.06f);
     auto dofHandoffOptions = animatedDofOptions;
     dofHandoffOptions.cameraRig = &dofHandoffRig;
     const auto dofHandoffPlan = lowerToRenderPlan(cameraOnlyScene, dofHandoffOptions);
@@ -1646,7 +1643,7 @@ void testTypedChronon3dLowering() {
     // loses them would render plans without the authored lens silently.
     CameraRig staticLensRig(28, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     staticLensRig.setPosition({0.f, 0.f, -8.f});
-    staticLensRig.setAperture(0.05f).setFocusDistance(480.f).setMaxBlur(30.f);
+    staticLensRig.setLegacyDefocusStrength(0.05f).setFocusDistance(480.f).setMaxBlur(30.f);
     staticLensRig.setFStop(2.8f).setIrisBlades(6).setHighlightGain(1.5f);
     auto staticLensOptions = animatedDofOptions;
     staticLensOptions.cameraRig = &staticLensRig;
