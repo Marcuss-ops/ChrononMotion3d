@@ -278,6 +278,10 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_link_libraries(chrononmotion_camera_v1 PRIVATE chrononmotion)
     add_test(NAME chrononmotion_camera_v1 COMMAND chrononmotion_camera_v1)
 
+    add_executable(chrononmotion_camera_focus_sequence tests/motion_camera_focus_sequence.cpp)
+    target_link_libraries(chrononmotion_camera_focus_sequence PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_camera_focus_sequence COMMAND chrononmotion_camera_focus_sequence)
+
     # Eye-trace continuity, screen-space camera math, analytic pose derivatives
     # and multi-aspect auto-reframing.
     add_executable(chrononmotion_eye_trace tests/motion_eye_trace.cpp)
