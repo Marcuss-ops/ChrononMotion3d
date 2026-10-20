@@ -45,6 +45,12 @@ namespace chrononmotion::motion {
 
     struct RigConstraintWeight { RigNodeId node{0}; unsigned constraint{0}; float amount{1.f}; };
 
+    /// Which solver a chain is handed to. `Fabrik` is the general n-joint
+    /// walker; `TwoBone` is the closed-form three-point solve that can hold a
+    /// knee or elbow at a minimum fold angle. Defaults to Fabrik so every
+    /// existing schedule keeps its exact behaviour.
+    enum class RigIKSolverKind { Fabrik, TwoBone };
+
     struct RigIKChain {
         // Root first, end effector last. Each joint must parent the next one.
         std::vector<RigNodeId> joints{};
@@ -53,6 +59,12 @@ namespace chrononmotion::motion {
         float amount{1.f}; // FK/IK blend, endpoints exact.
         unsigned iterations{256};
         float tolerance{1e-5f};
+        RigIKSolverKind solver{RigIKSolverKind::Fabrik};
+        // TwoBone only: bend-plane rotation and the interior mid-joint limits
+        // (radians, pi = straight). Ignored by the Fabrik path.
+        float twist{0.f};
+        float minMidAngle{0.f};
+        float maxMidAngle{3.14159265358979323846f};
     };
 
     struct RigBakedNode {

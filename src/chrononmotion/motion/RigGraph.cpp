@@ -2,6 +2,7 @@
 #include "chrononmotion/motion/MotionScene.hpp"
 #include "chrononmotion/motion/OfflineBaking.hpp"
 #include "chrononmotion/motion/RigOperators.hpp"
+#include "chrononmotion/motion/TwoBoneIK.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -298,14 +299,37 @@ namespace chrononmotion::motion {
             joints.push_back(i);
             positions.push_back(evaluated.localToWorld(id, {}));
         }
-        const auto solved = solveIKChain3D(positions, chain.target, chain.pole,
-                                           chain.iterations, chain.tolerance);
+        std::vector<Vector3> solvedJoints;
+        if (chain.solver == RigIKSolverKind::TwoBone) {
+            // The closed-form solve needs exactly three points and refuses the
+            // rest of the chain rather than silently solving a different limb.
+            if (chain.joints.size() != 3)
+                throw std::invalid_argument("RigGraph: a TwoBone chain must have exactly three joints");
+            TwoBoneIKSpec spec;
+            spec.target = chain.target;
+            // `RigIKChain::pole` is a world-space point (the FABRIK contract);
+            // the analytic solve wants a bend direction, so it is taken from the
+            // chain root toward that point.
+            spec.pole = chain.pole - positions[0];
+            spec.twist = chain.twist;
+            spec.minMidAngle = chain.minMidAngle;
+            spec.maxMidAngle = chain.maxMidAngle;
+            // `chain.amount` is the single blend authority, so the solve itself
+            // is always full-strength.
+            spec.weight = 1.f;
+            const TwoBoneIKResult solved = solveTwoBoneIK(positions[0], positions[1], positions[2], spec);
+            solvedJoints = {solved.start, solved.mid, solved.end};
+        } else {
+            solvedJoints = solveIKChain3D(positions, chain.target, chain.pole,
+                                          chain.iterations, chain.tolerance)
+                                   .joints;
+        }
         // Align each bone's world orientation with its solved segment. This
         // rotates child offsets rather than translating them, retaining FK lengths.
         for (std::size_t joint = 0; joint + 1 < joints.size(); ++joint) {
             const auto i = joints[joint];
             Vector3 from = positions[joint + 1] - positions[joint];
-            Vector3 to = solved.joints[joint + 1] - solved.joints[joint];
+            Vector3 to = solvedJoints[joint + 1] - solvedJoints[joint];
             if (from.lengthSq() <= 1e-12f || to.lengthSq() <= 1e-12f)
                 throw std::invalid_argument("RigGraph: degenerate IK segment");
             Quaternion rotation;
@@ -317,11 +341,11 @@ namespace chrononmotion::motion {
             if (std::abs(scale.x - scale.y) > 1e-5f || std::abs(scale.x - scale.z) > 1e-5f)
                 throw std::invalid_argument("RigGraph: IK requires uniform world scale");
             orientation.premultiply(rotation).normalize();
-            evaluated.world[i].compose(solved.joints[joint], orientation, scale);
+            evaluated.world[i].compose(solvedJoints[joint], orientation, scale);
         }
         {
             const auto i = joints.back();
-            evaluated.world[i].setPosition(solved.joints.back());
+            evaluated.world[i].setPosition(solvedJoints.back());
         }
         // Move descendants outside the solved chain with their solved parents.
         for (const auto i : order_) {

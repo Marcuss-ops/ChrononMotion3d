@@ -86,6 +86,14 @@ is grandfathered; new binaries need a contract note like
 
 ## V2 additions (landed after the V1 closeout)
 
+- **Two-bone IK landed as an opt-in chain solver.** `motion/TwoBoneIK.hpp`
+  (`solveTwoBoneIK`) is a closed-form deterministic solve for a three-point
+  chain with pole, twist, mid-angle limits and length-preserving weight
+  blending. `RigIKChain::solver` selects it; `Fabrik` stays the default, so
+  every existing schedule keeps its exact behaviour. Pinned by
+  `chrononmotion_two_bone` (42 checks). It is not a foot-lock, contact or
+  collision system, and it does not extend the RenderPlan contract.
+
 - **Project files: closed.** `motion/SceneImport.hpp` (`sceneFromJson`) is the
   strict reader for the `sceneToJson` export: export → import → re-export is
   byte-identical and both scenes evaluate identically. Unknown
