@@ -1131,14 +1131,14 @@ std::vector<ShowcaseCase> makeCases() {
 
     add(45, "focus_pull", "camera focus-distance channel pulls between two subject depths", [](Checks& c, Snapshot& s) {
         CameraRig rig(1);
-        rig.setAperture(2.8f).setFocusDistance(12.f);
+        rig.setFStop(2.8f).setFocusDistance(12.f);
         rig.focusDistanceTrack().add(0.f, 12.f, Easing::easeInOut()).add(2.f, 4.f);
         c.near(rig.sample(0.f).focusDistance, 12.f, 1e-5f, "focus starts at the far subject");
         c.near(rig.sample(2.f).focusDistance, 4.f, 1e-5f, "focus ends at the near subject");
         c.that(rig.sample(1.f).focusDistance < 12.f && rig.sample(1.f).focusDistance > 4.f,
                "focus plane moves continuously between subjects");
         s.number(rig.sample(0.f).focusDistance); s.number(rig.sample(1.f).focusDistance);
-        s.number(rig.sample(2.f).focusDistance); s.number(rig.sample(1.f).aperture);
+        s.number(rig.sample(2.f).focusDistance); s.number(rig.sample(1.f).fStop);
     });
 
     add(46, "depth_cascade", "thirty cards arrive from depth with staggered offsets", [](Checks& c, Snapshot& s) {
