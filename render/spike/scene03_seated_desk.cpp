@@ -255,28 +255,91 @@ void styleCharacter(const std::shared_ptr<Object3D>& root) {
     });
 }
 
+struct ChainedStep {
+    AnimationAction* action = nullptr;
+    float start = 0.f;
+    float duration = 0.f;
+};
+
 struct CharacterAnimation {
     std::unique_ptr<AnimationMixer> mixer;
     AnimationAction* idle = nullptr;
     AnimationAction* talk = nullptr;
     float idleDuration = 0.f;
     float talkDuration = 0.f;
+    // A comma separated animation argument chains clips with a crossfade,
+    // which is how authored gestures get into the scene instead of only the
+    // looping seated idles.
+    std::vector<ChainedStep> chain;
+    float chainDuration = 0.f;
+    float chainBlend = 0.25f;
+    bool chained = false;
 };
+
+std::vector<std::string> splitClips(const std::string& text) {
+    std::vector<std::string> names;
+    std::stringstream stream(text);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        const auto first = item.find_first_not_of(' ');
+        const auto last = item.find_last_not_of(' ');
+        if (first == std::string::npos) continue;
+        names.push_back(item.substr(first, last - first + 1));
+    }
+    return names;
+}
 
 CharacterAnimation addSeatedCharacter(Scene& scene, const fs::path& assetPath,
                                      const std::string& clipName, float phase) {
     GLTFLoader loader;
     auto character = loader.load(assetPath);
     if (!character || !character->scene) throw std::runtime_error("failed to load character: " + assetPath.string());
-    auto sitting = AnimationClip::findByName(character->animations, clipName);
+    const auto chainNames = splitClips(clipName);
+    const bool chained = chainNames.size() > 1;
+    const std::string firstClip = chainNames.empty() ? clipName : chainNames.front();
+    auto sitting = AnimationClip::findByName(character->animations, firstClip);
+    if (!sitting) throw std::runtime_error("character GLB is missing animation " + firstClip);
+    const bool needsTalk = !chained;
     auto talking = AnimationClip::findByName(character->animations, "Sitting_Talking_Loop");
-    if (!sitting) throw std::runtime_error("character GLB is missing animation " + clipName);
-    if (!talking) throw std::runtime_error("character GLB is missing animation Sitting_Talking_Loop");
+    if (needsTalk && !talking)
+        throw std::runtime_error("character GLB is missing animation Sitting_Talking_Loop");
     auto mixer = std::make_unique<AnimationMixer>(*character->scene);
     auto idleAction = mixer->clipAction(sitting);
-    auto talkAction = mixer->clipAction(talking);
-    idleAction->play().setEffectiveWeight(1.f).setLocalTime(sitting->getDuration() * std::clamp(phase, 0.f, 1.f));
-    talkAction->play().setEffectiveWeight(0.f).setLocalTime(0.f);
+    AnimationAction* talkAction = nullptr;
+    if (needsTalk) {
+        talkAction = mixer->clipAction(talking);
+        idleAction->play().setEffectiveWeight(1.f).setLocalTime(sitting->getDuration() * std::clamp(phase, 0.f, 1.f));
+        talkAction->play().setEffectiveWeight(0.f).setLocalTime(0.f);
+    }
+    CharacterAnimation animation;
+    animation.chained = chained;
+    if (chained) {
+        float shortest = 1e9f;
+        std::vector<std::shared_ptr<AnimationClip>> clips;
+        for (const auto& name : chainNames) {
+            auto clip = AnimationClip::findByName(character->animations, name);
+            if (!clip) throw std::runtime_error("character GLB is missing animation " + name);
+            clips.push_back(clip);
+            shortest = std::min(shortest, std::max(clip->getDuration(), 1e-3f));
+        }
+        animation.chainBlend = std::min(0.25f, 0.5f * shortest);
+        float cursor = 0.f;
+        for (std::size_t i = 0; i < clips.size(); ++i) {
+            ChainedStep step;
+            step.action = mixer->clipAction(clips[i]);
+            step.action->play().setEffectiveWeight(i == 0 ? 1.f : 0.f).setLocalTime(0.f);
+            step.start = cursor;
+            step.duration = std::max(clips[i]->getDuration(), 0.f);
+            animation.chain.push_back(step);
+            cursor += step.duration - (i + 1 < clips.size() ? animation.chainBlend : 0.f);
+        }
+        animation.chainDuration = cursor;
+        std::cout << "character chain=";
+        for (std::size_t i = 0; i < chainNames.size(); ++i)
+            std::cout << (i ? " -> " : "") << chainNames[i];
+        std::cout << " duration=" << animation.chainDuration
+                  << "s blend=" << animation.chainBlend << "s\n";
+    }
     mixer->update(0.f);
     character->scene->updateMatrixWorld(true);
     styleCharacter(character->scene);
@@ -305,8 +368,12 @@ CharacterAnimation addSeatedCharacter(Scene& scene, const fs::path& assetPath,
         if (auto* mesh = dynamic_cast<Mesh*>(&node)) mesh->castShadow = mesh->receiveShadow = true;
     });
     std::cout << "character animations=" << character->animations.size() << "\n";
-    return {std::move(mixer), idleAction, talkAction,
-            sitting->getDuration(), talking->getDuration()};
+    animation.mixer = std::move(mixer);
+    animation.idle = idleAction;
+    animation.talk = talkAction;
+    animation.idleDuration = sitting->getDuration();
+    animation.talkDuration = talking ? talking->getDuration() : 0.f;
+    return animation;
 }
 
 int renderScene(const fs::path& roomPath, const fs::path& output, const fs::path& characterPath,
@@ -478,7 +545,42 @@ int renderScene(const fs::path& roomPath, const fs::path& output, const fs::path
             threepp::motion::applyCameraPose(cameraRig.sample(time), *camera, nullptr, 0.1f, 100.f);
             const auto pose = cameraRig.sample(time);
             bokeh->focus = pose.focusDistance;
-            if (variant == 3) {
+            if (characterAnimation.chained) {
+                // Play the authored clip chain, wrapping like a loop so short
+                // gesture sequences can fill a longer shot.
+                float cursor = characterAnimation.chainDuration > 0.f
+                        ? std::fmod(time, characterAnimation.chainDuration)
+                        : 0.f;
+                float total = 0.f;
+                std::vector<float> weights(characterAnimation.chain.size(), 0.f);
+                for (std::size_t i = 0; i < characterAnimation.chain.size(); ++i) {
+                    const auto& step = characterAnimation.chain[i];
+                    const float local = cursor - step.start;
+                    if (local < 0.f || local > step.duration) {
+                        step.action->setEffectiveWeight(0.f);
+                        continue;
+                    }
+                    const float blend = characterAnimation.chainBlend;
+                    float weight = 1.f;
+                    if (blend > 1e-4f) {
+                        if (i > 0) weight = std::min(weight, local / blend);
+                        weight = std::min(weight, (step.duration - local) / blend);
+                    }
+                    weight = std::clamp(weight, 0.f, 1.f);
+                    step.action->setEffectiveWeight(weight)
+                            .setLocalTime(std::clamp(local, 0.f, step.duration));
+                    weights[i] = weight;
+                    total += weight;
+                }
+                if (total > 1e-4f) {
+                    for (std::size_t i = 0; i < characterAnimation.chain.size(); ++i) {
+                        if (weights[i] > 0.f)
+                            characterAnimation.chain[i].action->setEffectiveWeight(weights[i] / total);
+                    }
+                }
+                characterAnimation.mixer->update(0.f);
+                if (variant == 3) revealWrittenTitle(writtenTitle, (time - 5.4f) / 3.6f);
+            } else if (variant == 3) {
                 // Deterministic pose crossfade: hold the seated idle in the
                 // opening, then let the supplied talking gesture animate the
                 // head/arms as the camera approaches the page.
