@@ -44,6 +44,7 @@
 #include "chrononmotion/motion/Procedural.hpp"
 #include "chrononmotion/motion/Constraints.hpp"
 #include "chrononmotion/motion/RigGraph.hpp"
+#include "chrononmotion/motion/TwoBoneIK.hpp"
 #include "chrononmotion/motion/RigDrivers.hpp"
 #include "chrononmotion/motion/RigDeformers.hpp"
 #include "chrononmotion/motion/RigBaking.hpp"

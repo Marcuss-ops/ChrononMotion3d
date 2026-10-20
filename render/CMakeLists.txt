@@ -312,6 +312,8 @@ target_include_directories(chrononmotion_render_glb PRIVATE "${CMAKE_CURRENT_SOU
 target_link_libraries(chrononmotion_render_glb PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_scene_seated_desk spike/scene03_seated_desk.cpp)
 target_link_libraries(chrononmotion_render_scene_seated_desk PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_two_bone_demo spike/two_bone_demo.cpp)
+target_link_libraries(chrononmotion_render_two_bone_demo PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_glb_certification spike/glb_certification.cpp)
 target_include_directories(chrononmotion_render_glb_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
