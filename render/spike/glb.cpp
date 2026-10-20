@@ -12,6 +12,15 @@
 //        chrononmotion_render_glb <model.glb> <out.ppm> [w h]
 //   3. Camera-move preview frames:
 //        chrononmotion_render_glb --move <preset> <model.glb> <frame_dir> <frames> <width> [height]
+//
+// Optional flags, usable with any mode and ignored when absent:
+//   --fit=<fraction>        frame the subject at that fraction of the view
+//   --camera-pos=x,y,z      lock the camera position (no auto framing)
+//   --camera-target=x,y,z   lock the look-at point
+//   --camera-fov=<degrees>  lock the lens; required by the locked camera
+//   --exposure=<value>      override tone-mapping exposure
+// Locked-camera flags keep a per-frame render sequence registered, which the
+// auto framing cannot do when each frame's bounds change.
 
 #include <algorithm>
 #include <array>
@@ -30,6 +39,8 @@
 #include "stb_image_write.h"
 #include "stb_image.h"
 
+#include "threepp/animation/AnimationClip.hpp"
+#include "threepp/animation/AnimationMixer.hpp"
 #include "threepp/cameras/PerspectiveCamera.hpp"
 #include "threepp/canvas/Canvas.hpp"
 #include "threepp/geometries/PlaneGeometry.hpp"
@@ -374,6 +385,99 @@ int renderWordCameraClip(const std::filesystem::path& imagePath,
 } // namespace
 
 int main(int argc, char** argv) {
+    // Opt-in framing control: --fit=<fraction> makes the subject occupy that
+    // fraction of the frame. Without it the legacy proof framing is unchanged.
+    std::vector<char*> filteredArgs{argv[0]};
+    float fitFraction = 0.f;
+    bool hasLockedCamera = false;
+    float lockedCamera[6] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+    float lockedFov = 0.f;
+    float exposureOverride = 0.f;
+    std::uint32_t backgroundOverride = 0;
+    bool hasBackgroundOverride = false;
+    std::string animClipName;
+    std::string animSequence;
+    float animBlend = 0.2f;
+    float animFps = 30.f;
+    bool animLoop = false;
+    bool listAnims = false;
+    bool skipProof = false;
+    bool printBounds = false;
+    const auto parseTriple = [](const std::string& text, float* out) {
+        std::stringstream stream(text);
+        std::string item;
+        int count = 0;
+        while (std::getline(stream, item, ',') && count < 3) out[count++] = std::stof(item);
+        return count == 3;
+    };
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg.rfind("--fit=", 0) == 0) {
+            fitFraction = std::stof(arg.substr(6));
+            continue;
+        }
+        if (arg.rfind("--camera-pos=", 0) == 0 && parseTriple(arg.substr(13), lockedCamera)) {
+            hasLockedCamera = true;
+            continue;
+        }
+        if (arg.rfind("--camera-target=", 0) == 0 && parseTriple(arg.substr(16), lockedCamera + 3)) {
+            hasLockedCamera = true;
+            continue;
+        }
+        if (arg.rfind("--camera-fov=", 0) == 0) {
+            lockedFov = std::stof(arg.substr(13));
+            continue;
+        }
+        if (arg.rfind("--exposure=", 0) == 0) {
+            exposureOverride = std::stof(arg.substr(11));
+            continue;
+        }
+        if (arg.rfind("--background=", 0) == 0) {
+            backgroundOverride = static_cast<std::uint32_t>(
+                    std::stoul(arg.substr(13), nullptr, 16));
+            hasBackgroundOverride = true;
+            continue;
+        }
+        if (arg.rfind("--anim=", 0) == 0) {
+            animClipName = arg.substr(7);
+            continue;
+        }
+        if (arg.rfind("--anim-sequence=", 0) == 0) {
+            animSequence = arg.substr(16);
+            animClipName = animSequence.substr(0, animSequence.find(','));
+            continue;
+        }
+        if (arg.rfind("--anim-blend=", 0) == 0) {
+            animBlend = std::stof(arg.substr(13));
+            continue;
+        }
+        if (arg.rfind("--anim-fps=", 0) == 0) {
+            animFps = std::stof(arg.substr(11));
+            continue;
+        }
+        if (arg == "--anim-loop") {
+            animLoop = true;
+            continue;
+        }
+        if (arg == "--list-anims") {
+            listAnims = true;
+            continue;
+        }
+        if (arg == "--no-proof") {
+            skipProof = true;
+            continue;
+        }
+        if (arg == "--print-bounds") {
+            printBounds = true;
+            continue;
+        }
+        filteredArgs.push_back(argv[i]);
+    }
+    if (hasLockedCamera) hasLockedCamera = lockedFov > 0.f;
+    argc = static_cast<int>(filteredArgs.size());
+    argv = filteredArgs.data();
+    fitFraction = std::clamp(fitFraction, 0.f, 0.98f);
+
     if (argc == 4 && std::string(argv[1]) == "--word-camera") {
         return renderWordCameraClip(argv[2], argv[3]);
     }
@@ -420,6 +524,21 @@ int main(int argc, char** argv) {
             return 2;
         }
         std::filesystem::create_directories(orbitDirectory);
+    } else if (!animClipName.empty() && argc >= 5) {
+        // --anim=<clip> model.glb frame_dir frames width [height]
+        glbPath = argv[1];
+        orbitDirectory = argv[2];
+        orbitFrames = std::atoi(argv[3]);
+        width = std::atoi(argv[4]);
+        height = argc > 5 ? std::atoi(argv[5]) : width * 9 / 16;
+        if (orbitFrames < 1 || width < 1 || height < 1) {
+            std::cerr << "usage: chrononmotion_render_glb --anim=<clip> model.glb frame_dir frames width [height]\n";
+            return 2;
+        }
+        std::filesystem::create_directories(orbitDirectory);
+    } else if (listAnims && argc >= 2 && endsWithGlbOrGltf(argv[1])) {
+        glbPath = argv[1];
+        outPpm.clear();
     } else if (argc >= 3 && endsWithGlbOrGltf(argv[1])) {
         glbPath = argv[1];
         outPpm = argv[2];
@@ -445,11 +564,98 @@ int main(int argc, char** argv) {
         return 1;
     }
     std::cout << "glb proof: loaded scene with " << result->scene->children.size() << " root children\n";
+    if (listAnims) {
+        for (std::size_t i = 0; i < result->animations.size(); ++i) {
+            const auto& clip = result->animations[i];
+            std::cout << i << ": " << clip->name() << " (" << clip->getDuration() << "s)\n";
+        }
+        return result->animations.empty() ? 1 : 0;
+    }
 
     Canvas canvas(Canvas::Parameters().size(width, height).headless(true));
     GLRenderer renderer(canvas);
     renderer.setClearColor(Color(pushInMode ? 0x202020 : 0x393633));
+    if (hasBackgroundOverride) renderer.setClearColor(Color(backgroundOverride));
     auto modelScene = result->scene;
+
+    // Deterministic offline playback: one mixer anchored at clip time zero, so
+    // any frame can be rendered without depending on the previous one.
+    std::unique_ptr<AnimationMixer> clipMixer;
+    std::shared_ptr<AnimationClip> activeClip;
+
+    // A sequence chains clips back to back, overlapping each boundary by
+    // animBlend seconds. Every action is set to an absolute local time and an
+    // explicit weight, then composited with update(0), so any frame can be
+    // rendered on its own and the result never depends on frame order.
+    struct SequenceStep {
+        AnimationAction* action = nullptr;
+        float start = 0.f;
+        float duration = 0.f;
+    };
+    std::vector<SequenceStep> sequenceSteps;
+    float sequenceDuration = 0.f;
+
+    if (!animSequence.empty()) {
+        std::vector<std::shared_ptr<AnimationClip>> sequenceClips;
+        std::stringstream names(animSequence);
+        std::string name;
+        while (std::getline(names, name, ',')) {
+            if (name.empty()) continue;
+            const auto clip = AnimationClip::findByName(result->animations, name);
+            if (!clip) {
+                std::cerr << "glb anim: clip '" << name << "' not found in sequence; available:";
+                for (const auto& candidate : result->animations) std::cerr << " " << candidate->name();
+                std::cerr << "\n";
+                return 1;
+            }
+            sequenceClips.push_back(clip);
+        }
+        if (sequenceClips.empty()) {
+            std::cerr << "glb anim: empty --anim-sequence\n";
+            return 1;
+        }
+        std::shared_ptr<AnimationClip> shortest = *std::min_element(sequenceClips.begin(), sequenceClips.end(),
+                [](const auto& a, const auto& b) { return a->getDuration() < b->getDuration(); });
+        float blend = std::max(animBlend, 0.f);
+        if (sequenceClips.size() > 1)
+            blend = std::min(blend, std::max(shortest->getDuration() * 0.5f, 0.f));
+        else
+            blend = 0.f;
+        clipMixer = std::make_unique<AnimationMixer>(*modelScene);
+        float cursor = 0.f;
+        for (std::size_t i = 0; i < sequenceClips.size(); ++i) {
+            SequenceStep step;
+            step.action = clipMixer->clipAction(sequenceClips[i]);
+            step.action->play().setEffectiveWeight(i == 0 ? 1.f : 0.f).setLocalTime(0.f);
+            step.start = cursor;
+            step.duration = std::max(sequenceClips[i]->getDuration(), 0.f);
+            sequenceSteps.push_back(step);
+            cursor += step.duration - (i + 1 < sequenceClips.size() ? blend : 0.f);
+        }
+        sequenceDuration = std::max(cursor, 0.f);
+        activeClip = sequenceClips.front();
+        clipMixer->update(0.f);
+        std::cout << "glb anim: sequence=";
+        for (std::size_t i = 0; i < sequenceSteps.size(); ++i)
+            std::cout << (i ? " -> " : "") << sequenceClips[i]->name()
+                      << "(" << sequenceSteps[i].duration << "s)";
+        std::cout << " duration=" << sequenceDuration << "s blend=" << blend << "s\n";
+    }
+
+    if (!animClipName.empty() && animSequence.empty()) {
+        activeClip = AnimationClip::findByName(result->animations, animClipName);
+        if (!activeClip) {
+            std::cerr << "glb anim: clip '" << animClipName << "' not found; available:";
+            for (const auto& clip : result->animations) std::cerr << " " << clip->name();
+            std::cerr << "\n";
+            return 1;
+        }
+        clipMixer = std::make_unique<AnimationMixer>(*modelScene);
+        clipMixer->clipAction(activeClip)->play();
+        clipMixer->setTime(0.f);
+        std::cout << "glb anim: clip=" << activeClip->name()
+                  << " duration=" << activeClip->getDuration() << "s fps=" << animFps << "\n";
+    }
 
     // Compose the proof around the imported object's actual bounds rather than
     // assuming that its origin is its visual center. This keeps ordinary GLBs
@@ -462,6 +668,11 @@ int main(int argc, char** argv) {
 
     const float centeredTop = bounds.max().y - objectCenter.y;
     const float centeredBottom = bounds.min().y - objectCenter.y;
+    if (printBounds) {
+        std::cout << "glb bounds: center=" << objectCenter.x << "," << objectCenter.y << ","
+                  << objectCenter.z << " size=" << size.x << "," << size.y << "," << size.z
+                  << " span=" << span << std::endl;
+    }
     const Vector3 pivot(objectCenter.x, 0.f, objectCenter.z);
     auto scene = Scene::create();
     if (pushInMode) modelScene->position.y -= objectCenter.y;
@@ -606,11 +817,21 @@ int main(int argc, char** argv) {
     }
 
     const float aspect = float(width) / float(height);
-    const float distance = cameraMove.empty()
+    const float fovDegrees = sceneOrbitMode ? 48.f : (cameraMove.empty() ? 30.f : 50.f);
+    float distance = cameraMove.empty()
             ? std::max(span * (sceneOrbitMode ? 0.31f : 2.7f), 1.f)
             : std::max(size.x, size.y * aspect) /
                       (2.f * std::tan(50.f * 0.5f * 3.14159265359f / 180.f) * aspect * 0.48f);
-    auto camera = PerspectiveCamera::create(sceneOrbitMode ? 48.f : (cameraMove.empty() ? 30.f : 50.f), aspect, 0.1f, 1000);
+    if (fitFraction > 0.f) {
+        const float tanHalfFov = std::tan(fovDegrees * 0.5f * 3.14159265359f / 180.f);
+        const float requiredHeight = std::max(size.y, size.x / std::max(aspect, 1e-4f));
+        distance = requiredHeight / (2.f * tanHalfFov * fitFraction);
+    }
+    // A fitted camera can sit very close to a small model, so the fixed 0.1 near
+    // plane would clip it away entirely. Scale the planes with the distance.
+    const float nearPlane = fitFraction > 0.f ? std::max(0.0005f, distance * 0.02f) : 0.1f;
+    const float farPlane = fitFraction > 0.f ? std::max(10.f, distance * 100.f) : 2000.f;
+    auto camera = PerspectiveCamera::create(fovDegrees, aspect, nearPlane, farPlane);
     std::vector<Vector3> cameraPath;
     std::vector<Vector3> targetPath;
     chrononmotion::motion::Easing cameraTiming = chrononmotion::motion::Easing::easeInOut();
@@ -641,9 +862,26 @@ int main(int argc, char** argv) {
                                      objectCenter.z + distance * 0.66f)
             : chrononmotion::Vector3(objectCenter.x, objectCenter.y + distance * 0.47f,
                                      objectCenter.z + distance * 0.883f);
+    // CameraPose defaults to a 60 degree lens, which would otherwise override the
+    // camera's own fov and shrink an explicitly fitted subject.
+    if (fitFraction > 0.f) pose.fov = fovDegrees;
+    if (hasLockedCamera) {
+        pose.position = chrononmotion::Vector3(lockedCamera[0], lockedCamera[1], lockedCamera[2]);
+        pose.target = chrononmotion::Vector3(lockedCamera[3], lockedCamera[4], lockedCamera[5]);
+        pose.hasTarget = true;
+        pose.fov = lockedFov;
+    }
     chrononmotion::motion::CameraRig::lookAtPose(pose, chrononmotion::Vector3(orbitTarget.x, orbitTarget.y, orbitTarget.z));
+    if (hasLockedCamera) chrononmotion::motion::CameraRig::lookAtPose(pose, pose.target);
+    if (printBounds) {
+        std::cout << "glb camera: pos=" << pose.position.x << "," << pose.position.y << ","
+                  << pose.position.z << " target=" << orbitTarget.x << "," << orbitTarget.y
+                  << "," << orbitTarget.z << " fov=" << pose.fov
+                  << " distance=" << distance << std::endl;
+    }
     renderer.toneMapping = ToneMapping::ACESFilmic;
     renderer.toneMappingExposure = (pushInMode || sceneOrbitMode) ? 1.0f : 2.0f;
+    if (exposureOverride > 0.f) renderer.toneMappingExposure = exposureOverride;
 
     std::unique_ptr<EffectComposer> composer;
     std::unique_ptr<RenderTarget> target;
@@ -679,7 +917,7 @@ int main(int argc, char** argv) {
     }
     const int renderCount = orbitFrames > 0 ? orbitFrames : 1;
     for (int frame = 0; frame < renderCount; ++frame) {
-        if (orbitFrames > 0) {
+        if (orbitFrames > 0 && !clipMixer) {
             const float linearProgress = float(frame) / float(orbitFrames - 1);
             const float frameTime = linearProgress * (sceneOrbitMode ? 12.f : 6.f);
             chrononmotion::motion::CameraPose framePose;
@@ -765,11 +1003,65 @@ int main(int argc, char** argv) {
                 chrononmotion::motion::CameraRig::orbitAround(framePose,
                         chrononmotion::Vector3(orbitTarget.x, orbitTarget.y, orbitTarget.z), yaw, 0.f);
             }
-            threepp::motion::applyCameraPose(framePose, *camera);
+            threepp::motion::applyCameraPose(framePose, *camera, nullptr, nearPlane, farPlane);
             if (idlePose) idlePose->apply(frameTime);
         } else {
-            threepp::motion::applyCameraPose(pose, *camera);
+            threepp::motion::applyCameraPose(pose, *camera, nullptr, nearPlane, farPlane);
             if (idlePose) idlePose->apply(0.f);
+        }
+        if (clipMixer && !sequenceSteps.empty()) {
+            float sequenceTime = float(frame) / std::max(animFps, 1e-3f);
+            sequenceTime = (animLoop && sequenceDuration > 0.f)
+                    ? std::fmod(sequenceTime, sequenceDuration)
+                    : std::min(sequenceTime, sequenceDuration);
+            float blend = std::max(animBlend, 0.f);
+            if (sequenceSteps.size() > 1) {
+                float shortest = sequenceSteps.front().duration;
+                for (const auto& step : sequenceSteps) shortest = std::min(shortest, step.duration);
+                blend = std::min(blend, std::max(shortest * 0.5f, 1e-4f));
+            } else {
+                blend = 0.f;
+            }
+            std::vector<float> weights(sequenceSteps.size(), 0.f);
+            float total = 0.f;
+            for (std::size_t i = 0; i < sequenceSteps.size(); ++i) {
+                const auto& step = sequenceSteps[i];
+                const float local = sequenceTime - step.start;
+                if (local < -1e-4f || local > step.duration + 1e-4f) {
+                    // Outside its window the action must contribute nothing, not
+                    // keep the weight it was last given.
+                    step.action->setEffectiveWeight(0.f);
+                    continue;
+                }
+                float weight = 1.f;
+                if (blend > 0.f) {
+                    if (i > 0) weight = std::min(weight, local / blend);
+                    weight = std::min(weight, (step.duration - local) / blend);
+                }
+                weight = std::clamp(weight, 0.f, 1.f);
+                if (weight <= 0.f) {
+                    step.action->setEffectiveWeight(0.f);
+                    continue;
+                }
+                step.action->setEffectiveWeight(weight);
+                step.action->setLocalTime(std::clamp(local, 0.f, step.duration));
+                weights[i] = weight;
+                total += weight;
+            }
+            if (total > 0.f && std::abs(total - 1.f) > 1e-4f) {
+                for (std::size_t i = 0; i < sequenceSteps.size(); ++i) {
+                    if (weights[i] > 0.f)
+                        sequenceSteps[i].action->setEffectiveWeight(weights[i] / total);
+                }
+            }
+            clipMixer->update(0.f);
+        } else if (clipMixer) {
+            const float duration = std::max(activeClip->getDuration(), 0.f);
+            float clipTime = float(frame) / std::max(animFps, 1e-3f);
+            clipTime = (animLoop && duration > 0.f)
+                    ? std::fmod(clipTime, duration)
+                    : std::min(clipTime, duration);
+            clipMixer->setTime(clipTime);
         }
         scene->updateMatrixWorld(true);
         std::vector<unsigned char> pixels;
@@ -812,7 +1104,8 @@ int main(int argc, char** argv) {
                     : centerPatchColors.size() < 8);
     if (weakCoverage) {
         std::cerr << "glb proof: expected non-background textured pixels in center region\n";
-        return 1;
+        if (!skipProof) return 1;
+        std::cerr << "glb proof: coverage assertion waived by --no-proof\n";
     }
 
     const auto output = orbitFrames > 0
