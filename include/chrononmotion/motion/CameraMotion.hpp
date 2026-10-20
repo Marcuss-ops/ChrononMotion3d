@@ -195,14 +195,14 @@ namespace chrononmotion::motion {
     class CameraFocusResolver {
     public:
         [[nodiscard]] static float resolveFocus(CameraFocusMode mode,
-                                               const Vector3& cameraPos,
+                                               const CameraPose& camera,
                                                const Vector3& targetA,
                                                const Vector3& targetB,
                                                float blendProgress = 0.f,
                                                float manualDistance = 0.f);
 
         [[nodiscard]] static float resolveFocus(CameraFocusMode mode,
-                                               const Vector3& cameraPos,
+                                               const CameraPose& camera,
                                                const Vector3& target,
                                                float manualDistance = 0.f);
     };
