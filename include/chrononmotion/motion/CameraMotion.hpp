@@ -250,20 +250,20 @@ namespace chrononmotion::motion {
 
     /// 1. camera_focus_push: Progressive push onto subject; DOF increases, target centered.
     void cameraFocusPush(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
-                         float pushDistance, float startAperture = 0.f, float endAperture = 12.f,
+                         float pushDistance, float startAperture = 0.f, float endAperture = 0.12f,
                          float fps = 30.f, const Easing& easing = Easing::easeInOut(),
                          const MotionScene* scene = nullptr);
 
     /// 2. camera_rack_focus_duo: Pure rack focus between two visible subjects; camera stays in place.
     void cameraRackFocusDuo(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
-                            int inFrame, int duration, float aperture = 14.f, float fps = 30.f,
+                            int inFrame, int duration, float aperture = 0.14f, float fps = 30.f,
                             const Easing& easing = Easing::easeInOut(),
                             const MotionScene* scene = nullptr);
 
     /// 3. camera_dolly_focus_handoff: Dolly sideways/forward while transferring focus from A to B.
     void cameraDollyFocusHandoff(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                  int inFrame, int duration, const Vector3& dollyDelta = Vector3(2.f, 0.f, -1.f),
-                                 float aperture = 10.f, float fps = 30.f,
+                                 float aperture = 0.10f, float fps = 30.f,
                                  const Easing& easing = Easing::easeInOut(),
                                  const MotionScene* scene = nullptr);
 
@@ -296,14 +296,14 @@ namespace chrononmotion::motion {
     void cameraForegroundPassReveal(CameraRig& rig, const ShotAnchor& foregroundA, const ShotAnchor& subjectB,
                                     int inFrame, int duration,
                                     const Vector3& lateralPassOffset = Vector3(3.f, 0.f, -4.f),
-                                    float aperture = 14.f, float fps = 30.f,
+                                    float aperture = 0.14f, float fps = 30.f,
                                     const Easing& easing = Easing::easeInOut(),
                                     const MotionScene* scene = nullptr);
 
     /// 9. camera_depth_peel: Camera travels along Z through sequentially stacked subjects.
     void cameraDepthPeel(CameraRig& rig, const std::vector<ShotAnchor>& subjects,
                          int inFrame, int duration, float pushPerSubject = 4.f,
-                         float aperture = 12.f, float fps = 30.f,
+                         float aperture = 0.12f, float fps = 30.f,
                          const Easing& easing = Easing::easeInOut(),
                          const MotionScene* scene = nullptr);
 
@@ -334,7 +334,7 @@ namespace chrononmotion::motion {
     /// 14. camera_parallax_gallery: Lateral travel past cards at staggered depths with dynamic focus.
     void cameraParallaxGallery(CameraRig& rig, const std::vector<ShotAnchor>& cards,
                                int inFrame, int duration, float cameraZOffset = 8.f,
-                               float aperture = 10.f, float fps = 30.f,
+                               float aperture = 0.10f, float fps = 30.f,
                                const MotionScene* scene = nullptr);
 
     /// 15. camera_focus_orbit_settle: Frontal view with subtle orbit sweep (-10 to +15 deg) settling on subject.
@@ -355,7 +355,7 @@ namespace chrononmotion::motion {
     /// 17. cameraBulletTimeOrbitFreeze: High-speed 360-degree cylindrical orbital sweep around frozen subject in mid-air.
     void cameraBulletTimeOrbitFreeze(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
                                      float radius = 7.f, float height = 1.2f, float sweepDegrees = 360.f,
-                                     float aperture = 16.f, float fps = 30.f, const Easing& easing = Easing::easeInOut(),
+                                     float aperture = 0.16f, float fps = 30.f, const Easing& easing = Easing::easeInOut(),
                                      const MotionScene* scene = nullptr);
 
     /// 18. cameraFpvDroneDiveRoll: Dynamic FPV dive from high altitude with 45-60 deg axial banking roll and low surface recovery.
@@ -366,7 +366,7 @@ namespace chrononmotion::motion {
 
     /// 19. cameraSplitDiopterDualPlane: Emulates optical split-diopter framing with dual-plane focus handoff & lateral micro-dolly.
     void cameraSplitDiopterDualPlane(CameraRig& rig, const ShotAnchor& foregroundLeft, const ShotAnchor& backgroundRight,
-                                     int inFrame, int duration, float aperture = 18.f, float fps = 30.f,
+                                     int inFrame, int duration, float aperture = 0.18f, float fps = 30.f,
                                      const Easing& easing = Easing::easeInOut(), const MotionScene* scene = nullptr);
 
     /// 20. cameraSpiralHelixAscend: Double-helix orbital elevator; camera spirals upward around central vertical hierarchy.
