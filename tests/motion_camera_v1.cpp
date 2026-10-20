@@ -74,20 +74,23 @@ namespace {
         checkNear(shotPose.position.distanceTo(shotPose.target), 5.0f, 1e-4f, "CloseUp framing sets distance to 5 units");
 
         // CameraFocusResolver
-        const Vector3 cam(0.f, 0.f, 10.f);
+        CameraPose focusCamera;
+        focusCamera.position.set(0.f, 0.f, 0.f);
+        focusCamera.orientation.identity();
         const Vector3 tgtA(0.f, 0.f, 0.f);
-        const Vector3 tgtB(0.f, 0.f, -20.f);
+        const Vector3 tgtB(0.f, 4.f, -10.f);
 
-        float focTarget = CameraFocusResolver::resolveFocus(CameraFocusMode::TargetDistance, cam, tgtA);
-        checkNear(focTarget, 10.f, 1e-4f, "CameraFocusResolver TargetDistance matches dist(cam, tgt)");
+        const Vector3 offAxisTarget(3.f, 0.f, -4.f);
+        float focTarget = CameraFocusResolver::resolveFocus(CameraFocusMode::TargetDistance, focusCamera, offAxisTarget);
+        checkNear(focTarget, 4.f, 1e-4f, "CameraFocusResolver TargetDistance measures along optical axis");
 
-        float focBlend = CameraFocusResolver::resolveFocus(CameraFocusMode::BlendTargets, cam, tgtA, tgtB, 0.5f);
-        checkNear(focBlend, 20.f, 1e-4f, "CameraFocusResolver BlendTargets midpoint is 20 units");
+        float focBlend = CameraFocusResolver::resolveFocus(CameraFocusMode::BlendTargets, focusCamera, offAxisTarget, tgtB, 0.5f);
+        checkNear(focBlend, 7.f, 1e-4f, "CameraFocusResolver blends optical-axis distances");
 
-        float focForeground = CameraFocusResolver::resolveFocus(CameraFocusMode::ForegroundSubject, cam, tgtA, tgtB);
-        checkNear(focForeground, 10.f, 1e-4f, "CameraFocusResolver ForegroundSubject selects closest distance");
+        float focForeground = CameraFocusResolver::resolveFocus(CameraFocusMode::ForegroundSubject, focusCamera, offAxisTarget, tgtB);
+        checkNear(focForeground, 4.f, 1e-4f, "CameraFocusResolver ForegroundSubject selects nearest optical plane");
 
-        float focManual = CameraFocusResolver::resolveFocus(CameraFocusMode::Manual, cam, tgtA, tgtB, 0.f, 42.5f);
+        float focManual = CameraFocusResolver::resolveFocus(CameraFocusMode::Manual, focusCamera, tgtA, tgtB, 0.f, 42.5f);
         checkNear(focManual, 42.5f, 1e-4f, "CameraFocusResolver Manual returns authored distance");
     }
 

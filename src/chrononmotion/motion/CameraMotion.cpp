@@ -103,8 +103,21 @@ namespace chrononmotion::motion {
 
     // --------------------------------------------------- CameraFocusResolver
 
+    namespace {
+    float opticalAxisDistance(const CameraPose& camera, const Vector3& target) {
+        Vector3 forward(0.f, 0.f, -1.f);
+        forward.applyQuaternion(camera.orientation);
+        if (forward.lengthSq() <= 1e-12f) {
+            throw std::invalid_argument("CameraFocusResolver: camera orientation has no view axis");
+        }
+        forward.normalize();
+        const Vector3 displacement = target - camera.position;
+        return std::max(0.f, displacement.dot(forward));
+    }
+    } // namespace
+
     float CameraFocusResolver::resolveFocus(CameraFocusMode mode,
-                                           const Vector3& cameraPos,
+                                           const CameraPose& camera,
                                            const Vector3& targetA,
                                            const Vector3& targetB,
                                            float blendProgress,
@@ -113,30 +126,30 @@ namespace chrononmotion::motion {
             case CameraFocusMode::Manual:
                 return manualDistance;
             case CameraFocusMode::TargetDistance:
-                return cameraPos.distanceTo(targetA);
+                return opticalAxisDistance(camera, targetA);
             case CameraFocusMode::BlendTargets: {
-                const float distA = cameraPos.distanceTo(targetA);
-                const float distB = cameraPos.distanceTo(targetB);
+                const float distA = opticalAxisDistance(camera, targetA);
+                const float distB = opticalAxisDistance(camera, targetB);
                 const float clamped = std::clamp(blendProgress, 0.f, 1.f);
                 return distA + (distB - distA) * clamped;
             }
             case CameraFocusMode::ForegroundSubject: {
-                const float distA = cameraPos.distanceTo(targetA);
-                const float distB = cameraPos.distanceTo(targetB);
+                const float distA = opticalAxisDistance(camera, targetA);
+                const float distB = opticalAxisDistance(camera, targetB);
                 return std::min(distA, distB);
             }
         }
-        return cameraPos.distanceTo(targetA);
+        return opticalAxisDistance(camera, targetA);
     }
 
     float CameraFocusResolver::resolveFocus(CameraFocusMode mode,
-                                           const Vector3& cameraPos,
+                                           const CameraPose& camera,
                                            const Vector3& target,
                                            float manualDistance) {
         if (mode == CameraFocusMode::Manual) {
             return manualDistance;
         }
-        return cameraPos.distanceTo(target);
+        return opticalAxisDistance(camera, target);
     }
 
     // ------------------------------------------------------ CameraTransition
@@ -280,7 +293,7 @@ namespace chrononmotion::motion {
             rig.apertureTrack().add(time, curAp, Easing::linear());
 
             const float curFocus = CameraFocusResolver::resolveFocus(
-                focusMode, pos, p0.target, p1.target, u,
+                focusMode, samplePose, p0.target, p1.target, u,
                 p0.focusDistance + (p1.focusDistance - p0.focusDistance) * u
             );
             rig.focusDistanceTrack().add(time, curFocus, Easing::linear());
