@@ -112,7 +112,7 @@ namespace {
                 out << "          \"target_screen\": [" << tgtScreenX << ", " << tgtScreenY << "],\n";
                 out << "          \"fov\": " << p.fov << ",\n";
                 out << "          \"focus_distance\": " << p.focusDistance << ",\n";
-                out << "          \"aperture\": " << p.aperture << ",\n";
+                out << "          \"legacy_defocus_strength\": " << p.legacyDefocusStrength << ",\n";
                 out << "          \"roll\": " << p.roll << "\n";
                 out << "        }" << (f + 1 < sc.poses.size() ? "," : "") << "\n";
             }
