@@ -4,6 +4,7 @@
 // organic aura motion, and camera-linked depth of field.
 
 #include "Presets_detail.hpp"
+#include "chrononmotion/motion/CameraMotion.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
 

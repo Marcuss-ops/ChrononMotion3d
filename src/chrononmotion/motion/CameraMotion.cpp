@@ -87,13 +87,9 @@ namespace chrononmotion::motion {
         pose.legacyDefocusStrength = legacyDefocusStrength;
         pose.fStop = fStop;
 
-        if (focusMode == CameraFocusMode::Manual) {
-            pose.focusDistance = focusDistance;
-        } else {
-            pose.focusDistance = pose.position.distanceTo(targetPos);
-        }
-
         CameraRig::lookAtPose(pose, targetPos);
+        pose.focusDistance = CameraFocusResolver::resolveFocus(
+            focusMode, pose, targetPos, focusDistance);
         if (roll != 0.f) {
             CameraRig::roll(pose, roll);
         }

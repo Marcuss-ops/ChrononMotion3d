@@ -2,6 +2,7 @@
 
 #include "chrononmotion/math/MathUtils.hpp"
 #include "chrononmotion/motion/CameraFraming.hpp"
+#include "chrononmotion/motion/CameraMotion.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
 
 #include <algorithm>
@@ -118,8 +119,14 @@ namespace chrononmotion::motion::camera {
             if (plan.rollPeak != 0.f) CameraRig::roll(pose, plan.rollPeak);
             pose.target = plan.aimBoth ? (plan.restA.target + plan.restB.target) * 0.5f : plan.restB.target;
             if (plan.focusShift != 0.f) {
-                const float distA = (plan.restA.position - plan.restA.target).length();
-                const float distB = (plan.restB.position - plan.restB.target).length();
+                CameraPose focusA = plan.restA;
+                CameraRig::lookAtPose(focusA, plan.restA.target);
+                CameraPose focusB = plan.restB;
+                CameraRig::lookAtPose(focusB, plan.restB.target);
+                const float distA = CameraFocusResolver::resolveFocus(
+                    CameraFocusMode::TargetDistance, focusA, plan.restA.target);
+                const float distB = CameraFocusResolver::resolveFocus(
+                    CameraFocusMode::TargetDistance, focusB, plan.restB.target);
                 pose.focusDistance = distA + (distB - distA) * progress;
             }
             if (plan.fovPeak != 0.f) pose.fov = plan.fovPeak;
@@ -153,8 +160,14 @@ namespace chrononmotion::motion::camera {
                     .add(t1, plan.restB.fov, Easing::easeInOut());
             }
             if (plan.focusShift != 0.f || plan.fStop != 0.f) {
-                const float distA = (plan.restA.position - plan.restA.target).length();
-                const float distB = (plan.restB.position - plan.restB.target).length();
+                CameraPose focusA = plan.restA;
+                CameraRig::lookAtPose(focusA, plan.restA.target);
+                CameraPose focusB = plan.restB;
+                CameraRig::lookAtPose(focusB, plan.restB.target);
+                const float distA = CameraFocusResolver::resolveFocus(
+                    CameraFocusMode::TargetDistance, focusA, plan.restA.target);
+                const float distB = CameraFocusResolver::resolveFocus(
+                    CameraFocusMode::TargetDistance, focusB, plan.restB.target);
                 rig.focusDistanceTrack().add(t0, distA, Easing::easeInOut())
                     .add(tApex, (distA + distB) * 0.5f, Easing::easeInOut())
                     .add(t1, distB, Easing::easeInOut());

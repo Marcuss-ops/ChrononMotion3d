@@ -60,10 +60,18 @@ namespace chrononmotion::motion {
     /// Lower a sampled camera pose to Chronon3D's camera contract. The pose's
     /// orientation must already include target aiming and roll (as CameraRig::sample
     /// provides); target/roll metadata is not a separate RenderPlan channel.
-    /// RenderPlan V2 carries the legacy DoF focus-distance/aperture/max-blur
-    /// contract; physical focal-length/f-stop lens optics remain unrepresentable.
+    /// RenderPlan carries resolved pose, FOV, clipping planes, physical focal
+    /// length/f-stop/iris, and the legacy blur-gain/focus/max-blur contract.
+    /// Backend projection matrices remain renderer-derived from the canvas.
     [[nodiscard]] chronon3d::render_plan::CameraPlan lowerCameraPose(
         const CameraPose& pose, float nearPlane = 1.f, float farPlane = 10000.f);
+
+    /// Sample a rig at every integer presentation frame and lower the complete
+    /// renderer-facing camera state. This is the canonical offline camera bake
+    /// used by RenderPlan lowering and external plan producers.
+    [[nodiscard]] std::vector<chronon3d::render_plan::CameraSamplePlan>
+    bakeResolvedCameraSamples(const CameraRig& rig, float fps, std::size_t frameCount,
+                              float nearPlane = 1.f, float farPlane = 10000.f);
 
     /// Create a runtime provider for C3D's exact presentation/shutter sample
     /// times, including pre-roll times before frame zero.
