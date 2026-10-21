@@ -36,6 +36,7 @@
 #include "chrononmotion/motion/CameraRig.hpp"
 #include "chrononmotion/motion/CameraMotion.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
+#include "chrononmotion/motion/CameraValidation.hpp"
 #include "chrononmotion/motion/CameraPanelChoreography.hpp"
 #include "chrononmotion/motion/EyeTrace.hpp"
 #include "chrononmotion/motion/AspectReframe.hpp"
