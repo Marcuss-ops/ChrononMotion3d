@@ -15,6 +15,14 @@ int main() {
     base.hasTarget = true;
     base.fov = 50.f;
 
+    const float coverDistance = CameraFramingSolver::coverDistanceForBounds(
+        400.f, 200.f, 50.f, {1920.f, 1080.f});
+    const float tanHalfFov = std::tan(25.f * 3.14159265358979323846f / 180.f);
+    const float expectedCoverDistance = std::min(400.f / (tanHalfFov * (1920.f / 1080.f)),
+                                                  200.f / tanHalfFov);
+    if (std::abs(coverDistance - expectedCoverDistance) > 1e-4f)
+        throw std::runtime_error("cover distance must use the tighter viewport axis");
+
     CameraFramingRequest request;
     request.viewport = {1920.f, 1080.f};
     request.safeArea = CameraSafeArea::tiktokVertical();

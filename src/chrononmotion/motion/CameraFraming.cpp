@@ -210,4 +210,18 @@ float CameraFramingSolver::distanceForBounds(float halfWidth, float halfHeight,
     return fit / (2.f * tanHalf * aspect * fill) + halfDepth;
 }
 
+float CameraFramingSolver::coverDistanceForBounds(float halfWidth, float halfHeight,
+                                                   float fovDegrees,
+                                                   const Vector2& viewport) {
+    if (!std::isfinite(halfWidth) || !std::isfinite(halfHeight) ||
+        halfWidth <= 0.f || halfHeight <= 0.f ||
+        !std::isfinite(fovDegrees) || fovDegrees <= 0.f || fovDegrees >= 180.f ||
+        !std::isfinite(viewport.x) || !std::isfinite(viewport.y) ||
+        viewport.x <= 0.f || viewport.y <= 0.f)
+        throw std::invalid_argument("coverDistanceForBounds: bounds, FOV and viewport must be valid");
+    const float aspect = viewport.x / viewport.y;
+    const float tanHalf = std::tan(fovDegrees * 0.5f * 3.14159265358979323846f / 180.f);
+    return std::min(halfWidth / (tanHalf * aspect), halfHeight / tanHalf);
+}
+
 } // namespace chrononmotion::motion
