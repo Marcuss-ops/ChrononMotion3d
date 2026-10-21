@@ -78,7 +78,24 @@ CameraFramingResult CameraFramingSolver::solve(const CameraFramingRequest& req,
                                                CameraFramingSession* session) const {
     CameraFramingResult result;
     result.pose = base;
-    if (req.targets.empty() || req.viewport.x <= 0.f || req.viewport.y <= 0.f) return result;
+    if (req.targets.empty()) return result;
+    if (!std::isfinite(req.viewport.x) || !std::isfinite(req.viewport.y) ||
+        req.viewport.x <= 0.f || req.viewport.y <= 0.f ||
+        !std::isfinite(base.fov) || base.fov <= 0.f || base.fov >= 180.f ||
+        !std::isfinite(req.minDistance) || !std::isfinite(req.maxDistance) ||
+        req.minDistance <= 0.f || req.maxDistance < req.minDistance) {
+        result.ok = false;
+        return result;
+    }
+    for (const auto& bounds : req.targets) {
+        if (!std::isfinite(bounds.min.x) || !std::isfinite(bounds.min.y) || !std::isfinite(bounds.min.z) ||
+            !std::isfinite(bounds.max.x) || !std::isfinite(bounds.max.y) || !std::isfinite(bounds.max.z) ||
+            !std::isfinite(bounds.weight) || bounds.min.x > bounds.max.x ||
+            bounds.min.y > bounds.max.y || bounds.min.z > bounds.max.z) {
+            result.ok = false;
+            return result;
+        }
+    }
 
     const auto targets = activeTargets(req);
     const Vector3 center = weightedCenter(targets);

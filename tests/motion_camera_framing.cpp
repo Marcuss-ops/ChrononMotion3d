@@ -52,5 +52,46 @@ int main() {
     const auto highest = solver.solve(request, base);
     if (highest.requiredDistance >= framed.requiredDistance * 2.f)
         throw std::runtime_error("FitHighest must frame only the highest-weight target");
+
+    CameraFramingRequest all = request;
+    all.strategy = CameraFramingStrategy::FitAll;
+    const auto fitAll = solver.solve(all, base);
+    if (fitAll.requiredDistance <= highest.requiredDistance)
+        throw std::runtime_error("FitAll must include lower-weight targets");
+
+    CameraFramingRequest thirds = request;
+    thirds.strategy = CameraFramingStrategy::RuleOfThirds;
+    thirds.compositionPoint = {1.f / 3.f, 1.f / 3.f};
+    const auto ruleOfThirds = solver.solve(thirds, base);
+    const chrononmotion::Vector3 center{0.f, 0.f, 0.f};
+    const auto thirdsScreen = projectToScreen(center, ruleOfThirds.pose, intrinsics);
+    if (std::abs(thirdsScreen.x - request.viewport.x / 3.f) > 0.1f ||
+        std::abs(thirdsScreen.y - request.viewport.y / 3.f) > 0.1f)
+        throw std::runtime_error("RuleOfThirds must place the target at the requested composition point");
+
+    CameraFramingRequest dollyOnly = request;
+    dollyOnly.strategy = CameraFramingStrategy::DollyOnly;
+    const auto dollied = solver.solve(dollyOnly, base);
+    if (!dollied.pose.hasTarget || dollied.pose.target.distanceTo(base.target) > 1e-4f ||
+        dollied.pose.position.distanceTo(base.position) < 1.f)
+        throw std::runtime_error("DollyOnly must move the camera while preserving its aim point");
+
+    CameraFramingRequest aimOnly = request;
+    aimOnly.strategy = CameraFramingStrategy::AimOnly;
+    const auto aimed = solver.solve(aimOnly, base);
+    if (aimed.pose.position.distanceTo(base.position) > 1e-4f ||
+        aimed.pose.target.distanceTo(center) > 1e-4f)
+        throw std::runtime_error("AimOnly must change the aim point while preserving position");
+
+    CameraFramingRequest bounded = request;
+    bounded.maxDistance = 100.f;
+    const auto clamped = solver.solve(bounded, base);
+    if (clamped.pose.position.distanceTo(clamped.pose.target) > 100.01f)
+        throw std::runtime_error("framing distance must respect the requested maximum");
+
+    CameraFramingRequest invalid = request;
+    invalid.viewport.x = 0.f;
+    if (solver.solve(invalid, base).ok)
+        throw std::runtime_error("invalid viewport dimensions must be rejected");
     return 0;
 }
