@@ -1,9 +1,12 @@
 #include "chrononmotion/motion/TitleCameraRecipe.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
+#include "chrononmotion/motion/CameraScreenSpace.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
+#include <string>
 
 namespace chrononmotion::motion::camera {
     namespace {
@@ -65,5 +68,95 @@ namespace chrononmotion::motion::camera {
             case TitleMove::FloorRise: p.heightOffset=-165.f*loud; p.dolly=p.distance*.18f*loud; break;
         }
         return p;
+    }
+
+    void applyTitleCameraRequest(CameraRig& rig, const TitleCameraRequest& request) {
+        if (request.duration < 12 || request.inFrame < 0 || !(request.fps > 0.f) ||
+            !std::isfinite(request.fps) || !(request.viewport.x > 0.f) || !(request.viewport.y > 0.f) ||
+            !std::isfinite(request.anchor.x) || !std::isfinite(request.anchor.y) ||
+            !std::isfinite(request.anchor.z))
+            throw std::invalid_argument("applyTitleCameraRequest: invalid timing, viewport or anchor");
+
+        const TitleCameraPlan plan = resolveTitleCameraPlan(request.move, request.shot);
+        const float fps = request.fps;
+        const int in = request.inFrame;
+        const int settle = std::clamp(request.duration * 2 / 10, 6, 12);
+        const int travelEnd = in + request.duration - settle;
+        const int end = in + request.duration;
+        const float t0 = static_cast<float>(in) / fps;
+        const float t1 = static_cast<float>(travelEnd) / fps;
+        const float t2 = static_cast<float>(end) / fps;
+        const float tMid = static_cast<float>((in + travelEnd) / 2) / fps;
+        const bool whip = plan.whipAcquisition > 0.f;
+        const bool orbits = whip || plan.yawStart != 0.f || plan.yawEnd != 0.f;
+        const bool hasRoll = plan.rollStart != 0.f || plan.rollPeak != 0.f || plan.rollEnd != 0.f;
+        const bool hasFov = plan.fovEnd != 0.f;
+        const bool hasFocus = plan.focusPull != 0.f;
+        const Vector3& anchor = request.anchor;
+        CameraPose rest;
+        rest.position = {anchor.x, anchor.y, anchor.z + plan.distance};
+        rest.hasTarget = true;
+        rest.target = anchor;
+        rest.fov = plan.fov;
+
+        CameraPose start = rest;
+        if (orbits) CameraRig::orbitAround(start, anchor, plan.yawStart, 0.f);
+        else if (plan.arcBow != 0.f) CameraRig::pan(start, Vector2(plan.restLateral, 0.f));
+        else CameraRig::pan(start, Vector2(-plan.panX * .5f, plan.heightOffset));
+
+        CameraPose finish = rest;
+        if (orbits) CameraRig::orbitAround(finish, anchor, plan.yawEnd, 0.f);
+        else if (plan.arcBow == 0.f) CameraRig::pan(finish, Vector2(plan.panX * .5f, plan.heightEnd));
+        CameraRig::dolly(finish, plan.dolly);
+        if (plan.arcBow != 0.f) CameraRig::pan(finish, Vector2(plan.restLateral * -.35f, 0.f));
+
+        CameraPose mid = rest;
+        CameraRig::pan(mid, Vector2(plan.arcBow != 0.f ? plan.restLateral + plan.arcBow * .5f : plan.panX * .5f,
+                                    (plan.heightOffset + plan.heightEnd) * .5f));
+        if (orbits) CameraRig::orbitAround(mid, anchor, (plan.yawStart + plan.yawEnd) * .5f, 0.f);
+        CameraRig::dolly(mid, plan.dolly * .5f);
+
+        auto& position = rig.positionTrack();
+        auto& target = rig.targetTrack();
+        if (whip) {
+            position.add(t0, start.position, Easing::expoOut()).add(tMid, mid.position, Easing::easeInOut())
+                .add(t1, finish.position, Easing::easeInOut());
+            target.add(t0, anchor, Easing::easeInOut()).add(t1, anchor, Easing::linear());
+        } else if (plan.arcBow != 0.f || orbits) {
+            position.add(t0, start.position, Easing::easeIn()).add(tMid, mid.position, Easing::easeOut())
+                .add(t1, finish.position, Easing::easeInOut());
+            target.add(t0, anchor, Easing::easeInOut()).add(t1, anchor, Easing::linear());
+        } else {
+            position.add(t0, start.position, Easing::easeInOut()).add(t1, finish.position, Easing::easeInOut());
+            target.add(t0, anchor, Easing::easeInOut()).add(t1, anchor, Easing::linear());
+        }
+        position.add(t2, finish.position, Easing::linear());
+        target.add(t2, anchor, Easing::linear());
+
+        if (hasRoll) {
+            auto& roll = rig.rollTrack();
+            roll.add(t0, plan.rollStart, Easing::easeInOut());
+            if (plan.rollPeak != 0.f) roll.add(tMid, plan.rollPeak, Easing::easeInOut());
+            roll.add(t1, plan.rollEnd, Easing::easeInOut()).add(t2, plan.rollEnd, Easing::linear());
+        }
+        if (hasFov) rig.fovTrack().add(t0, plan.fov, Easing::easeInOut())
+            .add(t1, plan.fovEnd, Easing::easeInOut()).add(t2, plan.fovEnd, Easing::linear());
+        if (hasFocus) rig.focusDistanceTrack().add(t0, plan.distance, Easing::easeInOut())
+            .add(t1, plan.distance - plan.focusPull, Easing::easeInOut())
+            .add(t2, plan.distance - plan.focusPull, Easing::linear());
+        if (plan.fStop != 0.f) rig.fStopTrack().add(t1, plan.fStop, Easing::easeInOut())
+            .add(t2, plan.fStop, Easing::linear());
+
+        rig.setTarget(anchor).setPosition(finish.position).setFov(hasFov ? plan.fovEnd : plan.fov);
+        ScreenCameraIntrinsics intrinsics;
+        intrinsics.viewport = request.viewport;
+        for (int frame = in; frame <= end; ++frame) {
+            const CameraPose pose = rig.sample(static_cast<float>(frame) / fps);
+            intrinsics.fovDegrees = pose.fov;
+            const Vector2 screen = projectToScreen(anchor, pose, intrinsics);
+            if (screen.x < .05f * intrinsics.viewport.x || screen.x > .95f * intrinsics.viewport.x ||
+                screen.y < .08f * intrinsics.viewport.y || screen.y > .92f * intrinsics.viewport.y)
+                throw std::invalid_argument("applyTitleCameraRequest: title anchor leaves safe area");
+        }
     }
 }

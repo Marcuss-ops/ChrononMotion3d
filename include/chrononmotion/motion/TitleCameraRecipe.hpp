@@ -1,6 +1,10 @@
 #ifndef CHRONONMOTION_MOTION_TITLECAMERARECIPE_HPP
 #define CHRONONMOTION_MOTION_TITLECAMERARECIPE_HPP
 
+#include "chrononmotion/math/Vector2.hpp"
+#include "chrononmotion/math/Vector3.hpp"
+#include "chrononmotion/motion/CameraRig.hpp"
+
 #include <cstdint>
 
 namespace chrononmotion::motion::camera {
@@ -29,8 +33,19 @@ namespace chrononmotion::motion::camera {
         float fovEnd{0.f}, focusPull{0.f}, fStop{0.f}, whipAcquisition{0.f};
     };
 
+    struct TitleCameraRequest {
+        TitleMove move{TitleMove::SlowPush};
+        TitleRecipeShot shot{};
+        Vector3 anchor{0.f, 0.f, 0.f};
+        int inFrame{0};
+        int duration{135};
+        float fps{30.f};
+        Vector2 viewport{1920.f, 1080.f};
+    };
+
     [[nodiscard]] float titleFramingDistance(TitleFraming framing, float fovDegrees);
     [[nodiscard]] TitleCameraPlan resolveTitleCameraPlan(TitleMove move, const TitleRecipeShot& shot);
+    void applyTitleCameraRequest(CameraRig& rig, const TitleCameraRequest& request);
 
 }
 
