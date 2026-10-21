@@ -76,6 +76,12 @@ public:
                                                  const Vector2& viewport,
                                                  const CameraSafeArea& safeArea);
 
+    /// Maximum eye distance at which the centered bound still covers the
+    /// complete viewport. Used for camera moves that pass through a surface.
+    [[nodiscard]] static float coverDistanceForBounds(float halfWidth, float halfHeight,
+                                                       float fovDegrees,
+                                                       const Vector2& viewport);
+
     [[nodiscard]] CameraFramingResult solve(const CameraFramingRequest& request,
                                             const CameraPose& base,
                                             CameraFramingSession* session = nullptr) const;
