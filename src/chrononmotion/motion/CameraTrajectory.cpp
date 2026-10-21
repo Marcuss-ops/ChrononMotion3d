@@ -229,13 +229,19 @@ void authorCameraTrajectory(CameraRig& rig, const CameraTrajectory& trajectory,
     if (startFrame < 0 || !(fps > 0.f) || !std::isfinite(fps) || samplesPerFrame == 0)
         throw std::invalid_argument("authorCameraTrajectory: invalid timing or sampling density");
     const float duration = trajectory.totalFrames();
-    const auto sampleCount = static_cast<unsigned long long>(
-        std::ceil(static_cast<double>(duration) * samplesPerFrame));
-    if (sampleCount > 1000000ULL)
+    const double sampleCountValue = std::ceil(static_cast<double>(duration) * samplesPerFrame);
+    if (!std::isfinite(duration) || duration < 0.f || !std::isfinite(sampleCountValue) ||
+        sampleCountValue > 1000000.0)
         throw std::invalid_argument("authorCameraTrajectory: sample count exceeds one million keys");
+    const auto sampleCount = static_cast<unsigned long long>(sampleCountValue);
     bool hasTargetChannel = rig.hasTarget();
     for (const auto& point : trajectory.points()) hasTargetChannel |= point.target.has_value();
-    const Vector3 fallbackTarget = rig.target();
+    Vector3 fallbackTarget = rig.target();
+    if (!rig.hasTarget()) {
+        const auto firstTarget = std::find_if(trajectory.points().begin(), trajectory.points().end(),
+            [](const CameraTrajectoryPoint& point) { return point.target.has_value(); });
+        if (firstTarget != trajectory.points().end()) fallbackTarget = *firstTarget->target;
+    }
     for (unsigned long long i = 0; i <= sampleCount; ++i) {
         const float pathFrame = std::min(duration,
             static_cast<float>(i) / static_cast<float>(samplesPerFrame));
