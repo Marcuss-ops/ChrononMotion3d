@@ -1,346 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
-
-# ChrononMotion â€” the motion-engine fork of threepp.
-#
-# Upstream threepp builds a GL/Vulkan renderer, a windowing frontend, a physics
-# and sensor stack, a loader zoo and a Python module. This tree keeps the
-# scene-graph/math/animation core and drops the rest, so the build is a single
-# header-only-dependency-free static library with no third-party fetch at
-# configure time.
-project(ChrononMotion
-        VERSION 0.1.0
-        DESCRIPTION "Deterministic motion/transform engine for Chronon"
-        LANGUAGES CXX)
-
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(FATAL_ERROR "ChrononMotion is Linux-only")
-endif()
-
-option(CHRONONMOTION_BUILD_TESTS "Build the ChrononMotion smoke tests" ${PROJECT_IS_TOP_LEVEL})
-option(CHRONONMOTION_BUILD_BENCHMARKS "Build the standalone evaluation benchmark" OFF)
-option(CHRONONMOTION_WERROR "Turn compiler warnings into errors" OFF)
-option(CHRONONMOTION_BUILD_RENDER "Build the offscreen GL render module (explicit opt-in; headless core is the default)" OFF)
-set(CHRONON3D_INCLUDE_DIR "" CACHE PATH "Optional sibling Chronon3D include root for building the offline RenderPlan adapter")
-set(CHRONON3D_DEPENDENCY_INCLUDE_DIR "" CACHE PATH "Optional Chronon3D dependency include root")
-
-if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
-endif()
-
-add_library(chrononmotion STATIC
-        # math â€” the transform/curve foundation
-        src/chrononmotion/math/Box2.cpp
-        src/chrononmotion/math/Box3.cpp
-        src/chrononmotion/math/Color.cpp
-        src/chrononmotion/math/Euler.cpp
-        src/chrononmotion/math/Interpolant.cpp
-        src/chrononmotion/math/Line3.cpp
-        src/chrononmotion/math/MathUtils.cpp
-        src/chrononmotion/math/Matrix3.cpp
-        src/chrononmotion/math/Matrix4.cpp
-        src/chrononmotion/math/Plane.cpp
-        src/chrononmotion/math/Ray.cpp
-        src/chrononmotion/math/Frustum.cpp
-        src/chrononmotion/math/Quaternion.cpp
-        src/chrononmotion/math/Sphere.cpp
-        src/chrononmotion/math/Spherical.cpp
-        src/chrononmotion/math/Triangle.cpp
-        src/chrononmotion/math/Vector2.cpp
-        src/chrononmotion/math/Vector3.cpp
-        src/chrononmotion/math/Vector4.cpp
-        # core â€” the node/transform graph
-        src/chrononmotion/core/BufferGeometry.cpp
-        src/chrononmotion/core/EventDispatcher.cpp
-        src/chrononmotion/core/Object3D.cpp
-        # assets â€” dependency-free, explicit-buffer glTF input
-        src/chrononmotion/assets/GltfReader.cpp
-        # geometries â€” the primitives a Mesh can carry
-        src/chrononmotion/geometries/BoxGeometry.cpp
-        src/chrononmotion/geometries/PlaneGeometry.cpp
-        src/chrononmotion/geometries/SphereGeometry.cpp
-        # animation â€” clips and keyframe tracks
-        src/chrononmotion/animation/AnimationClip.cpp
-        src/chrononmotion/animation/KeyframeTrack.cpp
-        # materials â€” the abstract material base only
-        src/chrononmotion/materials/Material.cpp
-        # objects
-        src/chrononmotion/objects/Group.cpp
-        src/chrononmotion/objects/Mesh.cpp
-        src/chrononmotion/objects/ObjectWithMaterials.cpp
-        # cameras
-        src/chrononmotion/cameras/Camera.cpp
-        src/chrononmotion/cameras/OrthographicCamera.cpp
-        src/chrononmotion/cameras/PerspectiveCamera.cpp
-        # scenes
-        src/chrononmotion/scenes/Scene.cpp
-        # motion â€” the layer/transform/timeline/camera model Chronon samples from
-        src/chrononmotion/motion/Easing.cpp
-        src/chrononmotion/motion/Transform.cpp
-        src/chrononmotion/motion/Layer.cpp
-        src/chrononmotion/motion/MotionScene.cpp
-        src/chrononmotion/motion/SceneExport.cpp
-        src/chrononmotion/motion/SceneImport.cpp
-        src/chrononmotion/motion/Interaction.cpp
-        src/chrononmotion/motion/RigRetarget.cpp
-        src/chrononmotion/motion/MotionPath.cpp
-        src/chrononmotion/motion/CameraTrajectory.cpp
-        src/chrononmotion/motion/MotionPlane.cpp
-        src/chrononmotion/motion/CameraRig.cpp
-        src/chrononmotion/motion/CameraFraming.cpp
-        src/chrononmotion/motion/CameraValidation.cpp
-        src/chrononmotion/motion/CameraMotion.cpp
-        src/chrononmotion/motion/CameraRecipe.cpp
-        src/chrononmotion/motion/CameraMotionRecipeRegistry.cpp
-        src/chrononmotion/motion/CameraSequence.cpp
-        src/chrononmotion/motion/CameraPanelChoreography.cpp
-        src/chrononmotion/motion/CameraFocusSequence.cpp
-        src/chrononmotion/motion/TitleCameraRecipe.cpp
-        src/chrononmotion/motion/CameraShake.cpp
-        src/chrononmotion/motion/Lighting.cpp
-        src/chrononmotion/motion/AuthoringPolicy.cpp
-        src/chrononmotion/motion/Procedural.cpp
-        src/chrononmotion/motion/Constraints.cpp
-        src/chrononmotion/motion/RigGraph.cpp
-        src/chrononmotion/motion/RigDrivers.cpp
-        src/chrononmotion/motion/RigDeformers.cpp
-        src/chrononmotion/motion/RigBaking.cpp
-        src/chrononmotion/motion/RigProgram.cpp
-        src/chrononmotion/motion/RigOperators.cpp
-        src/chrononmotion/motion/OfflineBaking.cpp
-        src/chrononmotion/motion/SvgPathParser.cpp
-        # presets â€” one translation unit per family, plus the shared vocabulary
-        src/chrononmotion/motion/Presets_Common.cpp
-        src/chrononmotion/motion/Presets_Place.cpp
-        src/chrononmotion/motion/Presets_Transform.cpp
-        src/chrononmotion/motion/Presets_Motion.cpp
-        src/chrononmotion/motion/Presets_Camera.cpp
-        src/chrononmotion/motion/Presets_Environment.cpp
-        # curves
-        src/chrononmotion/extras/core/Curve.cpp
-        src/chrononmotion/extras/core/CurvePath.cpp
-        src/chrononmotion/extras/core/Path.cpp
-        src/chrononmotion/extras/curves/CatmullRomCurve3.cpp
-        src/chrononmotion/extras/curves/CubicBezierCurve.cpp
-        src/chrononmotion/extras/curves/CubicBezierCurve3.cpp
-        src/chrononmotion/extras/curves/EllipseCurve.cpp
-        src/chrononmotion/extras/curves/LineCurve.cpp
-        src/chrononmotion/extras/curves/QuadraticBezierCurve.cpp
-        src/chrononmotion/extras/curves/QuadraticBezierCurve3.cpp
-        src/chrononmotion/extras/curves/SplineCurve.cpp)
-
-add_library(ChrononMotion::chrononmotion ALIAS chrononmotion)
-# ChrononMotion's retained threepp sources use translation-unit-local scratch
-# names and must not be merged by a parent project's global unity setting.
-set_target_properties(chrononmotion PROPERTIES UNITY_BUILD OFF)
-
-# The opt-in adapter is an offline authoring executable boundary, never a
-# dependency of the lean ChrononMotion library or Chronon3D render path.
-if(CHRONON3D_INCLUDE_DIR)
-    if(NOT EXISTS "${CHRONON3D_INCLUDE_DIR}/chronon3d/render_plan/render_plan.hpp")
-        message(FATAL_ERROR "CHRONON3D_INCLUDE_DIR must name Chronon3D's include root")
-    endif()
-    add_library(chrononmotion_chronon3d_adapter STATIC
-        src/chrononmotion/motion/RenderPlanLowering.cpp
-        src/chrononmotion/motion/RenderPlanEmission.cpp
-        src/chrononmotion/motion/RenderPlanEmissionCommon.cpp
-        src/chrononmotion/motion/RenderPlanEmissionValidation.cpp)
-    target_link_libraries(chrononmotion_chronon3d_adapter PUBLIC chrononmotion)
-    target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_INCLUDE_DIR}")
-    if(DEFINED CHRONON3D_DEPENDENCY_INCLUDE_DIR)
-        target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_DEPENDENCY_INCLUDE_DIR}")
-    endif()
-    target_compile_features(chrononmotion_chronon3d_adapter PUBLIC cxx_std_20)
-    target_compile_options(chrononmotion_chronon3d_adapter PRIVATE -Wall -Wextra)
-    target_compile_definitions(chrononmotion_chronon3d_adapter PUBLIC CHRONONMOTION_HAS_CHRONON3D_ADAPTER=1)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_chronon3d_adapter PRIVATE -Werror)
-    endif()
-
-    # The showreel generator: the one place in this tree that turns a Motion
-    # scene into a renderable `chronon.render-plan.v2` file. A tool, never part
-    # of the library or of Chronon3d's runtime.
-    add_executable(chrononmotion_plan_showreel tools/plan_showreel.cpp)
-    target_link_libraries(chrononmotion_plan_showreel PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
-    target_compile_features(chrononmotion_plan_showreel PRIVATE cxx_std_20)
-    target_compile_options(chrononmotion_plan_showreel PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_plan_showreel PRIVATE -Werror)
-    endif()
-
-    # The word rack-focus generator: the reference Screenrecording proof of
-    # item 3, one place authors the united camera+DoF scene and lowers it V3.
-    add_executable(chrononmotion_plan_word_rack_focus tools/plan_word_rack_focus.cpp)
-    target_link_libraries(chrononmotion_plan_word_rack_focus PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
-    target_compile_features(chrononmotion_plan_word_rack_focus PRIVATE cxx_std_20)
-    target_compile_options(chrononmotion_plan_word_rack_focus PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_plan_word_rack_focus PRIVATE -Werror)
-    endif()
-
-    # The map flyover generator: the geospatial counterpart of the showreel, and
-    # the only place a georeferenced Motion scene becomes a renderable plan.
-    add_executable(chrononmotion_map_flyover tools/plan_map_flyover.cpp)
-    target_link_libraries(chrononmotion_map_flyover PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
-    target_compile_features(chrononmotion_map_flyover PRIVATE cxx_std_20)
-    target_compile_options(chrononmotion_map_flyover PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_map_flyover PRIVATE -Werror)
-    endif()
-endif()
-
-if(CHRONONMOTION_BUILD_BENCHMARKS)
-    add_executable(chrononmotion_eval_bench bench/eval_bench.cpp)
-    target_link_libraries(chrononmotion_eval_bench PRIVATE chrononmotion)
-    target_compile_features(chrononmotion_eval_bench PRIVATE cxx_std_20)
-endif()
-
-target_include_directories(chrononmotion PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>)
-# Internal translation-unit headers (JsonDom, JsonWriter): shared by motion
-# sources across directories, never installed, never public API.
-target_include_directories(chrononmotion PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/chrononmotion/motion)
-
-target_compile_features(chrononmotion PUBLIC cxx_std_20)
-
-target_compile_options(chrononmotion PRIVATE -Wall -Wextra)
-if(CHRONONMOTION_WERROR)
-    target_compile_options(chrononmotion PRIVATE -Werror)
-endif()
-
-if(CHRONONMOTION_BUILD_TESTS)
-    enable_testing()
-    add_executable(chrononmotion_rig tests/motion_rig.cpp)
-    target_link_libraries(chrononmotion_rig PRIVATE chrononmotion)
-    target_compile_options(chrononmotion_rig PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_rig PRIVATE -Werror)
-    endif()
-    add_test(NAME chrononmotion_rig COMMAND chrononmotion_rig)
-    add_executable(chrononmotion_two_bone tests/motion_two_bone.cpp)
-    target_link_libraries(chrononmotion_two_bone PRIVATE chrononmotion)
-    target_compile_options(chrononmotion_two_bone PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_two_bone PRIVATE -Werror)
-    endif()
-    add_test(NAME chrononmotion_two_bone COMMAND chrononmotion_two_bone)
-    add_executable(chrononmotion_rig_program tests/motion_rig_program.cpp)
-    target_link_libraries(chrononmotion_rig_program PRIVATE chrononmotion)
-    target_compile_options(chrononmotion_rig_program PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_rig_program PRIVATE -Werror)
-    endif()
-    add_test(NAME chrononmotion_rig_program COMMAND chrononmotion_rig_program)
-    add_executable(chrononmotion_rig_pipeline tests/motion_rig_pipeline.cpp)
-    target_link_libraries(chrononmotion_rig_pipeline PRIVATE chrononmotion)
-    target_compile_options(chrononmotion_rig_pipeline PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_rig_pipeline PRIVATE -Werror)
-    endif()
-    add_test(NAME chrononmotion_rig_pipeline COMMAND chrononmotion_rig_pipeline)
-    add_executable(chrononmotion_rig_canaries tests/motion_rig_canaries.cpp)
-    target_link_libraries(chrononmotion_rig_canaries PRIVATE chrononmotion)
-    target_compile_options(chrononmotion_rig_canaries PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_rig_canaries PRIVATE -Werror)
-    endif()
-    add_test(NAME chrononmotion_rig_canaries COMMAND chrononmotion_rig_canaries --all)
-    foreach(_rig_case fk_arm two_bone_ik eight_bone_snake pole_knee ik_reach_limits fk_ik_switch
-            space_switch aim_turret rotation_limit stretch_arm spline_tail secondary_tail svg_rigid svg_puppet
-            svg_lattice skin_mesh pose_mixer controller_joystick gltf_skeleton mega_character)
-        add_test(NAME chrononmotion_rig_${_rig_case} COMMAND chrononmotion_rig_canaries --case ${_rig_case})
-    endforeach()
-    add_executable(chrononmotion_rig_performance tests/motion_rig_performance.cpp)
-    target_link_libraries(chrononmotion_rig_performance PRIVATE chrononmotion)
-    target_compile_options(chrononmotion_rig_performance PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_rig_performance PRIVATE -Werror)
-    endif()
-    add_test(NAME chrononmotion_rig_performance COMMAND chrononmotion_rig_performance)
-
-    add_executable(chrononmotion_smoke tests/motion_smoke.cpp)
-    target_link_libraries(chrononmotion_smoke PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_smoke COMMAND chrononmotion_smoke)
-
-    # The motion model: value primitives, the evaluated hierarchy, the 2.5D view
-    # and the camera rig, and finally the canary scene the presets are built for.
-    add_executable(chrononmotion_primitives tests/motion_primitives.cpp)
-    target_link_libraries(chrononmotion_primitives PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_primitives COMMAND chrononmotion_primitives)
-
-    add_executable(chrononmotion_timeline tests/motion_timeline.cpp)
-    target_link_libraries(chrononmotion_timeline PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_timeline COMMAND chrononmotion_timeline)
-
-    add_executable(chrononmotion_view tests/motion_view.cpp)
-    target_link_libraries(chrononmotion_view PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_view COMMAND chrononmotion_view)
-
-    add_executable(chrononmotion_presets tests/motion_presets.cpp)
-    target_link_libraries(chrononmotion_presets PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_presets COMMAND chrononmotion_presets)
-
-    add_executable(chrononmotion_camera_v1 tests/motion_camera_v1.cpp)
-    target_link_libraries(chrononmotion_camera_v1 PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_camera_v1 COMMAND chrononmotion_camera_v1)
-
-    add_executable(chrononmotion_camera_focus_sequence tests/motion_camera_focus_sequence.cpp)
-    target_link_libraries(chrononmotion_camera_focus_sequence PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_camera_focus_sequence COMMAND chrononmotion_camera_focus_sequence)
-
-    add_executable(chrononmotion_camera_trajectory tests/motion_camera_trajectory.cpp)
-    target_link_libraries(chrononmotion_camera_trajectory PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_camera_trajectory COMMAND chrononmotion_camera_trajectory)
-
-    add_executable(chrononmotion_camera_shake tests/motion_camera_shake.cpp)
-    target_link_libraries(chrononmotion_camera_shake PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_camera_shake COMMAND chrononmotion_camera_shake)
-
-    add_executable(chrononmotion_camera_framing tests/motion_camera_framing.cpp)
-    target_link_libraries(chrononmotion_camera_framing PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_camera_framing COMMAND chrononmotion_camera_framing)
-
-    # Eye-trace continuity, screen-space camera math, analytic pose derivatives
-    # and multi-aspect auto-reframing.
-    add_executable(chrononmotion_eye_trace tests/motion_eye_trace.cpp)
-    target_link_libraries(chrononmotion_eye_trace PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_eye_trace COMMAND chrononmotion_eye_trace)
-
-    add_executable(chrononmotion_export_camera_v1 tools/export_camera_trajectories.cpp)
-    target_link_libraries(chrononmotion_export_camera_v1 PRIVATE chrononmotion)
-
-    # The innovation animations: eye-trace handoff/director, multi-aspect
-    # reframe triplet and the dolly-zoom derivative map, self-certifying JSON.
-    add_executable(chrononmotion_export_camera_innovations tools/export_camera_innovations.cpp)
-    target_link_libraries(chrononmotion_export_camera_innovations PRIVATE chrononmotion)
-
-    # The preview renderer: software-rasterized frame sequences for the four
-    # innovation animations, for ffmpeg to turn into shareable MP4s.
-    add_executable(chrononmotion_render_innovation_previews tools/render_innovation_previews.cpp)
-    target_link_libraries(chrononmotion_render_innovation_previews PRIVATE chrononmotion)
-
-    add_executable(chrononmotion_canary tests/motion_canary.cpp)
-    target_link_libraries(chrononmotion_canary PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_canary COMMAND chrononmotion_canary)
-
-    add_executable(chrononmotion_foundation tests/motion_foundation.cpp)
-    target_link_libraries(chrononmotion_foundation PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_foundation COMMAND chrononmotion_foundation)
-
-    # Motion kinematics: sub-frame time, easing derivative, per-channel velocity
-    # and the scene-level motion API.
-    add_executable(chrononmotion_kinematics tests/motion_kinematics.cpp)
-    target_link_libraries(chrononmotion_kinematics PRIVATE chrononmotion)
-    add_test(NAME chrononmotion_kinematics COMMAND chrononmotion_kinematics)
-
-    # The motion-authoring gaps that were open against After Effects: the track
-    # modifier chain (loop/posterize/delay/link), the keyframed time remap, lens
-    # data on the camera rig, mesh layers and the scene JSON export.
-    add_executable(chrononmotion_authoring tests/motion_authoring.cpp)
-    target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion)
-    if(CHRONON3D_INCLUDE_DIR)
-        target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion_chronon3d_adapter)
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíó¿uN‹Z–‹­¦ëeŠw¬Õµ…­•}µ¥¹¥µÕµ}É•ÅÕ¥É•¡YIM%=8€Ì¸ÈÀ¤((Œ¡É½¹½¹5½Ñ¥½¸ƒŠPÑ¡”µ½Ñ¥½¸µ•¹¥¹”™½É¬½˜Ñ¡É••ÁÀ¸(Œ(ŒUÁÍÑÉ•…´Ñ¡É••ÁÀ‰Õ¥±‘Ì„0½YÕ±­…¸É•¹‘•É•È°„İ¥¹‘½İ¥¹œ™É½¹Ñ•¹°„Á¡åÍ¥Ì(Œ…¹Í•¹Í½ÈÍÑ…¬°„±½…‘•Èé½¼…¹„AåÑ¡½¸µ½‘Õ±”¸Q¡¥ÌÑÉ•”­••ÁÌÑ¡”(ŒÍ•¹”µÉ…Á ½µ…Ñ ½…¹¥µ…Ñ¥½¸½É”…¹‘É½ÁÌÑ¡”É•ÍĞ°Í¼Ñ¡”‰Õ¥±¥Ì„Í¥¹±”(Œ¡•…‘•Èµ½¹±äµ‘•Á•¹‘•¹äµ™É•”ÍÑ…Ñ¥Œ±¥‰É…Éäİ¥Ñ ¹¼Ñ¡¥ÉµÁ…ÉÑä™•Ñ …Ğ(Œ½¹™¥ÕÉ”Ñ¥µ”¸)ÁÉ½©•Ğ¡¡É½¹½¹5½Ñ¥½¸(€€€€€€€YIM%=8€À¸Ä¸À(€€€€€€€MI%AQ%=8€‰•Ñ•Éµ¥¹¥ÍÑ¥Œµ½Ñ¥½¸½ÑÉ…¹Í™½É´•¹¥¹”™½È¡É½¹½¸ˆ(€€€€€€€19ULa`¤()¥˜¡9=P5-}MeMQ5}95MQIEU0€‰1¥¹Õàˆ¤(€€€µ•ÍÍ…”¡Q1}II=H€‰¡É½¹½¹5½Ñ¥½¸¥Ì1¥¹Õàµ½¹±äˆ¤)•¹‘¥˜ ¤()½ÁÑ¥½¸¡!I=9=95=Q%=9}	U%1}QMQL€‰	Õ¥±Ñ¡”¡É½¹½¹5½Ñ¥½¸Íµ½­”Ñ•ÍÑÌˆ€‘íAI=)Q}%M}Q=A}1Y1ô¤)½ÁÑ¥½¸¡!I=9=95=Q%=9}	U%1}	9!5I-L€‰	Õ¥±Ñ¡”ÍÑ…¹‘…±½¹”•Ù…±Õ…Ñ¥½¸‰•¹¡µ…É¬ˆ=¤)½ÁÑ¥½¸¡!I=9=95=Q%=9}]II=H€‰QÕÉ¸½µÁ¥±•Èİ…É¹¥¹Ì¥¹Ñ¼•ÉÉ½ÉÌˆ=¤)½ÁÑ¥½¸¡!I=9=95=Q%=9}	U%1}I9H€‰	Õ¥±Ñ¡”½™™ÍÉ••¸0É•¹‘•Èµ½‘Õ±”€¡•áÁ±¥¥Ğ½ÁĞµ¥¸ì¡•…‘±•ÍÌ½É”¥ÌÑ¡”‘•™…Õ±Ğ¤ˆ=¤)Í•Ğ¡!I=9=8Í}%91U}%H€ˆˆ!AQ €‰=ÁÑ¥½¹…°Í¥‰±¥¹œ¡É½¹½¸Í¥¹±Õ‘”É½½Ğ™½È‰Õ¥±‘¥¹œÑ¡”½™™±¥¹”I•¹‘•ÉA±…¸…‘…ÁÑ•Èˆ¤)Í•Ğ¡!I=9=8Í}A99e}%91U}%H€ˆˆ!AQ €‰=ÁÑ¥½¹…°¡É½¹½¸Í‘•Á•¹‘•¹ä¥¹±Õ‘”É½½Ğˆ¤()¥˜¡AI=)Q}%M}Q=A}1Y099=P5-}	U%1}QeA99=P5-}=9%UIQ%=9}QeAL¤(€€€Í•Ğ¡5-}	U%1}QeAI•±•…Í”!MQI%9€‰	Õ¥±ÑåÁ”ˆ=I¤)•¹‘¥˜ ¤()…‘‘}±¥‰É…Éä¡¡É½¹½¹µ½Ñ¥½¸MQQ%(€€€€€€€€Œµ…Ñ ƒŠPÑ¡”ÑÉ…¹Í™½É´½ÕÉÙ”™½Õ¹‘…Ñ¥½¸(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½	½àÈ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½	½àÌ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½½±½È¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½Õ±•È¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½%¹Ñ•ÉÁ½±…¹Ğ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½1¥¹”Ì¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½5…Ñ¡UÑ¥±Ì¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½5…ÑÉ¥àÌ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½5…ÑÉ¥àĞ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½A±…¹”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½I…ä¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½ÉÕÍÑÕ´¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½EÕ…Ñ•É¹¥½¸¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½MÁ¡•É”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½MÁ¡•É¥…°¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½QÉ¥…¹±”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½Y•Ñ½ÈÈ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½Y•Ñ½ÈÌ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ ½Y•Ñ½ÈĞ¹ÁÀ(€€€€€€€€Œ½É”ƒŠPÑ¡”¹½‘”½ÑÉ…¹Í™½É´É…Á (€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½½É”½	Õ™™•É•½µ•ÑÉä¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½½É”½Ù•¹Ñ¥ÍÁ…Ñ¡•È¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½½É”½=‰©•ĞÍ¹ÁÀ(€€€€€€€€Œ…ÍÍ•ÑÌƒŠP‘•Á•¹‘•¹äµ™É•”°•áÁ±¥¥Ğµ‰Õ™™•È±Q¥¹ÁÕĞ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½…ÍÍ•ÑÌ½±Ñ™I•…‘•È¹ÁÀ(€€€€€€€€Œ•½µ•ÑÉ¥•ÌƒŠPÑ¡”ÁÉ¥µ¥Ñ¥Ù•Ì„5•Í …¸…ÉÉä(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•½µ•ÑÉ¥•Ì½	½á•½µ•ÑÉä¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•½µ•ÑÉ¥•Ì½A±…¹••½µ•ÑÉä¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•½µ•ÑÉ¥•Ì½MÁ¡•É••½µ•ÑÉä¹ÁÀ(€€€€€€€€Œ…¹¥µ…Ñ¥½¸ƒŠP±¥ÁÌ…¹­•å™É…µ”ÑÉ…­Ì(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½…¹¥µ…Ñ¥½¸½¹¥µ…Ñ¥½¹±¥À¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½…¹¥µ…Ñ¥½¸½-•å™É…µ•QÉ…¬¹ÁÀ(€€€€€€€€Œµ…Ñ•É¥…±ÌƒŠPÑ¡”…‰ÍÑÉ…Ğµ…Ñ•É¥…°‰…Í”½¹±ä(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ…Ñ•É¥…±Ì½5…Ñ•É¥…°¹ÁÀ(€€€€€€€€Œ½‰©•ÑÌ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½½‰©•ÑÌ½É½ÕÀ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½½‰©•ÑÌ½5•Í ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½½‰©•ÑÌ½=‰©•Ñ]¥Ñ¡5…Ñ•É¥…±Ì¹ÁÀ(€€€€€€€€Œ…µ•É…Ì(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½…µ•É…Ì½…µ•É„¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½…µ•É…Ì½=ÉÑ¡½É…Á¡¥…µ•É„¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½…µ•É…Ì½A•ÉÍÁ•Ñ¥Ù•…µ•É„¹ÁÀ(€€€€€€€€ŒÍ•¹•Ì(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½Í•¹•Ì½M•¹”¹ÁÀ(€€€€€€€€Œµ½Ñ¥½¸ƒŠPÑ¡”±…å•È½ÑÉ…¹Í™½É´½Ñ¥µ•±¥¹”½…µ•É„µ½‘•°¡É½¹½¸Í…µÁ±•Ì™É½´(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…Í¥¹œ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½QÉ…¹Í™½É´¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½1…å•È¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½5½Ñ¥½¹M•¹”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½M•¹•áÁ½ÉĞ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½M•¹•%µÁ½ÉĞ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½%¹Ñ•É…Ñ¥½¸¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I¥I•Ñ…É•Ğ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½5½Ñ¥½¹A…Ñ ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…QÉ…©•Ñ½Éä¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½5½Ñ¥½¹A±…¹”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…I¥œ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…É…µ¥¹œ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…Y…±¥‘…Ñ¥½¸¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…5½Ñ¥½¸¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…I•¥Á”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…5½Ñ¥½¹I•¥Á•I•¥ÍÑÉä¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…M•ÅÕ•¹”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…A…¹•±¡½É•½É…Á¡ä¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…½ÕÍM•ÅÕ•¹”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½Q¥Ñ±•…µ•É…I•¥Á”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½…µ•É…M¡…­”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½1¥¡Ñ¥¹œ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½ÕÑ¡½É¥¹A½±¥ä¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½AÉ½•‘ÕÉ…°¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½½¹ÍÑÉ…¥¹ÑÌ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I¥É…Á ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I¥É¥Ù•ÉÌ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I¥•™½Éµ•ÉÌ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I¥	…­¥¹œ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I¥AÉ½É…´¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I¥=Á•É…Ñ½ÉÌ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½=™™±¥¹•	…­¥¹œ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½MÙA…Ñ¡A…ÉÍ•È¹ÁÀ(€€€€€€€€ŒÁÉ•Í•ÑÌƒŠP½¹”ÑÉ…¹Í±…Ñ¥½¸Õ¹¥ĞÁ•È™…µ¥±ä°Á±ÕÌÑ¡”Í¡…É•Ù½…‰Õ±…Éä(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½AÉ•Í•ÑÍ}½µµ½¸¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½AÉ•Í•ÑÍ}A±…”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½AÉ•Í•ÑÍ}QÉ…¹Í™½É´¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½AÉ•Í•ÑÍ}5½Ñ¥½¸¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½AÉ•Í•ÑÍ}…µ•É„¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½AÉ•Í•ÑÍ}¹Ù¥É½¹µ•¹Ğ¹ÁÀ(€€€€€€€€ŒÕÉÙ•Ì(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½½É”½ÕÉÙ”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½½É”½ÕÉÙ•A…Ñ ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½½É”½A…Ñ ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½ÕÉÙ•Ì½…ÑµÕ±±I½µÕÉÙ”Ì¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½ÕÉÙ•Ì½Õ‰¥	•é¥•ÉÕÉÙ”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½ÕÉÙ•Ì½Õ‰¥	•é¥•ÉÕÉÙ”Ì¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½ÕÉÙ•Ì½±±¥ÁÍ•ÕÉÙ”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½ÕÉÙ•Ì½1¥¹•ÕÉÙ”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½ÕÉÙ•Ì½EÕ…‘É…Ñ¥	•é¥•ÉÕÉÙ”¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½ÕÉÙ•Ì½EÕ…‘É…Ñ¥	•é¥•ÉÕÉÙ”Ì¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½•áÑÉ…Ì½ÕÉÙ•Ì½MÁ±¥¹•ÕÉÙ”¹ÁÀ¤()…‘‘}±¥‰É…Éä¡¡É½¹½¹5½Ñ¥½¸èé¡É½¹½¹µ½Ñ¥½¸1%L¡É½¹½¹µ½Ñ¥½¸¤(Œ¡É½¹½¹5½Ñ¥½¸ÌÉ•Ñ…¥¹•Ñ¡É••ÁÀÍ½ÕÉ•ÌÕÍ”ÑÉ…¹Í±…Ñ¥½¸µÕ¹¥Ğµ±½…°ÍÉ…Ñ (Œ¹…µ•Ì…¹µÕÍĞ¹½Ğ‰”µ•É•‰ä„Á…É•¹ĞÁÉ½©•ĞÌ±½‰…°Õ¹¥ÑäÍ•ÑÑ¥¹œ¸)Í•Ñ}Ñ…É•Ñ}ÁÉ½Á•ÉÑ¥•Ì¡¡É½¹½¹µ½Ñ¥½¸AI=AIQ%LU9%Qe}	U%1=¤((ŒQ¡”½ÁĞµ¥¸…‘…ÁÑ•È¥Ì…¸½™™±¥¹”…ÕÑ¡½É¥¹œ•á•ÕÑ…‰±”‰½Õ¹‘…Éä°¹•Ù•È„(Œ‘•Á•¹‘•¹ä½˜Ñ¡”±•…¸¡É½¹½¹5½Ñ¥½¸±¥‰É…Éä½È¡É½¹½¸ÍÉ•¹‘•ÈÁ…Ñ ¸)¥˜¡!I=9=8Í}%91U}%H¤(€€€¥˜¡9=Pa%MQL€ˆ‘í!I=9=8Í}%91U}%Iô½¡É½¹½¸Í½É•¹‘•É}Á±…¸½É•¹‘•É}Á±…¸¹¡ÁÀˆ¤(€€€€€€€µ•ÍÍ…”¡Q1}II=H€‰!I=9=8Í}%91U}%HµÕÍĞ¹…µ”¡É½¹½¸ÍÌ¥¹±Õ‘”É½½Ğˆ¤(€€€•¹‘¥˜ ¤(€€€…‘‘}±¥‰É…Éä¡¡É½¹½¹µ½Ñ¥½¹}¡É½¹½¸Í‘}…‘…ÁÑ•ÈMQQ%(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I•¹‘•ÉA±…¹1½İ•É¥¹œ¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I•¹‘•ÉA±…¹µ¥ÍÍ¥½¸¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I•¹‘•ÉA±…¹µ¥ÍÍ¥½¹½µµ½¸¹ÁÀ(€€€€€€€ÍÉŒ½¡É½¹½¹µ½Ñ¥½¸½µ½Ñ¥½¸½I•¹‘•ÉA±…¹µ¥ÍÍ¥½¹Y…±¥‘…Ñ¥½¸¹ÁÀ¤(€€€Ñ…É•Ñ}±¥¹­}±¥‰É…É¥•Ì¡¡É½¹½¹µ½Ñ¥½¹}¡É½¹½¸Í‘}…‘…ÁÑ•ÈAU	1%¡É½¹½¹µ½Ñ¥½¸¤(€€€Ñ…É•Ñ}¥¹±Õ‘•}‘¥É•Ñ½É¥•Ì¡¡É½¹½¹µ½Ñ¥½¹}¡É½¹½¸Í‘}…‘…ÁÑ•ÈMeMQ4AU	1%€ˆ‘í!I=9=8Í}%91U}%Iôˆ¤(€€€¥˜¡%9!I=9=8Í}A99~ıÖÚ$z{-®éÜj×ink_libraries(chrononmotion_authoring PRIVATE chrononmotion_chronon3d_adapter)
     endif()
     add_test(NAME chrononmotion_authoring COMMAND chrononmotion_authoring)
 
