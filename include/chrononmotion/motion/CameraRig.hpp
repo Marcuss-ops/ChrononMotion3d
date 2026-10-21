@@ -96,8 +96,6 @@ namespace chrononmotion::motion {
         CameraRig& setFocalLength(float millimetres);
         CameraRig& setRoll(float radians);
         CameraRig& setLegacyDefocusStrength(float strength);
-        [[deprecated("use setLegacyDefocusStrength; this is not a physical aperture")]]
-        CameraRig& setAperture(float strength) { return setLegacyDefocusStrength(strength); }
         CameraRig& setFocusDistance(float distance);
         CameraRig& setMaxBlur(float pixels);
         CameraRig& setFStop(float fStop);
@@ -112,8 +110,6 @@ namespace chrononmotion::motion {
         [[nodiscard]] float fov() const { return fov_; }
         [[nodiscard]] float roll() const { return roll_; }
         [[nodiscard]] float legacyDefocusStrength() const { return legacyDefocusStrength_; }
-        [[deprecated("use legacyDefocusStrength; this is not a physical aperture")]]
-        [[nodiscard]] float aperture() const { return legacyDefocusStrength_; }
         [[nodiscard]] float focusDistance() const { return focusDistance_; }
         [[nodiscard]] float maxBlur() const { return maxBlur_; }
         [[nodiscard]] float fStop() const { return fStop_; }
@@ -137,10 +133,6 @@ namespace chrononmotion::motion {
         [[nodiscard]] Track<float>& rollTrack() { return rollTrack_; }
         [[nodiscard]] Track<float>& legacyDefocusStrengthTrack() { return legacyDefocusStrengthTrack_; }
         [[nodiscard]] const Track<float>& legacyDefocusStrengthTrack() const { return legacyDefocusStrengthTrack_; }
-        [[deprecated("use legacyDefocusStrengthTrack; this is not a physical aperture")]]
-        [[nodiscard]] Track<float>& apertureTrack() { return legacyDefocusStrengthTrack_; }
-        [[deprecated("use legacyDefocusStrengthTrack; this is not a physical aperture")]]
-        [[nodiscard]] const Track<float>& apertureTrack() const { return legacyDefocusStrengthTrack_; }
         [[nodiscard]] Track<float>& focusDistanceTrack() { return focusDistanceTrack_; }
         [[nodiscard]] const Track<float>& focusDistanceTrack() const { return focusDistanceTrack_; }
         [[nodiscard]] Track<float>& maxBlurTrack() { return maxBlurTrack_; }

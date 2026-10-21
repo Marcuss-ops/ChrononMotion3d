@@ -816,18 +816,11 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             std::max<std::int64_t>(1, plan.canvas.duration.integral()));
         if (frameCount > 65536)
             throw std::invalid_argument("lowerToRenderPlan: resolved camera sample sequence exceeds 65536 frames");
-        plan.camera_samples = std::vector<chronon3d::render_plan::CameraSamplePlan>{};
-        plan.camera_samples->reserve(frameCount);
+        plan.camera_samples = bakeResolvedCameraSamples(*options.cameraRig, scene.fps(), frameCount,
+            resolvedOptions.camera->near, resolvedOptions.camera->far);
         bool sequenceUsesDof = resolvedOptions.camera->dof_enabled;
-        for (std::size_t frame = 0; frame < frameCount; ++frame) {
-            CameraPose pose = options.cameraRig->sample(static_cast<float>(frame) / scene.fps());
-            pose.hasTarget = false;
-            pose.roll = 0.f;
-            const auto camera = lowerCameraPose(
-                pose, resolvedOptions.camera->near, resolvedOptions.camera->far);
-            sequenceUsesDof = sequenceUsesDof || camera.dof_enabled;
-            plan.camera_samples->push_back({static_cast<double>(frame), camera});
-        }
+        for (const auto& sample : *plan.camera_samples)
+            sequenceUsesDof = sequenceUsesDof || sample.camera.dof_enabled;
         resolvedOptions.camera->dof_enabled = sequenceUsesDof;
         plan.camera = resolvedOptions.camera;
     }
@@ -1027,6 +1020,23 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
         camera.dof_highlight_gain = pose.highlightGain;
     }
     return camera;
+}
+
+std::vector<chronon3d::render_plan::CameraSamplePlan> bakeResolvedCameraSamples(
+    const CameraRig& rig, float fps, std::size_t frameCount, float nearPlane, float farPlane) {
+    if (!std::isfinite(fps) || fps <= 0.f)
+        throw std::invalid_argument("bakeResolvedCameraSamples: fps must be finite and positive");
+    if (frameCount == 0 || frameCount > 65536)
+        throw std::invalid_argument("bakeResolvedCameraSamples: frameCount must be in [1, 65536]");
+    std::vector<chronon3d::render_plan::CameraSamplePlan> samples;
+    samples.reserve(frameCount);
+    for (std::size_t frame = 0; frame < frameCount; ++frame) {
+        CameraPose pose = rig.sample(static_cast<float>(frame) / fps);
+        pose.hasTarget = false;
+        pose.roll = 0.f;
+        samples.push_back({static_cast<double>(frame), lowerCameraPose(pose, nearPlane, farPlane)});
+    }
+    return samples;
 }
 
 chronon3d::render_plan::RuntimeCameraSampleProvider makeCameraSampleProvider(
