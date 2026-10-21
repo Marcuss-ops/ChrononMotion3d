@@ -28,7 +28,10 @@ struct CameraValidationLayerReport {
 struct CameraValidationReport {
     bool passed{true};
     float targetCenterErrorPixels{0.f};
+    float maxLayerVisibility{0.f};
     float estimatedVisibleRatio{0.f};
+    float estimatedVisibleArea{0.f};
+    bool isEstimatedBlackFrame{true};
     std::vector<CameraValidationLayerReport> layers;
     std::vector<std::string> failures;
 };
@@ -42,6 +45,7 @@ public:
     CameraValidator& requireVisible(std::string name, float minVisibleRatio);
     CameraValidator& requireInsideSafeArea(std::string name, float margin01);
     CameraValidator& requireDepthOrder(std::vector<std::string> frontToBack);
+    CameraValidator& requireEstimatedFrameVisibility(float minVisibleRatio = 0.005f);
 
     [[nodiscard]] CameraValidationReport validate(const CameraPose& pose,
                                                    const Vector2& viewport) const;
@@ -56,6 +60,8 @@ private:
     std::vector<VisibleRule> visible_;
     std::vector<SafeAreaRule> safeArea_;
     std::vector<std::vector<std::string>> depthOrders_;
+    bool frameVisibilityEnabled_{false};
+    float minFrameVisibleRatio_{0.005f};
 };
 
 } // namespace chrononmotion::motion

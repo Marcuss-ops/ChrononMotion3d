@@ -148,9 +148,15 @@ int main() {
         .requireCentered("target", 3.f)
         .requireVisible("front", 0.95f)
         .requireInsideSafeArea("front", 0.02f)
-        .requireDepthOrder({"front", "back"});
+        .requireDepthOrder({"front", "back"})
+        .requireEstimatedFrameVisibility(0.005f);
     const auto validation = validator.validate(validationPose, {1920.f, 1080.f});
-    if (!validation.passed || validation.layers.size() != 3 || validation.targetCenterErrorPixels > 0.01f)
+    if (!validation.passed || validation.isEstimatedBlackFrame || validation.layers.size() != 3 ||
+        validation.targetCenterErrorPixels > 0.01f)
         throw std::runtime_error("CM3D geometric camera validation must accept centered, visible, ordered bounds");
+    CameraValidator emptyValidator;
+    emptyValidator.requireEstimatedFrameVisibility();
+    if (emptyValidator.validate(validationPose, {1920.f, 1080.f}).passed)
+        throw std::runtime_error("CM3D frame visibility gate must reject an empty estimated frame");
     return 0;
 }

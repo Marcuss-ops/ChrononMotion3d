@@ -54,6 +54,14 @@ CameraValidator& CameraValidator::requireDepthOrder(std::vector<std::string> fro
     return *this;
 }
 
+CameraValidator& CameraValidator::requireEstimatedFrameVisibility(float minVisibleRatio) {
+    if (!std::isfinite(minVisibleRatio) || minVisibleRatio < 0.f || minVisibleRatio > 1.f)
+        throw std::invalid_argument("CameraValidator::requireEstimatedFrameVisibility: ratio must be in [0, 1]");
+    frameVisibilityEnabled_ = true;
+    minFrameVisibleRatio_ = minVisibleRatio;
+    return *this;
+}
+
 CameraValidationReport CameraValidator::validate(const CameraPose& pose, const Vector2& viewport) const {
     if (!finite(pose.position) || !std::isfinite(pose.fov) || pose.fov <= 0.f || pose.fov >= 180.f ||
         !std::isfinite(viewport.x) || !std::isfinite(viewport.y) || viewport.x <= 0.f || viewport.y <= 0.f)
@@ -164,8 +172,18 @@ CameraValidationReport CameraValidator::validate(const CameraPose& pose, const V
         const float area = std::max(0.f, layer.maximum.x - layer.minimum.x) *
                            std::max(0.f, layer.maximum.y - layer.minimum.y);
         visibleArea += area * layer.visibleRatio;
+        report.maxLayerVisibility = std::max(report.maxLayerVisibility, layer.visibleRatio);
     }
+    report.estimatedVisibleArea = visibleArea;
     report.estimatedVisibleRatio = std::clamp(visibleArea / (viewport.x * viewport.y), 0.f, 1.f);
+    report.isEstimatedBlackFrame = visibleArea <= 0.f;
+    if (frameVisibilityEnabled_ && (report.isEstimatedBlackFrame ||
+                                    report.estimatedVisibleRatio < minFrameVisibleRatio_)) {
+        report.passed = false;
+        report.failures.push_back(report.isEstimatedBlackFrame
+            ? "estimated frame visibility is zero"
+            : "estimated frame visibility is below the configured threshold");
+    }
     return report;
 }
 
