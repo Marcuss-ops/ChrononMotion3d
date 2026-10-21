@@ -811,78 +811,25 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: temporal motion blur requires shutter_angle in (0, 360] and samples in [2, 64]");
         plan.temporal_motion_blur = blur;
     }
-    if (options.cameraRig && options.bakeCameraAnimation) {
-        const std::size_t last = plan.canvas.duration.integral() > 0
-            ? static_cast<std::size_t>(plan.canvas.duration.integral() - 1) : 0;
-        if (last >= 65536)
-            throw std::invalid_argument("lowerToRenderPlan: camera track exceeds the 65536 keyframe contract");
-        std::vector<chronon3d::render_plan::AnimationKeyframePlan> positionX, positionY, positionZ;
-        std::vector<chronon3d::render_plan::AnimationKeyframePlan> rotationX, rotationY, rotationZ;
-        std::vector<AnimationKeyframePlan> focusDistance, aperture, maxBlur;
-        std::vector<AnimationKeyframePlan> focalLength, fStop;
-        positionX.reserve(last + 1); positionY.reserve(last + 1); positionZ.reserve(last + 1);
-        rotationX.reserve(last + 1); rotationY.reserve(last + 1); rotationZ.reserve(last + 1);
-        const bool animateFocus = !options.cameraRig->focusDistanceTrack().empty();
-        const bool animateAperture = !options.cameraRig->legacyDefocusStrengthTrack().empty();
-        const bool animateMaxBlur = !options.cameraRig->maxBlurTrack().empty();
-        const bool animateFocalLength = !options.cameraRig->focalLengthTrack().empty();
-        const bool animateFStop = !options.cameraRig->fStopTrack().empty();
-        if (animateFocus) focusDistance.reserve(last + 1);
-        if (animateAperture) aperture.reserve(last + 1);
-        if (animateMaxBlur) maxBlur.reserve(last + 1);
-        if (animateFocalLength) focalLength.reserve(last + 1);
-        if (animateFStop) fStop.reserve(last + 1);
-        bool dofEnabled = resolvedOptions.camera->dof_enabled;
-        for (std::size_t frame = 0; frame <= last; ++frame) {
+    if (options.cameraRig && options.bakeResolvedCameraSamples) {
+        const std::size_t frameCount = static_cast<std::size_t>(
+            std::max<std::int64_t>(1, plan.canvas.duration.integral()));
+        if (frameCount > 65536)
+            throw std::invalid_argument("lowerToRenderPlan: resolved camera sample sequence exceeds 65536 frames");
+        plan.camera_samples = std::vector<chronon3d::render_plan::CameraSamplePlan>{};
+        plan.camera_samples->reserve(frameCount);
+        bool sequenceUsesDof = resolvedOptions.camera->dof_enabled;
+        for (std::size_t frame = 0; frame < frameCount; ++frame) {
             CameraPose pose = options.cameraRig->sample(static_cast<float>(frame) / scene.fps());
             pose.hasTarget = false;
             pose.roll = 0.f;
-            const auto camera = lowerCameraPose(pose, resolvedOptions.camera->near, resolvedOptions.camera->far);
-            dofEnabled = dofEnabled || camera.dof_enabled;
-            const chronon3d::Frame keyFrame{static_cast<std::int64_t>(frame)};
-            positionX.push_back(makePlanKeyframe(keyFrame, {camera.position[0]}));
-            positionY.push_back(makePlanKeyframe(keyFrame, {camera.position[1]}));
-            positionZ.push_back(makePlanKeyframe(keyFrame, {camera.position[2]}));
-            rotationX.push_back(makePlanKeyframe(keyFrame, {camera.rotation_deg[0]}));
-            rotationY.push_back(makePlanKeyframe(keyFrame, {camera.rotation_deg[1]}));
-            rotationZ.push_back(makePlanKeyframe(keyFrame, {camera.rotation_deg[2]}));
-            if (animateFocus)
-                focusDistance.push_back(makePlanKeyframe(keyFrame, {camera.dof_focus_distance}));
-            if (animateAperture)
-                aperture.push_back(makePlanKeyframe(keyFrame, {camera.dof_aperture}));
-            if (animateMaxBlur)
-                maxBlur.push_back(makePlanKeyframe(keyFrame, {camera.dof_max_blur}));
-            if (animateFocalLength)
-                focalLength.push_back(makePlanKeyframe(keyFrame, {camera.focal_length_mm}));
-            if (animateFStop)
-                fStop.push_back(makePlanKeyframe(keyFrame, {camera.f_stop}));
+            const auto camera = lowerCameraPose(
+                pose, resolvedOptions.camera->near, resolvedOptions.camera->far);
+            sequenceUsesDof = sequenceUsesDof || camera.dof_enabled;
+            plan.camera_samples->push_back({static_cast<double>(frame), camera});
         }
-        const bool sequenceUsesDof = dofEnabled || animateFocus || animateAperture || animateMaxBlur || animateFStop;
-        if (plan.camera) plan.camera->dof_enabled = sequenceUsesDof;
-        plan.camera_animation = std::vector<chronon3d::render_plan::CameraTrackPlan>{};
-        auto& tracks = *plan.camera_animation;
-        tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::PositionX, std::move(positionX), "linear", std::nullopt});
-        tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::PositionY, std::move(positionY), "linear", std::nullopt});
-        tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::PositionZ, std::move(positionZ), "linear", std::nullopt});
-        tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::RotationX, std::move(rotationX), "linear", std::nullopt});
-        tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::RotationY, std::move(rotationY), "linear", std::nullopt});
-        tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::RotationZ, std::move(rotationZ), "linear", std::nullopt});
-        std::vector<chronon3d::render_plan::AnimationKeyframePlan> fov;
-        fov.reserve(last + 1);
-        for (std::size_t frame = 0; frame <= last; ++frame)
-            fov.push_back(makePlanKeyframe(chronon3d::Frame{static_cast<std::int64_t>(frame)},
-                                           {options.cameraRig->sample(static_cast<float>(frame) / scene.fps()).fov}));
-        tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::FovDeg, std::move(fov), "linear", std::nullopt});
-        if (animateFocus)
-            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::FocusDistance, std::move(focusDistance), "linear", std::nullopt});
-        if (animateAperture)
-            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::Aperture, std::move(aperture), "linear", std::nullopt});
-        if (animateMaxBlur)
-            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::MaxBlur, std::move(maxBlur), "linear", std::nullopt});
-        if (animateFocalLength)
-            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::FocalLengthMM, std::move(focalLength), "linear", std::nullopt});
-        if (animateFStop)
-            tracks.push_back({chronon3d::render_plan::CameraPropertyPlan::FStop, std::move(fStop), "linear", std::nullopt});
+        resolvedOptions.camera->dof_enabled = sequenceUsesDof;
+        plan.camera = resolvedOptions.camera;
     }
     return plan;
 }

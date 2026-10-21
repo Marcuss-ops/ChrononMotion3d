@@ -1305,19 +1305,13 @@ void testTypedChronon3dLowering() {
     cameraImage.asset = "camera-asset";
     cameraOptions.contentLayers.emplace("22", cameraImage);
     const auto cameraPlan = lowerToRenderPlan(cameraScene, cameraOptions);
-    check(cameraPlan.camera && cameraPlan.camera_animation && cameraPlan.camera_animation->size() == 7,
-          "camera rig lowers to a typed base projection and dense camera tracks");
-    const auto findPositionZTrack = [](const auto& tracks) -> const chronon3d::render_plan::CameraTrackPlan* {
-        const auto found = std::find_if(tracks.begin(), tracks.end(), [](const auto& track) {
-            return track.property == chronon3d::render_plan::CameraPropertyPlan::PositionZ;
-        });
-        return found == tracks.end() ? nullptr : &*found;
-    };
-    const auto* cameraPositionZ = findPositionZTrack(*cameraPlan.camera_animation);
+    check(cameraPlan.camera && cameraPlan.camera_samples && cameraPlan.camera_samples->size() == 4,
+          "camera rig lowers to a typed base projection and resolved frame samples");
+    const auto* cameraPositionZ = &cameraPlan.camera_samples->back().camera;
     const auto& loweredContent = cameraPlan.layers.front();
     const auto& loweredPositionTrack = loweredContent.animation->tracks.front();
     check(cameraPositionZ && cameraPlan.camera->position[2] == 8.f &&
-          cameraPositionZ->keyframes.back().value.front() == 8.f,
+          cameraPositionZ->position[2] == 8.f,
           "camera position and its dense animation track mirror Motion depth into RenderPlan space");
     check(loweredContent.position_dimensions == 3 && loweredContent.position[2] == 12.f &&
           loweredPositionTrack.property == "position" &&
@@ -1398,7 +1392,7 @@ void testTypedChronon3dLowering() {
     unsupportedEffectPlan.layers.front().effects.back().kind = LayerPlan::EffectKindPlan::FractalNoise;
     check(!renderPlanEmissionProblem(unsupportedEffectPlan).empty(),
           "RenderPlan emission rejects effect types outside its explicit native subset");
-    styledImagePlan.camera_animation.reset();
+    styledImagePlan.camera_samples.reset();
     CameraPlan documentaryCamera;
     documentaryCamera.position = {0.f, 0.f, 850.f};
     documentaryCamera.rotation_deg = {0.f, 0.f, 0.f};
@@ -1598,36 +1592,22 @@ void testTypedChronon3dLowering() {
     RenderPlanLoweringOptions animatedDofOptions;
     animatedDofOptions.cameraRig = &animatedDofRig;
     const auto animatedDofPlan = lowerToRenderPlan(cameraOnlyScene, animatedDofOptions);
-    const auto findCameraTrack = [&](chronon3d::render_plan::CameraPropertyPlan property)
-        -> const chronon3d::render_plan::CameraTrackPlan* {
-        if (!animatedDofPlan.camera_animation) return nullptr;
-        const auto found = std::find_if(animatedDofPlan.camera_animation->begin(), animatedDofPlan.camera_animation->end(),
-            [property](const auto& track) { return track.property == property; });
-        return found == animatedDofPlan.camera_animation->end() ? nullptr : &*found;
-    };
-    const auto* focusTrack = findCameraTrack(chronon3d::render_plan::CameraPropertyPlan::FocusDistance);
-    const auto* apertureTrack = findCameraTrack(chronon3d::render_plan::CameraPropertyPlan::Aperture);
-    const auto* maxBlurTrack = findCameraTrack(chronon3d::render_plan::CameraPropertyPlan::MaxBlur);
-    check(animatedDofPlan.camera && animatedDofPlan.camera->dof_enabled && focusTrack && apertureTrack && maxBlurTrack,
-          "camera lowering enables and emits typed animated depth-of-field channels");
-    check(focusTrack && focusTrack->keyframes.size() > 1 &&
-          focusTrack->keyframes.front().value.front() == 480.f &&
-          focusTrack->keyframes.back().value.front() == 720.f &&
-          apertureTrack && apertureTrack->keyframes.front().value.front() == 0.04f &&
-          apertureTrack->keyframes.back().value.front() == 0.06f &&
-          maxBlurTrack && maxBlurTrack->keyframes.front().value.front() == 12.f &&
-          maxBlurTrack->keyframes.back().value.front() == 20.f,
-          "camera lowering samples focus, aperture, and maximum blur through their final authored values");
-    const auto animatedDofJson = nlohmann::json::parse(renderPlanToJson(animatedDofPlan));
-    bool emitsFocus = false, emitsAperture = false, emitsMaxBlur = false;
-    for (const auto& track : animatedDofJson["camera_animation"]["tracks"]) {
-        const auto property = track.at("property").get<std::string>();
-        emitsFocus = emitsFocus || property == "camera_focus_distance";
-        emitsAperture = emitsAperture || property == "camera_aperture";
-        emitsMaxBlur = emitsMaxBlur || property == "camera_max_blur";
+    check(animatedDofPlan.camera && animatedDofPlan.camera->dof_enabled &&
+          animatedDofPlan.camera_samples && animatedDofPlan.camera_samples->size() > 1,
+          "camera lowering enables and emits resolved depth-of-field samples");
+    if (animatedDofPlan.camera_samples && animatedDofPlan.camera_samples->size() > 1) {
+        const auto& first = animatedDofPlan.camera_samples->front().camera;
+        const auto& last = animatedDofPlan.camera_samples->back().camera;
+        check(first.dof_focus_distance == 480.f && last.dof_focus_distance == 720.f &&
+              first.dof_aperture == 0.04f && last.dof_aperture == 0.06f &&
+              first.dof_max_blur == 12.f && last.dof_max_blur == 20.f,
+              "resolved camera samples preserve focus, aperture, and blur over time");
     }
-    check(emitsFocus && emitsAperture && emitsMaxBlur,
-          "RenderPlan JSON preserves focus, aperture, and maximum-blur camera track names");
+    const auto animatedDofJson = nlohmann::json::parse(renderPlanToJson(animatedDofPlan));
+    check(animatedDofJson.contains("camera_samples") &&
+          animatedDofJson["camera_samples"].size() == animatedDofPlan.camera_samples->size() &&
+          !animatedDofJson.contains("camera_animation"),
+          "RenderPlan JSON emits complete camera samples without legacy property tracks");
     CameraRig dofHandoffRig(27, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     dofHandoffRig.setPosition({0.f, 0.f, -8.f}).setFocusDistance(480.f);
     dofHandoffRig.legacyDefocusStrengthTrack().add(0.f, 0.f).add(1.f, 0.06f);

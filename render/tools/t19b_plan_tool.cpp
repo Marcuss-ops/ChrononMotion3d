@@ -168,7 +168,7 @@ int main(int argc,char**argv) try {
         p["camera"]["fov_deg"]=fov;
         if(focusMode>=0) p["camera"]["dof"]["focus_distance"]=std::array<int,3>{550,1150,1750}[focusMode];
         if(!camera) {
-            p.erase("camera_animation");
+            p.erase("camera_samples");
             // The camera ablation must freeze its projected scene labels too.
             for(auto& layer:p["layers"])
                 if(layer.value("id","").size()>=8 &&
@@ -176,19 +176,21 @@ int main(int argc,char**argv) try {
                     layer.erase("animation");
         }
         else {
-            json tracks=json::array();
-            const auto addTrack=[&](const std::string& property,const auto& getter) {
-                json keys=json::array();
-                for(size_t i=0;i<cameraSamples.size();++i) keys.push_back({{"frame",i},{"value",getter(cameraSamples[i])}});
-                tracks.push_back({{"property",property},{"easing","linear"},{"keyframes",std::move(keys)}});
-            };
-            addTrack("camera_position_x",[](const CameraSample&s){return s.x;});
-            addTrack("camera_position_y",[](const CameraSample&s){return s.y;});
-            addTrack("camera_position_z",[](const CameraSample&s){return s.z;});
-            addTrack("camera_rotation_y",[](const CameraSample&s){return std::atan2(s.tx-s.x,s.tz-s.z)*180.f/3.14159265358979323846f;});
-            addTrack("camera_rotation_x",[](const CameraSample&s){return -std::atan2(s.ty-s.y,std::hypot(s.tx-s.x,s.tz-s.z))*180.f/3.14159265358979323846f;});
-            if(dof) addTrack("camera_focus_distance",[&](const CameraSample&s){return focusMode>=0?float(std::array<int,3>{550,1150,1750}[focusMode]):s.focus;});
-            p["camera_animation"]={{"tracks",std::move(tracks)}};
+            json resolved=json::array();
+            for(size_t i=0;i<cameraSamples.size();++i) {
+                const auto& sample=cameraSamples[i];
+                const float rotationY=std::atan2(sample.tx-sample.x,sample.tz-sample.z)*180.f/3.14159265358979323846f;
+                const float rotationX=-std::atan2(sample.ty-sample.y,std::hypot(sample.tx-sample.x,sample.tz-sample.z))*180.f/3.14159265358979323846f;
+                json resolvedCamera=p["camera"];
+                resolvedCamera["position"]={sample.x,sample.y,sample.z};
+                resolvedCamera["rotation_deg"]={rotationX,rotationY,0.f};
+                resolvedCamera["fov_deg"]=fov;
+                resolvedCamera["dof"]["enabled"]=dof;
+                if(focusMode>=0) resolvedCamera["dof"]["focus_distance"]=std::array<int,3>{550,1150,1750}[focusMode];
+                else resolvedCamera["dof"]["focus_distance"]=sample.focus;
+                resolved.push_back({{"frame",i},{"camera",std::move(resolvedCamera)}});
+            }
+            p["camera_samples"]=std::move(resolved);
         }
         p["output"]["path"]=filename.substr(0,filename.find(".v3"))+".mp4";
         writePlan(p,out/filename);

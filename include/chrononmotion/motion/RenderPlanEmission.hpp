@@ -17,7 +17,7 @@
 // mattes and validated effect-parameter tracks:
 //
 //   root     schema, version, job_id, canvas, budget (only when the caller
-//            expressed one), camera, camera_animation, layers, output
+//            expressed one), camera, camera_samples, layers, output
 //   layer    id, type, asset, source, color, size, position, scale, rotation,
 //            enable_3d, blend_mode, opacity, start_frame, duration_frames, text,
 //            style, animation, V3 video time_remap, masks, track matte, effect
