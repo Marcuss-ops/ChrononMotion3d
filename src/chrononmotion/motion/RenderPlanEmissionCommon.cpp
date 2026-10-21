@@ -7,7 +7,6 @@
 #include <string>
 
 namespace chrononmotion::motion::detail {
-using chronon3d::render_plan::CameraPropertyPlan;
 using chronon3d::render_plan::FitMode;
 using chronon3d::render_plan::LayerType;
 using chronon3d::render_plan::OutputFormat;
@@ -99,28 +98,7 @@ using chronon3d::render_plan::ShapeContentTypePlan;
             return "png";
         }
 
-        [[nodiscard]] const char* cameraPropertyName(CameraPropertyPlan property) {
 
-            switch (property) {
-                case CameraPropertyPlan::PositionX: return "camera_position_x";
-                case CameraPropertyPlan::PositionY: return "camera_position_y";
-                case CameraPropertyPlan::PositionZ: return "camera_position_z";
-                case CameraPropertyPlan::RotationX: return "camera_rotation_x";
-                case CameraPropertyPlan::RotationY: return "camera_rotation_y";
-                case CameraPropertyPlan::RotationZ: return "camera_rotation_z";
-                case CameraPropertyPlan::TargetX: return "camera_target_x";
-                case CameraPropertyPlan::TargetY: return "camera_target_y";
-                case CameraPropertyPlan::TargetZ: return "camera_target_z";
-                case CameraPropertyPlan::FovDeg: return "camera_fov_deg";
-                case CameraPropertyPlan::Zoom: return "camera_zoom";
-                case CameraPropertyPlan::FocalLengthMM: return "camera_focal_length_mm";
-                case CameraPropertyPlan::FocusDistance: return "camera_focus_distance";
-                case CameraPropertyPlan::Aperture: return "camera_aperture";
-                case CameraPropertyPlan::FStop: return "camera_f_stop";
-                case CameraPropertyPlan::MaxBlur: return "camera_max_blur";
-            }
-            return "camera_position_z";
-        }
 [[nodiscard]] std::optional<std::string> textSpanColorHex(const chronon3d::Color& color) {
             if (!std::isfinite(color.r) || !std::isfinite(color.g) || !std::isfinite(color.b) ||
                 !std::isfinite(color.a) || color.r < 0.f || color.r > 1.f ||

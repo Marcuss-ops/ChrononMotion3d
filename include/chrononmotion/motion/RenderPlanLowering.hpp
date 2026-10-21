@@ -45,8 +45,8 @@ namespace chrononmotion::motion {
         /// Optional rig supplies deterministic time-varying pose samples during lowering.
         const CameraRig* cameraRig{nullptr};
         /// Keep the rig's initial pose in `camera`, but leave time-varying camera
-        /// evaluation to a runtime CameraSampleProvider instead of baking dense tracks.
-        bool bakeCameraAnimation{true};
+        /// evaluation to a runtime CameraSampleProvider instead of serializing resolved samples.
+        bool bakeResolvedCameraSamples{true};
     };
 
     /// Evaluate the MotionScene at each output frame, compile each evaluated

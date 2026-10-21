@@ -1185,8 +1185,8 @@ namespace {
             checkNear(std::abs(orientationDot), 1.0, 1e-4,
                       "RenderPlan Euler angles preserve the rig's camera orientation");
         }
-        check(plan.camera_animation.has_value() && !plan.camera_animation->empty(),
-              "the emitted map plan carries animated orbit and dolly tracks");
+        check(plan.camera_samples.has_value() && !plan.camera_samples->empty(),
+              "the emitted map plan carries resolved orbit and dolly camera samples");
         const auto plateLayer = std::find_if(plan.layers.begin(), plan.layers.end(), [&](const auto& layer) {
             return layer.id == std::to_string(ids.basemap);
         });
@@ -1214,10 +1214,11 @@ namespace {
         const auto obliqueRendererRotation = chronon3d::math::camera_rotation_quat(
             chronon3d::Vec3{obliquePlan.rotation_deg[0], obliquePlan.rotation_deg[1],
                             obliquePlan.rotation_deg[2]});
-        // RenderPlan uses the inverse camera orientation at this boundary,
-        // paired with its mirrored depth. Compare in that documented space.
+        // RenderPlan mirrors depth and therefore conjugates the orientation
+        // by S=diag(1,1,-1); this is not a plain inverse for oblique poses.
         Quaternion expectedOrientation = resolved.orientation;
-        expectedOrientation.invert();
+        expectedOrientation.set(-expectedOrientation.x, -expectedOrientation.y,
+                                expectedOrientation.z, expectedOrientation.w);
         const float obliqueDot = obliqueRendererRotation.x * expectedOrientation.x +
             obliqueRendererRotation.y * expectedOrientation.y +
             obliqueRendererRotation.z * expectedOrientation.z +

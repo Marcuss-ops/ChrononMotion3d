@@ -23,6 +23,7 @@
 #include <array>
 #include <cstdint>
 #include <cmath>
+#include <limits>
 #include <cstddef>
 #include <initializer_list>
 #include <optional>
@@ -40,8 +41,6 @@ namespace chrononmotion::motion {
         using chronon3d::render_plan::AnimationPlan;
         using chronon3d::render_plan::AnimationTrackPlan;
         using chronon3d::render_plan::CameraPlan;
-        using chronon3d::render_plan::CameraPropertyPlan;
-        using chronon3d::render_plan::CameraTrackPlan;
         using chronon3d::render_plan::FitMode;
         using chronon3d::render_plan::InlineMeshPlan;
         using chronon3d::render_plan::LayerPlan;
@@ -1331,25 +1330,13 @@ namespace chrononmotion::motion {
             const std::string budget = budgetProblem(plan);
             if (!budget.empty()) return budget;
 
-            if (plan.camera_animation) {
-                for (const CameraTrackPlan& track : *plan.camera_animation) {
-                    if (!isKnownEasing(track.easing)) {
-                        return "camera track '" + std::string(cameraPropertyName(track.property)) +
-                               "' declares easing '" + track.easing +
-                               "', which the plan contract does not define";
-                    }
-                    if (track.bezier_curve) {
-                        for (float c : *track.bezier_curve) {
-                            if (!std::isfinite(c)) return "a camera track carries non-finite bezier curve values";
-                        }
-                    }
-                    for (const AnimationKeyframePlan& key : track.keyframes) {
-                        if (key.easing || key.interpolation || key.easing_xy || key.bezier_curve || key.spring ||
-                            key.roving || key.temporal_in_dx || key.temporal_in_dy ||
-                            key.temporal_out_dx || key.temporal_out_dy) {
-                            return "a camera track carries per-key timing overrides";
-                        }
-                    }
+            if (plan.camera_samples) {
+                double previous = -std::numeric_limits<double>::infinity();
+                for (const auto& sample : *plan.camera_samples) {
+                    if (!std::isfinite(sample.frame) || sample.frame <= previous ||
+                        sample.frame < -1000000.0 || sample.frame > 1000000.0)
+                        return "resolved camera sample frames must be finite, ordered, and in [-1000000, 1000000]";
+                    previous = sample.frame;
                 }
             }
 

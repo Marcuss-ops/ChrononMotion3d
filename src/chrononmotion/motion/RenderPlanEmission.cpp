@@ -37,8 +37,7 @@ namespace chrononmotion::motion {
         using chronon3d::render_plan::AnimationPlan;
         using chronon3d::render_plan::AnimationTrackPlan;
         using chronon3d::render_plan::CameraPlan;
-        using chronon3d::render_plan::CameraPropertyPlan;
-        using chronon3d::render_plan::CameraTrackPlan;
+        using chronon3d::render_plan::CameraSamplePlan;
         using chronon3d::render_plan::FitMode;
         using chronon3d::render_plan::InlineMeshPlan;
         using chronon3d::render_plan::LayerPlan;
@@ -1149,28 +1148,18 @@ namespace chrononmotion::motion {
             writer.endObject();
         }
 
-        void writeCameraAnimation(detail::Writer& writer, const std::vector<CameraTrackPlan>& tracks) {
-
-            writer.beginObject();
-            writer.key("tracks");
+        void writeCameraSamples(detail::Writer& writer, const std::vector<CameraSamplePlan>& samples) {
             writer.beginArray();
-            for (const CameraTrackPlan& track : tracks) {
+            for (const auto& sample : samples) {
                 writer.item();
                 writer.beginObject();
-                writer.key("property");
-                writer.token(cameraPropertyName(track.property));
-                writer.key("easing");
-                writer.text(track.easing);
-                if (track.bezier_curve) {
-                    writer.key("bezier_curve");
-                    writeFloats(writer, track.bezier_curve->data(), track.bezier_curve->size());
-                }
-                writer.key("keyframes");
-                writeKeyframes(writer, track.keyframes, true);
+                writer.key("frame");
+                writer.number(sample.frame);
+                writer.key("camera");
+                writeCamera(writer, sample.camera);
                 writer.endObject();
             }
             writer.endArray();
-            writer.endObject();
         }
 
     }// namespace
@@ -1236,9 +1225,9 @@ namespace chrononmotion::motion {
             writer.key("camera");
             writeCamera(writer, *plan.camera);
         }
-        if (plan.camera_animation) {
-            writer.key("camera_animation");
-            writeCameraAnimation(writer, *plan.camera_animation);
+        if (plan.camera_samples) {
+            writer.key("camera_samples");
+            writeCameraSamples(writer, *plan.camera_samples);
         }
 
         if (plan.lighting_rig) {
