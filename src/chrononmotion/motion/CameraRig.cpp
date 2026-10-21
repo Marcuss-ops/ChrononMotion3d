@@ -72,6 +72,21 @@ namespace chrononmotion::motion {
         return *this;
     }
 
+    CameraRig& CameraRig::setSensorWidth(float millimetres) {
+        if (!std::isfinite(millimetres) || millimetres < 1.f || millimetres > 100.f)
+            throw std::invalid_argument("CameraRig::setSensorWidth: sensor width must be in [1, 100] mm");
+        sensorWidth_ = millimetres;
+        return *this;
+    }
+
+    CameraRig& CameraRig::setLensShift(const Vector2& shift) {
+        if (!std::isfinite(shift.x) || !std::isfinite(shift.y) ||
+            std::abs(shift.x) > 1.f || std::abs(shift.y) > 1.f)
+            throw std::invalid_argument("CameraRig::setLensShift: normalized viewport shift must be in [-1, 1]");
+        lensShift_ = shift;
+        return *this;
+    }
+
     CameraRig& CameraRig::setRoll(float radians) {
 
         roll_ = radians;
@@ -365,6 +380,8 @@ namespace chrononmotion::motion {
         pose.target = targetTrack_.empty() ? target_ : targetTrack_.sample(seconds);
         pose.fov = fovTrack_.empty() ? fov_ : fovTrack_.sample(seconds);
         pose.focalLength = focalTrack_.empty() ? focalLength_ : focalTrack_.sample(seconds);
+        pose.sensorWidth = sensorWidth_;
+        pose.lensShift = lensShift_;
         pose.roll = rollTrack_.empty() ? roll_ : rollTrack_.sample(seconds);
         pose.legacyDefocusStrength = legacyDefocusStrengthTrack_.empty() ? legacyDefocusStrength_ : legacyDefocusStrengthTrack_.sample(seconds);
         pose.focusDistance = focusDistanceTrack_.empty() ? focusDistance_ : focusDistanceTrack_.sample(seconds);

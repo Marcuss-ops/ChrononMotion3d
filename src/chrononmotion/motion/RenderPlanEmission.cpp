@@ -1114,6 +1114,10 @@ namespace chrononmotion::motion {
                 writer.key("focal_length_mm");
                 writer.number(camera.focal_length_mm);
             }
+            writer.key("sensor_width_mm");
+            writer.number(camera.sensor_width_mm);
+            writer.key("lens_shift");
+            writeFloats(writer, camera.lens_shift, camera.lens_shift.size());
             if (camera.f_stop > 0.f) {
                 writer.key("f_stop");
                 writer.number(camera.f_stop);
