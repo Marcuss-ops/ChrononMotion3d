@@ -147,21 +147,6 @@ namespace chrononmotion::motion {
         return subjectRadius / std::max(horizontalTanHalf, 1e-6f);
     }
 
-    /// Optical distance that fits an axis-aligned subject rectangle in a
-    /// perspective view. `halfWidth` and `halfHeight` are world-space half
-    /// extents; `aspect` is viewport width / height. `fill01` is the fraction
-    /// of the frame each dimension may occupy (1 = edge-to-edge).
-    [[nodiscard]] inline float framingDistanceForBounds(float halfWidth, float halfHeight,
-                                                        float fovDegrees, float aspect,
-                                                        float fill01 = 0.78f) {
-        const float halfFovRad = fovDegrees * 0.5f * 3.14159265358979323846f / 180.f;
-        const float tanHalf = std::tan(std::max(halfFovRad, 1e-4f));
-        const float fitWidth = halfWidth * 2.f;
-        const float fitHeight = halfHeight * 2.f * aspect;
-        const float fit = std::max(fitWidth, fitHeight);
-        return fit / (2.f * tanHalf * aspect * fill01);
-    }
-
 }// namespace chrononmotion::motion
 
 #endif//CHRONONMOTION_MOTION_CAMERASCREENSPACE_HPP

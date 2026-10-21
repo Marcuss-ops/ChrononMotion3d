@@ -93,5 +93,13 @@ int main() {
     invalid.viewport.x = 0.f;
     if (solver.solve(invalid, base).ok)
         throw std::runtime_error("invalid viewport dimensions must be rejected");
+
+    CameraFramingRequest predictive = request;
+    predictive.strategy = CameraFramingStrategy::AimOnly;
+    predictive.targetVelocity = {100.f, 0.f, 0.f};
+    predictive.lookAheadSeconds = 0.5f;
+    const auto predicted = solver.solve(predictive, base);
+    if (std::abs(predicted.pose.target.x - 50.f) > 1e-4f)
+        throw std::runtime_error("look-ahead must frame the predicted target position");
     return 0;
 }
