@@ -34,6 +34,15 @@ namespace chrononmotion::motion::camera {
 
     void applyFocusSequence(CameraRig& rig, const FocusSequence& sequence, float fps);
 
+    /// Resolve and key optical-axis focus from the evaluated camera target.
+    void applyTargetFocusTrack(CameraRig& rig, int firstFrame, int lastFrame, float fps);
+
+    /// Rack focus across a world-Z plane while accounting for camera orientation.
+    /// The plane eases from startPlaneZ to endPlaneZ after transitionFrame.
+    void applyZPlaneFocusTrack(CameraRig& rig, int firstFrame, int lastFrame,
+                               int transitionFrame, float startPlaneZ, float endPlaneZ,
+                               float fps);
+
 }// namespace chrononmotion::motion::camera
 
 #endif//CHRONONMOTION_MOTION_CAMERAFOCUSSEQUENCE_HPP

@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/CameraFocusSequence.hpp"
 
+#include "chrononmotion/motion/CameraMotion.hpp"
 #include "chrononmotion/motion/Easing.hpp"
 
 #include <algorithm>
@@ -82,6 +83,46 @@ namespace chrononmotion::motion::camera {
                 .add(t1, axialFocusDistance(current, sequence), ease);
             rig.legacyDefocusStrengthTrack().add(t0, sequence.legacyDefocusStrength * 0.78f, ease)
                 .add(t1, sequence.legacyDefocusStrength, ease);
+        }
+    }
+
+    void applyTargetFocusTrack(CameraRig& rig, int firstFrame, int lastFrame, float fps) {
+        if (firstFrame < 0 || lastFrame < firstFrame || !(fps > 0.f) || !std::isfinite(fps))
+            throw std::invalid_argument("applyTargetFocusTrack: invalid frame range or fps");
+        for (int frame = firstFrame; frame <= lastFrame; ++frame) {
+            const CameraPose pose = rig.sample(at(frame, fps));
+            const float distance = CameraFocusResolver::resolveFocus(
+                CameraFocusMode::TargetDistance, pose, pose.target);
+            if (!std::isfinite(distance) || distance <= 0.f)
+                throw std::invalid_argument("applyTargetFocusTrack: target must stay in front of camera");
+            rig.focusDistanceTrack().add(at(frame, fps), distance, Easing::linear());
+        }
+    }
+
+    void applyZPlaneFocusTrack(CameraRig& rig, int firstFrame, int lastFrame,
+                               int transitionFrame, float startPlaneZ, float endPlaneZ,
+                               float fps) {
+        if (firstFrame < 0 || lastFrame < firstFrame || transitionFrame < firstFrame ||
+            transitionFrame > lastFrame || !(fps > 0.f) || !std::isfinite(fps) ||
+            !std::isfinite(startPlaneZ) || !std::isfinite(endPlaneZ))
+            throw std::invalid_argument("applyZPlaneFocusTrack: invalid range or plane");
+        const int travelFrames = std::max(1, lastFrame - transitionFrame);
+        for (int frame = firstFrame; frame <= lastFrame; ++frame) {
+            const float progress = frame <= transitionFrame ? 0.f :
+                std::clamp(static_cast<float>(frame - transitionFrame) /
+                           static_cast<float>(travelFrames), 0.f, 1.f);
+            const float eased = progress * progress * (3.f - 2.f * progress);
+            const float planeZ = startPlaneZ + (endPlaneZ - startPlaneZ) * eased;
+            const CameraPose pose = rig.sample(at(frame, fps));
+            Vector3 forward(0.f, 0.f, -1.f);
+            forward.applyQuaternion(pose.orientation);
+            forward.normalize();
+            if (std::fabs(forward.z) <= 1e-4f)
+                throw std::invalid_argument("applyZPlaneFocusTrack: optical axis cannot reach focus plane");
+            const float distance = (planeZ - pose.position.z) / forward.z;
+            if (!std::isfinite(distance) || distance <= 0.f)
+                throw std::invalid_argument("applyZPlaneFocusTrack: focus plane must stay in front of camera");
+            rig.focusDistanceTrack().add(at(frame, fps), distance, Easing::linear());
         }
     }
 }
