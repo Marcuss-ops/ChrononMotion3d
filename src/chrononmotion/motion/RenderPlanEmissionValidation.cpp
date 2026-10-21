@@ -1305,7 +1305,6 @@ namespace chrononmotion::motion {
                 const std::string camera = cameraProblem(*plan.camera);
                 if (!camera.empty()) return camera;
             }
-            if (plan.camera_shake) return "the plan carries camera shake";
             if (plan.lighting_rig) {
                 if (plan.schema != chronon3d::render_plan::kRenderPlanSchemaV3)
                     return "lighting rig requires RenderPlan V3";
