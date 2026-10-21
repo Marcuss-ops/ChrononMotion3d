@@ -41,6 +41,8 @@ struct CameraFramingRequest {
     CameraFramingStrategy strategy{CameraFramingStrategy::FitAll};
     Vector2 viewport{1920.f, 1080.f};
     Vector2 compositionPoint{0.5f, 0.5f};
+    Vector3 targetVelocity{0.f, 0.f, 0.f};
+    float lookAheadSeconds{0.f};
     float minDistance{10.f};
     float maxDistance{50000.f};
     float dollyDeadZone{0.02f};
@@ -66,6 +68,14 @@ struct CameraFramingResult {
 /// applies deterministic hysteresis between caller-provided evaluations.
 class CameraFramingSolver {
 public:
+    /// Optical distance required for a centered axis-aligned bound under the
+    /// supplied safe-area contract. Used by shot and sequence authoring so
+    /// they share the same framing law as multi-target solving.
+    [[nodiscard]] static float distanceForBounds(float halfWidth, float halfHeight,
+                                                 float halfDepth, float fovDegrees,
+                                                 const Vector2& viewport,
+                                                 const CameraSafeArea& safeArea);
+
     [[nodiscard]] CameraFramingResult solve(const CameraFramingRequest& request,
                                             const CameraPose& base,
                                             CameraFramingSession* session = nullptr) const;

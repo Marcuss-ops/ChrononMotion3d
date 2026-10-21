@@ -1,7 +1,7 @@
 #include "chrononmotion/motion/CameraRecipe.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
-#include "chrononmotion/motion/CameraScreenSpace.hpp"
+#include "chrononmotion/motion/CameraFraming.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -153,8 +153,9 @@ namespace chrononmotion::motion::camera {
             throw std::invalid_argument("referenceDistance: fov and viewport must be positive");
         if (!(frameFill > 0.f) || frameFill > 1.f)
             throw std::invalid_argument("referenceDistance: frameFill must be in (0, 1]");
-        return framingDistanceForBounds(subject.halfWidth, subject.halfHeight, fovDegrees,
-                                        viewport.x / viewport.y, frameFill);
+        const float margin = (1.f - frameFill) * 0.5f;
+        return CameraFramingSolver::distanceForBounds(subject.halfWidth, subject.halfHeight,
+            0.f, fovDegrees, viewport, CameraSafeArea{margin, margin, margin, margin});
     }
 
     Easing easingFor(const std::string& name) {
