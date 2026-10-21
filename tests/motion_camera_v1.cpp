@@ -13,6 +13,7 @@
 //   - Definitive Canary: camera_motion_torture_v1 (15-20s multi-subject continuous scene)
 
 #include "chrononmotion/chrononmotion.hpp"
+#include "chrononmotion/motion/CameraRecipe.hpp"
 #include "motion_check.hpp"
 
 #include <array>
@@ -47,6 +48,17 @@ namespace {
 
     void testCameraMotionPrimitives() {
         section("Camera Motion V1 — Primitives (ShotAnchor, CameraShot, CameraTransition, CameraFocusResolver)");
+
+        const auto recipes = chrononmotion::motion::camera::cameraMotionRecipeRegistry();
+        check(recipes.size() == 25, "CM3D owns all twenty-five named template camera recipes");
+        check(chrononmotion::motion::camera::findCameraMotionRecipe("camera_motion_title_slow_push") != nullptr,
+              "CM3D recipe registry resolves stable title preset IDs");
+        check(chrononmotion::motion::camera::findCameraMotionRecipe("camera_motion_web3d_slow_drift") != nullptr,
+              "CM3D recipe registry resolves stable Web3D preset IDs");
+        check(chrononmotion::motion::camera::findCameraMotionRecipe("camera_motion_title_slow_push")->durationFrames == 90,
+              "CM3D registry owns recipe timing data");
+        check(chrononmotion::motion::camera::findCameraMotionRecipe("camera_motion_unknown") == nullptr,
+              "CM3D recipe registry rejects unknown IDs");
 
         // ShotAnchor: world point vs layer anchor
         ShotAnchor worldAnchor = ShotAnchor::world(Vector3(10.f, 20.f, -5.f));
