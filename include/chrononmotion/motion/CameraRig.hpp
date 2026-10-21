@@ -37,6 +37,8 @@ namespace chrononmotion::motion {
 
         /// Focal length in millimetres. 0 means "not authored": `fov` wins.
         float focalLength{0.f};
+        float sensorWidth{36.f}; ///< Sensor gate width in millimetres.
+        Vector2 lensShift{0.f, 0.f}; ///< Normalized output viewport shift; +X right, +Y down.
 
         /// Lens data for depth of field. Each 0 means "not authored": the motion
         /// side carries the numbers and never interprets them, so a renderer
@@ -94,6 +96,8 @@ namespace chrononmotion::motion {
         CameraRig& setFov(float degrees);
         CameraRig& setAspect(float widthOverHeight);
         CameraRig& setFocalLength(float millimetres);
+        CameraRig& setSensorWidth(float millimetres);
+        CameraRig& setLensShift(const Vector2& normalizedViewportShift);
         CameraRig& setRoll(float radians);
         CameraRig& setLegacyDefocusStrength(float strength);
         CameraRig& setFocusDistance(float distance);
@@ -190,6 +194,8 @@ namespace chrononmotion::motion {
         bool hasTarget_{false};
         float fov_{60.f};
         float focalLength_{0.f};
+        float sensorWidth_{36.f};
+        Vector2 lensShift_{0.f, 0.f};
         float roll_{0.f};
         Track<Vector3> targetTrack_;
         Track<float> fovTrack_;
