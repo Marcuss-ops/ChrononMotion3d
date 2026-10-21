@@ -101,6 +101,7 @@ namespace chrononmotion::motion {
             switch (easing.kind()) {
                 case Easing::Kind::Linear: writer.raw("\"linear\""); break;
                 case Easing::Kind::CubicBezier: writer.raw("\"bezier\""); break;
+                case Easing::Kind::CubicInOut: writer.raw("\"inOutCubic\""); break;
                 case Easing::Kind::BounceOut: writer.raw("\"bounceOut\""); break;
                 case Easing::Kind::ElasticOut: writer.raw("\"elasticOut\""); break;
                 case Easing::Kind::ExpoOut: writer.raw("\"expoOut\""); break;

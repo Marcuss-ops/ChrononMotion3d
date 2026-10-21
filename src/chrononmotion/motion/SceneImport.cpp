@@ -97,6 +97,7 @@ namespace chrononmotion::motion {
                 return Easing::steps(static_cast<int>(count));
             }
             rejectUnknownKeys(value, {"kind"}, where);
+            if (kind == "inOutCubic") return Easing::inOutCubic();
             if (kind == "bounceOut") return Easing::bounceOut();
             if (kind == "elasticOut") return Easing::elasticOut();
             if (kind == "expoOut") return Easing::expoOut();
