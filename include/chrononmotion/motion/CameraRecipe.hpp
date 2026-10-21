@@ -8,6 +8,8 @@
 #include "chrononmotion/motion/Easing.hpp"
 
 #include <string>
+#include <string_view>
+#include <span>
 
 namespace chrononmotion::motion::camera {
 
@@ -48,6 +50,17 @@ namespace chrononmotion::motion::camera {
         float cutAt{0.5f};
         bool snapIn{false};
     };
+
+    /// A named, reusable numeric camera recipe owned by ChrononMotion3D.
+    /// Product-facing clients may keep their own enum and selection metadata,
+    /// but recipe values and their interpretation live in this registry.
+    struct NamedCameraMotionRecipe {
+        std::string_view id;
+        CameraMotionRecipe recipe;
+    };
+
+    [[nodiscard]] std::span<const NamedCameraMotionRecipe> cameraMotionRecipeRegistry() noexcept;
+    [[nodiscard]] const CameraMotionRecipe* findCameraMotionRecipe(std::string_view id) noexcept;
 
     [[nodiscard]] float referenceDistance(const RecipeSubject& subject, float fovDegrees,
                                           const Vector2& viewport, float frameFill = 0.78f);
