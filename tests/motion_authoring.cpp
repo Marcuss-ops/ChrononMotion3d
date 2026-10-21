@@ -1583,9 +1583,9 @@ void testTypedChronon3dLowering() {
     cameraPose.fStop = 0.f;
     const auto loweredCameraPoseDof = lowerCameraPose(cameraPose, 0.1f, 2000.f);
     auto cameraOnlyScene = MotionScene("camera DoF parity", 30.f);
-    animatedDofRig.setSensorWidth(32.f).setLensShift({0.03f, -0.02f});
     cameraOnlyScene.evaluate(0);
     CameraRig animatedDofRig(26, 50.f, 16.f / 9.f, 0.1f, 2000.f);
+    animatedDofRig.setSensorWidth(32.f).setLensShift({0.03f, -0.02f});
     animatedDofRig.setPosition({0.f, 0.f, -8.f}).setLegacyDefocusStrength(0.04f).setFocusDistance(480.f);
     animatedDofRig.legacyDefocusStrengthTrack().add(0.f, 0.04f).add(1.f, 0.06f);
     animatedDofRig.focusDistanceTrack().add(0.f, 480.f).add(1.f, 720.f);
