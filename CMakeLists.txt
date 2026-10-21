@@ -140,12 +140,15 @@ if(CHRONON3D_INCLUDE_DIR)
     if(NOT EXISTS "${CHRONON3D_INCLUDE_DIR}/chronon3d/render_plan/render_plan.hpp")
         message(FATAL_ERROR "CHRONON3D_INCLUDE_DIR must name Chronon3D's include root")
     endif()
+    # RenderPlan's public headers use fmt formatting/validation APIs; resolve
+    # them even in adapter builds that do not inherit C3D's vcpkg toolchain.
+    find_package(fmt CONFIG REQUIRED)
     add_library(chrononmotion_chronon3d_adapter STATIC
         src/chrononmotion/motion/RenderPlanLowering.cpp
         src/chrononmotion/motion/RenderPlanEmission.cpp
         src/chrononmotion/motion/RenderPlanEmissionCommon.cpp
         src/chrononmotion/motion/RenderPlanEmissionValidation.cpp)
-    target_link_libraries(chrononmotion_chronon3d_adapter PUBLIC chrononmotion)
+    target_link_libraries(chrononmotion_chronon3d_adapter PUBLIC chrononmotion fmt::fmt-header-only)
     target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_INCLUDE_DIR}")
     if(DEFINED CHRONON3D_DEPENDENCY_INCLUDE_DIR)
         target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_DEPENDENCY_INCLUDE_DIR}")
