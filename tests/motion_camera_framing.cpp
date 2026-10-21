@@ -1,6 +1,7 @@
 #include "chrononmotion/motion/CameraFraming.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
 #include "chrononmotion/motion/CameraPanelChoreography.hpp"
+#include "chrononmotion/motion/CameraValidation.hpp"
 #include "chrononmotion/motion/TitleCameraRecipe.hpp"
 
 #include <cmath>
@@ -133,5 +134,23 @@ int main() {
     if (didoneStart.position.z != 1200.f || std::abs(didoneSettle.position.z - 1132.f) > 0.01f ||
         didoneEnd.position.z != 1120.f)
         throw std::runtime_error("CM3D must author the push-settle camera keys");
+
+    CameraPose validationPose;
+    validationPose.position = {0.f, 0.f, -1000.f};
+    validationPose.target = {0.f, 0.f, 0.f};
+    validationPose.hasTarget = true;
+    validationPose.fov = 50.f;
+    validationPose.orientation.setFromAxisAngle({0.f, 1.f, 0.f}, 3.14159265358979323846f);
+    CameraValidator validator;
+    validator.addBounds({"target", {0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}})
+        .addBounds({"front", {0.f, 0.f, 100.f}, {150.f, 95.f, 0.f}})
+        .addBounds({"back", {0.f, 0.f, 200.f}, {200.f, 125.f, 0.f}})
+        .requireCentered("target", 3.f)
+        .requireVisible("front", 0.95f)
+        .requireInsideSafeArea("front", 0.02f)
+        .requireDepthOrder({"front", "back"});
+    const auto validation = validator.validate(validationPose, {1920.f, 1080.f});
+    if (!validation.passed || validation.layers.size() != 3 || validation.targetCenterErrorPixels > 0.01f)
+        throw std::runtime_error("CM3D geometric camera validation must accept centered, visible, ordered bounds");
     return 0;
 }
