@@ -34,6 +34,7 @@
 #include "chrononmotion/motion/MotionPath.hpp"
 #include "chrononmotion/motion/MotionPlane.hpp"
 #include "chrononmotion/motion/CameraRig.hpp"
+#include "chrononmotion/motion/CameraTrajectory.hpp"
 #include "chrononmotion/motion/CameraMotion.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
 #include "chrononmotion/motion/CameraValidation.hpp"
