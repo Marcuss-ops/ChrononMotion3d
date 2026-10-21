@@ -203,6 +203,22 @@ namespace {
 
         // Camera position remains unchanged
         checkNear(p0.position, p60.position, 1e-4f, "Rack focus preserves stationary camera position");
+
+        // Focus distance is measured along the optical axis. Decentered
+        // subjects therefore focus at their view-axis depth, not their longer
+        // Euclidean distance from the camera origin.
+        CameraRig offAxisRig(2, 60.f, 16.f / 9.f);
+        offAxisRig.setPosition(Vector3(0.f, 0.f, 0.f));
+        offAxisRig.setOrientation(Quaternion{});
+        cameraRackFocusDuo(
+            offAxisRig,
+            ShotAnchor::world(Vector3(30.f, 0.f, -100.f)),
+            ShotAnchor::world(Vector3(30.f, 0.f, -200.f)),
+            0, 30, 0.16f, kFps);
+        checkNear(offAxisRig.sample(at(0)).focusDistance, 100.f, 1e-3f,
+                  "Rack focus uses axial depth for the near decentered subject");
+        checkNear(offAxisRig.sample(at(30)).focusDistance, 200.f, 1e-3f,
+                  "Rack focus uses axial depth for the far decentered subject");
     }
 
     // ------------------------------------------------------------- 4. 90 Orbit Reveal
