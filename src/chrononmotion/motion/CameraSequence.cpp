@@ -5,10 +5,35 @@
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <stdexcept>
 
 namespace chrononmotion::motion::camera {
+    namespace {
+        constexpr std::array<Handoff, 8> kHandoffs{
+            Handoff::PushThrough, Handoff::LateralSwipe, Handoff::ArcCarry,
+            Handoff::OrbitHandoff, Handoff::RiseAndLand, Handoff::FocusRack,
+            Handoff::PullBackReveal, Handoff::WhipReframe
+        };
+    }
+
+    std::span<const Handoff> cameraHandoffs() noexcept { return kHandoffs; }
+
+    std::string_view cameraHandoffId(Handoff handoff) noexcept {
+        switch (handoff) {
+            case Handoff::PushThrough: return "scene_camera_push_through";
+            case Handoff::LateralSwipe: return "scene_camera_lateral_swipe";
+            case Handoff::ArcCarry: return "scene_camera_arc_carry";
+            case Handoff::OrbitHandoff: return "scene_camera_orbit_handoff";
+            case Handoff::RiseAndLand: return "scene_camera_rise_and_land";
+            case Handoff::FocusRack: return "scene_camera_focus_rack";
+            case Handoff::PullBackReveal: return "scene_camera_pull_back_reveal";
+            case Handoff::WhipReframe: return "scene_camera_whip_reframe";
+        }
+        return "scene_camera_unknown";
+    }
+
     namespace {
         constexpr float kPi = 3.14159265358979323846f;
         using math::degToRad;

@@ -6,6 +6,8 @@
 #include "chrononmotion/motion/CameraRig.hpp"
 
 #include <vector>
+#include <span>
+#include <string_view>
 
 namespace chrononmotion::motion::camera {
 
@@ -13,6 +15,10 @@ namespace chrononmotion::motion::camera {
         PushThrough, LateralSwipe, ArcCarry, OrbitHandoff,
         RiseAndLand, FocusRack, PullBackReveal, WhipReframe
     };
+
+    /// Canonical handoff order and stable identifiers for product selectors.
+    [[nodiscard]] std::span<const Handoff> cameraHandoffs() noexcept;
+    [[nodiscard]] std::string_view cameraHandoffId(Handoff handoff) noexcept;
 
     struct SequenceSubject {
         Vector3 center{0.f, 0.f, 0.f};
