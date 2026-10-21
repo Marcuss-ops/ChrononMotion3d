@@ -100,6 +100,37 @@ int main() try {
           near(rig.sample(18.f / 24.f).target.x, 0.f),
           "camera path authoring resolves roll units and target channels");
 
+    CameraTrajectoryBuilder tangentBuilder;
+    auto tangentPath = tangentBuilder.moveTo({0.f, 0.f, 0.f}, std::nullopt, 15.f)
+        .moveTo({0.f, 0.f, 10.f}).durationFrames(12.f).holdFor(3.f).build();
+    chrononmotion::motion::CameraRig horizonRig;
+    authorCameraTrajectory(horizonRig, *tangentPath, 0, 24.f, 1,
+        CameraTrajectoryAuthoringOptions{true, true});
+    const auto horizonSample = horizonRig.sample(0.f);
+    check(near(horizonSample.target.z - horizonSample.position.z, 1.f) &&
+          near(horizonSample.roll, 0.f),
+          "orient-along-path aims down the tangent and keeps the horizon level");
+
+    chrononmotion::motion::CameraRig rolledRig;
+    authorCameraTrajectory(rolledRig, *tangentPath, 0, 24.f, 1,
+        CameraTrajectoryAuthoringOptions{true, false});
+    check(near(rolledRig.sample(0.f).roll, 15.f * 3.14159265358979323846f / 180.f),
+          "orient-along-path preserves authored roll when horizon locking is disabled");
+
+    const auto heldTangent = horizonRig.sample(13.f / 24.f);
+    check(near(heldTangent.target.z - heldTangent.position.z, 1.f),
+          "degenerate path tangents reuse the last valid direction");
+
+    CameraTrajectoryBuilder stationaryBuilder;
+    auto stationaryPath = stationaryBuilder.moveTo({3.f, 4.f, 5.f}, Vector3{3.f, 4.f, 8.f})
+        .holdFor(6.f).build();
+    chrononmotion::motion::CameraRig fallbackRig;
+    authorCameraTrajectory(fallbackRig, *stationaryPath, 0, 24.f, 1,
+        CameraTrajectoryAuthoringOptions{true, true});
+    const auto fallbackSample = fallbackRig.sample(3.f / 24.f);
+    check(near(fallbackSample.target.z, 8.f),
+          "degenerate orient-along-path samples fall back to the authored target");
+
     std::cout << "Camera trajectory checks passed\n";
     return 0;
 } catch (const std::exception& error) {
