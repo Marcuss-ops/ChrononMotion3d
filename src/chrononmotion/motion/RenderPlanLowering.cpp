@@ -1051,7 +1051,12 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     // the optical axis exactly as authored (CameraRig focusDistance contract).
     // World-space focus planes are derived downstream with the camera pose,
     // so the lowering passes the distance through unchanged.
-    orientation.invert(); // RenderPlan camera forward is +Z; Motion camera forward is -Z.
+    // RenderPlan mirrors world Z and its camera looks along +Z, while Motion
+    // uses -Z for forward. Reflecting both world and camera Z gives
+    // R_plan = S * R_motion * S, where S = diag(1, 1, -1). In quaternion
+    // form this negates X/Y and preserves Z/W; a plain inverse is not the
+    // same conversion for combined pan, tilt, and roll.
+    orientation.set(-orientation.x, -orientation.y, orientation.z, orientation.w);
     Matrix4 rotation;
     rotation.makeRotationFromQuaternion(orientation);
     const auto euler = chrononCameraEuler(rotation);
