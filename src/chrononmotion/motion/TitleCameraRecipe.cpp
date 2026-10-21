@@ -4,12 +4,24 @@
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <stdexcept>
 #include <string>
 
 namespace chrononmotion::motion::camera {
     namespace {
+    constexpr std::array<TitleMove, 25> kTitleMoves{
+        TitleMove::SlowPush, TitleMove::SlowPullOut, TitleMove::LeftDrift,
+        TitleMove::RightDrift, TitleMove::VerticalRise, TitleMove::VerticalDescend,
+        TitleMove::MicroOrbitLeft, TitleMove::MicroOrbitRight, TitleMove::ArcPush,
+        TitleMove::ArcPull, TitleMove::LowAnglePush, TitleMove::HighAngleSettle,
+        TitleMove::RollSettle, TitleMove::RollPass, TitleMove::DollyZoomSubtle,
+        TitleMove::FocusPush, TitleMove::ParallaxSide, TitleMove::ParallaxPush,
+        TitleMove::WhipSettle, TitleMove::CornerReveal, TitleMove::CrashPush,
+        TitleMove::TopDownSettle, TitleMove::HandheldMicro, TitleMove::OrbitWide,
+        TitleMove::FloorRise
+    };
         constexpr float kPi = 3.14159265358979323846f;
         float intensityScale(TitleIntensity intensity) {
             switch (intensity) {
@@ -20,6 +32,39 @@ namespace chrononmotion::motion::camera {
             return 1.f;
         }
     }
+
+std::span<const TitleMove> titleCameraMoves() noexcept { return kTitleMoves; }
+
+std::string_view titleCameraMoveId(TitleMove move) noexcept {
+    switch (move) {
+        case TitleMove::SlowPush: return "title_camera_slow_push";
+        case TitleMove::SlowPullOut: return "title_camera_slow_pull_out";
+        case TitleMove::LeftDrift: return "title_camera_left_drift";
+        case TitleMove::RightDrift: return "title_camera_right_drift";
+        case TitleMove::VerticalRise: return "title_camera_vertical_rise";
+        case TitleMove::VerticalDescend: return "title_camera_vertical_descend";
+        case TitleMove::MicroOrbitLeft: return "title_camera_micro_orbit_left";
+        case TitleMove::MicroOrbitRight: return "title_camera_micro_orbit_right";
+        case TitleMove::ArcPush: return "title_camera_arc_push";
+        case TitleMove::ArcPull: return "title_camera_arc_pull";
+        case TitleMove::LowAnglePush: return "title_camera_low_angle_push";
+        case TitleMove::HighAngleSettle: return "title_camera_high_angle_settle";
+        case TitleMove::RollSettle: return "title_camera_roll_settle";
+        case TitleMove::RollPass: return "title_camera_roll_pass";
+        case TitleMove::DollyZoomSubtle: return "title_camera_dolly_zoom_subtle";
+        case TitleMove::FocusPush: return "title_camera_focus_push";
+        case TitleMove::ParallaxSide: return "title_camera_parallax_side";
+        case TitleMove::ParallaxPush: return "title_camera_parallax_push";
+        case TitleMove::WhipSettle: return "title_camera_whip_settle";
+        case TitleMove::CornerReveal: return "title_camera_corner_reveal";
+        case TitleMove::CrashPush: return "title_camera_crash_push";
+        case TitleMove::TopDownSettle: return "title_camera_top_down_settle";
+        case TitleMove::HandheldMicro: return "title_camera_handheld_micro";
+        case TitleMove::OrbitWide: return "title_camera_orbit_wide";
+        case TitleMove::FloorRise: return "title_camera_floor_rise";
+    }
+    return "title_camera_unknown";
+}
 
     float titleFramingDistance(TitleFraming framing, float fovDegrees) {
         constexpr float width = 900.f;
