@@ -18,6 +18,9 @@ int main() try {
         DocumentaryMove::PhotoStack, DocumentaryMove::FilmstripHandoff,
         DocumentaryMove::SplitDepth, DocumentaryMove::ArchiveCraneReveal
     };
+    if (documentaryMoves().size() != moves.size() ||
+        documentaryMoveId(DocumentaryMove::ArchiveCraneReveal) != "doc_archive_crane_reveal")
+        throw std::runtime_error("CM3D must own stable documentary camera move ids");
     for (const auto move : moves) {
         DocumentaryCameraPath path;
         path.move = move;

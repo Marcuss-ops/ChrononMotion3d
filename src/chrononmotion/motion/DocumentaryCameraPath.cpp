@@ -7,11 +7,21 @@
 #include "chrononmotion/motion/Easing.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <stdexcept>
 
 namespace chrononmotion::motion::camera {
 namespace {
+
+constexpr std::array<DocumentaryMove, 12> kDocumentaryMoves{
+    DocumentaryMove::SnapDown, DocumentaryMove::PullbackReveal,
+    DocumentaryMove::PushThroughSnapshot, DocumentaryMove::WhipToPhoto,
+    DocumentaryMove::FocusDrop, DocumentaryMove::Reveal90,
+    DocumentaryMove::CornerTurn, DocumentaryMove::ForegroundPhotoPass,
+    DocumentaryMove::PhotoStack, DocumentaryMove::FilmstripHandoff,
+    DocumentaryMove::SplitDepth, DocumentaryMove::ArchiveCraneReveal
+};
 
 float at(int frame, float fps) { return static_cast<float>(frame) / fps; }
 
@@ -47,6 +57,26 @@ void validate(const DocumentaryCameraPath& path, float fps) {
 }
 
 } // namespace
+
+std::span<const DocumentaryMove> documentaryMoves() noexcept { return kDocumentaryMoves; }
+
+std::string_view documentaryMoveId(DocumentaryMove move) noexcept {
+    switch (move) {
+        case DocumentaryMove::SnapDown: return "doc_title_snap_down";
+        case DocumentaryMove::PullbackReveal: return "doc_title_pullback_photo_reveal";
+        case DocumentaryMove::PushThroughSnapshot: return "doc_title_push_through_snapshot";
+        case DocumentaryMove::WhipToPhoto: return "doc_title_whip_to_photo";
+        case DocumentaryMove::FocusDrop: return "doc_title_focus_drop";
+        case DocumentaryMove::Reveal90: return "doc_title_90_reveal";
+        case DocumentaryMove::CornerTurn: return "doc_title_corner_turn";
+        case DocumentaryMove::ForegroundPhotoPass: return "doc_title_foreground_photo_pass";
+        case DocumentaryMove::PhotoStack: return "doc_title_photo_stack";
+        case DocumentaryMove::FilmstripHandoff: return "doc_title_filmstrip_handoff";
+        case DocumentaryMove::SplitDepth: return "doc_title_split_depth";
+        case DocumentaryMove::ArchiveCraneReveal: return "doc_archive_crane_reveal";
+    }
+    return "doc_title_unknown";
+}
 
 void applyDocumentaryCameraPath(CameraRig& rig, const DocumentaryCameraPath& path, float fps) {
     validate(path, fps);
