@@ -78,6 +78,20 @@ namespace {
                   "archival push-in ends at its CM3D waypoint");
         checkNear(paperEnd.fov, 24.f, 1e-4f, "archival push-in owns its final FOV");
 
+        CameraRig authoredRig;
+        const std::array<chrononmotion::motion::camera::CameraTrackWaypoint, 3> authoredPath{{
+            {0, {0.f, 0.f, 100.f}, {0.f, 0.f, 0.f}, Easing::linear()},
+            {15, {40.f, 0.f, 80.f}, {0.f, 0.f, 0.f}, Easing::easeIn()},
+            {30, {60.f, 10.f, 60.f}, {5.f, 0.f, 0.f}, Easing::easeOut()},
+        }};
+        chrononmotion::motion::camera::applyCameraTrack(authoredRig, authoredPath, kFps);
+        checkNear(authoredRig.sample(at(0)).position, authoredPath.front().position, 1e-4f,
+                  "CM3D applies authored camera track start");
+        checkNear(authoredRig.sample(at(30)).position, authoredPath.back().position, 1e-4f,
+                  "CM3D applies authored camera track end");
+        checkNear(authoredRig.sample(at(30)).target, authoredPath.back().target, 1e-4f,
+                  "CM3D applies authored camera track target");
+
         // ShotAnchor: world point vs layer anchor
         ShotAnchor worldAnchor = ShotAnchor::world(Vector3(10.f, 20.f, -5.f));
         checkNear(worldAnchor.resolve(), Vector3(10.f, 20.f, -5.f), 1e-4f, "ShotAnchor::world resolves to exact world point");

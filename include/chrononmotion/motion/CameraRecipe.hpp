@@ -60,6 +60,20 @@ namespace chrononmotion::motion::camera {
         std::vector<Waypoint> waypoints{};
     };
 
+    /// One resolved camera key authored by a client and evaluated by CM3D.
+    /// Frame numbers are absolute; easing controls interpolation to this key.
+    struct CameraTrackWaypoint {
+        int frame{0};
+        Vector3 position{0.f, 0.f, 0.f};
+        Vector3 target{0.f, 0.f, 0.f};
+        Easing easing{Easing::easeInOut()};
+    };
+
+    /// Apply an absolute camera path to CameraRig. This is the common path
+    /// adapter for clients whose story data supplies scene-specific anchors.
+    void applyCameraTrack(CameraRig& rig, std::span<const CameraTrackWaypoint> waypoints,
+                          float fps);
+
     /// A named, reusable numeric camera recipe owned by ChrononMotion3D.
     /// Product-facing clients may keep their own enum and selection metadata,
     /// but recipe values and their interpretation live in this registry.

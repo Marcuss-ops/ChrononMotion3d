@@ -178,6 +178,33 @@ namespace chrononmotion::motion::camera {
         return 1.f;
     }
 
+    void applyCameraTrack(CameraRig& rig, std::span<const CameraTrackWaypoint> waypoints,
+                          float fps) {
+        if (!(fps > 0.f) || !std::isfinite(fps))
+            throw std::invalid_argument("applyCameraTrack: fps must be positive and finite");
+        if (waypoints.size() < 2)
+            throw std::invalid_argument("applyCameraTrack: at least two waypoints are required");
+        std::vector<CameraTrackWaypoint> ordered(waypoints.begin(), waypoints.end());
+        std::stable_sort(ordered.begin(), ordered.end(), [](const auto& a, const auto& b) {
+            return a.frame < b.frame;
+        });
+        int previousFrame = -1;
+        CameraPose last{};
+        for (const auto& waypoint : ordered) {
+            if (waypoint.frame < 0 || waypoint.frame <= previousFrame ||
+                !finiteVector(waypoint.position) || !finiteVector(waypoint.target))
+                throw std::invalid_argument("applyCameraTrack: invalid or unordered waypoint");
+            const float time = at(waypoint.frame, fps);
+            rig.positionTrack().add(time, waypoint.position, waypoint.easing);
+            rig.targetTrack().add(time, waypoint.target, waypoint.easing);
+            last.position = waypoint.position;
+            last.target = waypoint.target;
+            last.hasTarget = true;
+            previousFrame = waypoint.frame;
+        }
+        rig.setPosition(last.position).setTarget(last.target);
+    }
+
     void applyRecipe(CameraRig& rig, const CameraMotionRecipe& recipe,
                      const CameraRecipeShot& shot, float fps, const Vector2& viewport) {
         const int duration = shot.durationOverride > 0 ? shot.durationOverride : recipe.durationFrames;
