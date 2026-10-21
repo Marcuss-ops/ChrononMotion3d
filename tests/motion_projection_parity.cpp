@@ -8,13 +8,14 @@
 // down +Z (the lowering mirrors depth at the boundary), so this test mirrors
 // the camera position and compares everything else.
 //
-// Translation-only poses with identity orientation: rotation-convention
-// parity (quaternion vs euler order) is owned by the camera lowering
-// (`chrononCameraEuler` in RenderPlanLowering.cpp) and pinned by the camera
-// bake round-trip, not here.
+// The cases below include tilted/rolled poses after the actual RenderPlan
+// lowering conversion, so quaternion-to-Euler and mirrored-Z parity are both
+// exercised at the camera/render boundary.
 
+#include "chrononmotion/math/Euler.hpp"
 #include "chrononmotion/motion/CameraRig.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
+#include "chrononmotion/motion/RenderPlanLowering.hpp"
 #include "motion_check.hpp"
 
 // boundary-guardrail: allowed — this adapter test is the explicit projection
@@ -113,6 +114,45 @@ void checkPhysicalLensParity(float viewportW, float viewportH, float focalLength
     }
 }
 
+void checkLoweredOrientationParity(float viewportW, float viewportH,
+                                   float rx, float ry, float rz) {
+    CameraPose pose;
+    pose.position = Vector3(90.f, -65.f, 1700.f);
+    pose.orientation.setFromEuler(Euler(rx, ry, rz));
+    pose.fov = 52.f;
+    const auto lowered = lowerCameraPose(pose, 0.1f, 10000.f);
+
+    chronon3d::Camera2_5D camera;
+    camera.position = {lowered.position[0], lowered.position[1], lowered.position[2]};
+    camera.rotation = {lowered.rotation_deg[0], lowered.rotation_deg[1], lowered.rotation_deg[2]};
+    camera.optics_mode = chronon3d::CameraOpticsMode::FieldOfView;
+    camera.fov_deg = lowered.fov_deg;
+
+    Vector3 forward(0.f, 0.f, -1.f);
+    Vector3 right(1.f, 0.f, 0.f);
+    Vector3 up(0.f, 1.f, 0.f);
+    forward.applyQuaternion(pose.orientation).normalize();
+    right.applyQuaternion(pose.orientation).normalize();
+    up.applyQuaternion(pose.orientation).normalize();
+    for (const auto& offset : {Vector2(-260.f, -130.f), Vector2(0.f, 0.f), Vector2(230.f, 170.f)}) {
+        Vector3 world = pose.position.clone().add(forward.clone().multiplyScalar(1050.f))
+            .add(right.clone().multiplyScalar(offset.x)).add(up.clone().multiplyScalar(offset.y));
+        ScreenCameraIntrinsics intrinsics;
+        intrinsics.viewport = {viewportW, viewportH};
+        intrinsics.fovDegrees = pose.fov;
+        const Vector2 expected = projectToScreen(world, pose, intrinsics);
+        const auto actual = chronon3d::camera_math::project_world_point(
+            camera, chronon3d::Vec3(world.x, world.y, -world.z),
+            chronon3d::camera_math::Viewport2D{viewportW, viewportH});
+        check(actual.visible, "lowered rotated camera sees its forward-axis point");
+        if (!actual.visible) continue;
+        checkNear(expected.x, actual.screen.x, kEpsPx,
+                  "RenderPlan-lowered quaternion preserves rotated screen X");
+        checkNear(expected.y, actual.screen.y, kEpsPx,
+                  "RenderPlan-lowered quaternion preserves rotated screen Y");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -135,6 +175,10 @@ int main() {
             }
         }
         checkPhysicalLensParity(widths[v], heights[v], 50.f);
+        checkLoweredOrientationParity(widths[v], heights[v], 0.12f, -0.18f, 0.07f);
+        checkLoweredOrientationParity(widths[v], heights[v], -0.22f, 0.09f, -0.14f);
+        checkLoweredOrientationParity(widths[v], heights[v], 0.f, 0.f, 0.31f);
+        checkLoweredOrientationParity(widths[v], heights[v], 1.35f, 1.54f, -0.27f);
     }
 
     section("CAM-01 FOV changes framing on the same projected subject");
