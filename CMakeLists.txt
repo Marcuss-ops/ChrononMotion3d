@@ -83,6 +83,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/Interaction.cpp
         src/chrononmotion/motion/RigRetarget.cpp
         src/chrononmotion/motion/MotionPath.cpp
+        src/chrononmotion/motion/CameraTrajectory.cpp
         src/chrononmotion/motion/MotionPlane.cpp
         src/chrononmotion/motion/CameraRig.cpp
         src/chrononmotion/motion/CameraFraming.cpp
@@ -287,6 +288,10 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_camera_focus_sequence tests/motion_camera_focus_sequence.cpp)
     target_link_libraries(chrononmotion_camera_focus_sequence PRIVATE chrononmotion)
     add_test(NAME chrononmotion_camera_focus_sequence COMMAND chrononmotion_camera_focus_sequence)
+
+    add_executable(chrononmotion_camera_trajectory tests/motion_camera_trajectory.cpp)
+    target_link_libraries(chrononmotion_camera_trajectory PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_camera_trajectory COMMAND chrononmotion_camera_trajectory)
 
     add_executable(chrononmotion_camera_shake tests/motion_camera_shake.cpp)
     target_link_libraries(chrononmotion_camera_shake PRIVATE chrononmotion)
