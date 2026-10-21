@@ -65,6 +65,8 @@ public:
     CameraValidator& requireCentered(std::string name, float maxErrorPixels);
     CameraValidator& requireVisible(std::string name, float minVisibleRatio);
     CameraValidator& requireInsideSafeArea(std::string name, float margin01);
+    CameraValidator& requireInsideSafeArea(std::string name, float horizontalMargin01,
+                                           float verticalMargin01);
     CameraValidator& requireDepthOrder(std::vector<std::string> frontToBack);
     CameraValidator& requireEstimatedFrameVisibility(float minVisibleRatio = 0.005f);
 
@@ -74,7 +76,7 @@ public:
 private:
     struct CenterRule { std::string name; float maxErrorPixels; };
     struct VisibleRule { std::string name; float minVisibleRatio; };
-    struct SafeAreaRule { std::string name; float margin01; };
+    struct SafeAreaRule { std::string name; float horizontalMargin01; float verticalMargin01; };
 
     std::vector<CameraValidationBounds> bounds_;
     std::vector<CenterRule> centered_;

@@ -197,6 +197,12 @@ int main() {
     if (!validation.passed || validation.isEstimatedBlackFrame || validation.layers.size() != 3 ||
         validation.targetCenterErrorPixels > 0.01f)
         throw std::runtime_error("CM3D geometric camera validation must accept centered, visible, ordered bounds");
+    CameraValidator asymmetricSafeArea;
+    asymmetricSafeArea.addBounds({"title", {100.f, 100.f, 0.f}, {0.f, 0.f, 0.f}})
+        .requireInsideSafeArea("title", 0.05f, 0.08f);
+    const auto asymmetricValidation = asymmetricSafeArea.validate(validationPose, {1920.f, 1080.f});
+    if (!asymmetricValidation.passed)
+        throw std::runtime_error("CM3D safe-area validation must support separate horizontal and vertical margins");
     CameraValidator emptyValidator;
     emptyValidator.requireEstimatedFrameVisibility();
     if (emptyValidator.validate(validationPose, {1920.f, 1080.f}).passed)

@@ -89,9 +89,16 @@ CameraValidator& CameraValidator::requireVisible(std::string name, float minVisi
 }
 
 CameraValidator& CameraValidator::requireInsideSafeArea(std::string name, float margin01) {
-    if (name.empty() || !std::isfinite(margin01) || margin01 < 0.f || margin01 >= 0.5f)
+    return requireInsideSafeArea(std::move(name), margin01, margin01);
+}
+
+CameraValidator& CameraValidator::requireInsideSafeArea(
+    std::string name, float horizontalMargin01, float verticalMargin01) {
+    if (name.empty() || !std::isfinite(horizontalMargin01) || !std::isfinite(verticalMargin01) ||
+        horizontalMargin01 < 0.f || horizontalMargin01 >= 0.5f ||
+        verticalMargin01 < 0.f || verticalMargin01 >= 0.5f)
         throw std::invalid_argument("CameraValidator::requireInsideSafeArea: invalid name or margin");
-    safeArea_.push_back({std::move(name), margin01});
+    safeArea_.push_back({std::move(name), horizontalMargin01, verticalMargin01});
     return *this;
 }
 
@@ -195,8 +202,10 @@ CameraValidationReport CameraValidator::validate(const CameraPose& pose, const V
     for (const auto& rule : safeArea_) {
         auto* layer = findLayer(rule.name);
         if (!layer) continue;
-        if (layer->minimum.x < viewport.x * rule.margin01 || layer->maximum.x > viewport.x * (1.f - rule.margin01) ||
-            layer->minimum.y < viewport.y * rule.margin01 || layer->maximum.y > viewport.y * (1.f - rule.margin01)) {
+        if (layer->minimum.x < viewport.x * rule.horizontalMargin01 ||
+            layer->maximum.x > viewport.x * (1.f - rule.horizontalMargin01) ||
+            layer->minimum.y < viewport.y * rule.verticalMargin01 ||
+            layer->maximum.y > viewport.y * (1.f - rule.verticalMargin01)) {
             report.passed = false;
             layer->failures.push_back("bounds outside safe area");
             report.failures.push_back("'" + rule.name + "' is outside the safe area");
