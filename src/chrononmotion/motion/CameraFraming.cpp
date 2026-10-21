@@ -173,9 +173,12 @@ CameraFramingResult CameraFramingSolver::solve(const CameraFramingRequest& req,
         framed.position = session->previous.position;
         if (!holdPosition) framed.position.addScaledVector(Vector3{}.subVectors(
             desiredPose.position, session->previous.position), alpha);
-        if (aimEnabled && session->previous.hasTarget && !holdAim) {
+        if (aimEnabled && session->previous.hasTarget) {
             framed.target = session->previous.target;
-            framed.target.addScaledVector(Vector3{}.subVectors(desiredPose.target, session->previous.target), alpha);
+            if (!holdAim) {
+                framed.target.addScaledVector(Vector3{}.subVectors(
+                    desiredPose.target, session->previous.target), alpha);
+            }
             framed.hasTarget = true;
             aimAt(framed, framed.target);
         }
