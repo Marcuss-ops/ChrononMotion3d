@@ -8,6 +8,10 @@ int main() try {
     using namespace chrononmotion::motion;
     using namespace chrononmotion::motion::camera;
 
+    if (cameraHandoffs().size() != 8 ||
+        cameraHandoffId(Handoff::WhipReframe) != "scene_camera_whip_reframe")
+        throw std::runtime_error("CM3D must own the stable camera handoff catalog");
+
     CameraSequence sequence;
     sequence.handoff = Handoff::OrbitHandoff;
     sequence.travelFrames = 24;
