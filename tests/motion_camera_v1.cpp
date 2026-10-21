@@ -50,7 +50,7 @@ namespace {
         section("Camera Motion V1 — Primitives (ShotAnchor, CameraShot, CameraTransition, CameraFocusResolver)");
 
         const auto recipes = chrononmotion::motion::camera::cameraMotionRecipeRegistry();
-        check(recipes.size() == 25, "CM3D owns all twenty-five named template camera recipes");
+        check(recipes.size() == 26, "CM3D owns all named camera recipes");
         check(chrononmotion::motion::camera::findCameraMotionRecipe("camera_motion_title_slow_push") != nullptr,
               "CM3D recipe registry resolves stable title preset IDs");
         check(chrononmotion::motion::camera::findCameraMotionRecipe("camera_motion_web3d_slow_drift") != nullptr,
@@ -59,6 +59,24 @@ namespace {
               "CM3D registry owns recipe timing data");
         check(chrononmotion::motion::camera::findCameraMotionRecipe("camera_motion_unknown") == nullptr,
               "CM3D recipe registry rejects unknown IDs");
+        const auto* paperRecipe = chrononmotion::motion::camera::findCameraMotionRecipe(
+            "camera_motion_archival_top_down_paper_push");
+        check(paperRecipe != nullptr && paperRecipe->waypoints.size() == 6,
+              "CM3D registry owns the archival top-down camera path");
+        CameraRig paperRig;
+        chrononmotion::motion::camera::applyRecipe(
+            paperRig, *paperRecipe,
+            chrononmotion::motion::camera::CameraRecipeShot{
+                .subject = {{0.f, 0.f, 0.f}, 1.f, 1.f}, .fov = 45.f,
+                .inFrame = 10, .durationOverride = 120},
+            kFps, {1920.f, 1080.f});
+        const auto paperStart = paperRig.sample(10.f / kFps);
+        const auto paperEnd = paperRig.sample(130.f / kFps);
+        checkNear(paperStart.position, Vector3(8.f, 3.2f, 12.f), 1e-4f,
+                  "archival push-in begins at its CM3D waypoint");
+        checkNear(paperEnd.position, Vector3(0.f, 4.2f, 1.8f), 1e-4f,
+                  "archival push-in ends at its CM3D waypoint");
+        checkNear(paperEnd.fov, 24.f, 1e-4f, "archival push-in owns its final FOV");
 
         // ShotAnchor: world point vs layer anchor
         ShotAnchor worldAnchor = ShotAnchor::world(Vector3(10.f, 20.f, -5.f));

@@ -6,7 +6,7 @@
 namespace chrononmotion::motion::camera {
 namespace {
 
-const std::array<NamedCameraMotionRecipe, 25> kRecipes = {{
+const std::array<NamedCameraMotionRecipe, 26> kRecipes = {{
 #define CAMERA_MOTION_RECIPE(id, ...) \
     NamedCameraMotionRecipe{id, [] { CameraMotionRecipe recipe; __VA_ARGS__ return recipe; }()},
 #include "CameraMotionRecipeRegistry.def"

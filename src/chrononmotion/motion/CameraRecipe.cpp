@@ -19,6 +19,9 @@ namespace chrononmotion::motion::camera {
                    std::isfinite(s.center.z) && std::isfinite(s.halfWidth) &&
                    std::isfinite(s.halfHeight);
         }
+        bool finiteVector(const Vector3& v) {
+            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+        }
 
         struct LegPose { float dist{1.f}, x{0.f}, y{0.f}, yaw{0.f}, pitch{0.f}, roll{0.f}, focus{-1.f}; };
         LegPose resolveLeg(float dist, float x, float y, float yaw, float pitch,
@@ -190,6 +193,40 @@ namespace chrononmotion::motion::camera {
             throw std::invalid_argument("applyRecipe: corrupt travel window");
         if (recipe.twoShot && (!(recipe.cutAt > 0.f) || !(recipe.cutAt < 1.f)))
             throw std::invalid_argument("applyRecipe: cutAt must be inside (0, 1)");
+        if (!recipe.waypoints.empty()) {
+            if (recipe.waypoints.size() < 2 || recipe.waypoints.front().progress != 0.f ||
+                recipe.waypoints.back().progress != 1.f)
+                throw std::invalid_argument("applyRecipe: tracked recipe requires waypoint endpoints at 0 and 1");
+            CameraPose last{};
+            float previousProgress = -1.f;
+            int previousFrame = -1;
+            for (const auto& waypoint : recipe.waypoints) {
+                if (!std::isfinite(waypoint.progress) || waypoint.progress <= previousProgress ||
+                    waypoint.progress < 0.f || waypoint.progress > 1.f ||
+                    !finiteVector(waypoint.positionOffset) || !finiteVector(waypoint.targetOffset) ||
+                    !std::isfinite(waypoint.fov) || waypoint.fov <= 0.f || waypoint.fov >= 180.f ||
+                    waypoint.easing == nullptr)
+                    throw std::invalid_argument("applyRecipe: invalid tracked camera waypoint");
+                const int frame = shot.inFrame + static_cast<int>(std::round(duration * waypoint.progress));
+                if (frame <= previousFrame)
+                    throw std::invalid_argument("applyRecipe: tracked camera waypoints collapse to the same frame");
+                const float time = at(frame, fps);
+                const Vector3 position = shot.subject.center.clone().add(waypoint.positionOffset);
+                const Vector3 target = shot.subject.center.clone().add(waypoint.targetOffset);
+                const Easing easing = easingFor(waypoint.easing);
+                rig.positionTrack().add(time, position, easing);
+                rig.targetTrack().add(time, target, easing);
+                rig.fovTrack().add(time, waypoint.fov, easing);
+                last.position = position;
+                last.target = target;
+                last.fov = waypoint.fov;
+                last.hasTarget = true;
+                previousProgress = waypoint.progress;
+                previousFrame = frame;
+            }
+            rig.setPosition(last.position).setTarget(last.target).setFov(last.fov);
+            return;
+        }
         if (recipe.twoShot) applyTwoShot(rig, recipe, shot, duration, fps, viewport);
         else applySingleShot(rig, recipe, shot, duration, fps, viewport);
     }
