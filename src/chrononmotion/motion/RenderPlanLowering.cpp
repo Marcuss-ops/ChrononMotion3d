@@ -811,7 +811,7 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: temporal motion blur requires shutter_angle in (0, 360] and samples in [2, 64]");
         plan.temporal_motion_blur = blur;
     }
-    if (options.cameraRig) {
+    if (options.cameraRig && options.bakeCameraAnimation) {
         const std::size_t last = plan.canvas.duration.integral() > 0
             ? static_cast<std::size_t>(plan.canvas.duration.integral() - 1) : 0;
         if (last >= 65536)
@@ -1096,9 +1096,9 @@ chronon3d::render_plan::RuntimeCameraSampleProvider makeCameraSampleProvider(
     chronon3d::render_plan::RuntimeCameraSampleProvider provider;
     provider.fingerprint = std::move(fingerprint);
     provider.sample = [rig = std::move(rig), fps, nearPlane, farPlane](double frame) {
-        if (!std::isfinite(frame) || frame < 0.0 || frame > 1'000'000.0)
+        if (!std::isfinite(frame) || frame < -1'000'000.0 || frame > 1'000'000.0)
             throw std::invalid_argument(
-                "CameraSampleProvider: frame must be finite and in [0, 1000000]");
+                "CameraSampleProvider: frame must be finite and in [-1000000, 1000000]");
         const float seconds = static_cast<float>(frame / static_cast<double>(fps));
         if (!std::isfinite(seconds))
             throw std::invalid_argument("CameraSampleProvider: sample time is not representable");

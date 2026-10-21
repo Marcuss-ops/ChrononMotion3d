@@ -138,6 +138,11 @@ void checkCameraBake() {
               "runtime provider applies the canonical depth conversion at subframe time");
     check(provider.fingerprint == "camera-bake-roundtrip-runtime-rig",
           "runtime camera provider carries its caller-supplied stable identity");
+    const auto preRoll = provider.sample(-0.25);
+    const CameraPose expectedPreRoll = runtimeRig->sample(
+        static_cast<float>(-0.25 / static_cast<double>(kFps)));
+    checkNear(preRoll.position[0], expectedPreRoll.position.x, kEps,
+              "runtime camera provider supports centered-shutter samples before frame zero");
 
     (void)layer;
 }
