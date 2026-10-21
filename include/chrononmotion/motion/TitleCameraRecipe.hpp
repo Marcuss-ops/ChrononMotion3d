@@ -6,6 +6,8 @@
 #include "chrononmotion/motion/CameraRig.hpp"
 
 #include <cstdint>
+#include <span>
+#include <string_view>
 
 namespace chrononmotion::motion::camera {
 
@@ -18,6 +20,10 @@ namespace chrononmotion::motion::camera {
         ParallaxSide, ParallaxPush, WhipSettle, CornerReveal, CrashPush,
         TopDownSettle, HandheldMicro, OrbitWide, FloorRise
     };
+
+    /// Canonical title-move order and stable product IDs.
+    [[nodiscard]] std::span<const TitleMove> titleCameraMoves() noexcept;
+    [[nodiscard]] std::string_view titleCameraMoveId(TitleMove move) noexcept;
 
     struct TitleRecipeShot {
         TitleFraming framing{TitleFraming::Medium};

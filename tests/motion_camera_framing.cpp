@@ -9,6 +9,11 @@
 
 int main() {
     using namespace chrononmotion::motion;
+    using namespace chrononmotion::motion::camera;
+    if (titleCameraMoves().size() != 25 ||
+        titleCameraMoveId(TitleMove::FloorRise) != "title_camera_floor_rise")
+        throw std::runtime_error("CM3D must own the stable title-camera move catalog");
+
     CameraPose base;
     base.position = {0.f, 0.f, 1000.f};
     base.target = {0.f, 0.f, 0.f};
