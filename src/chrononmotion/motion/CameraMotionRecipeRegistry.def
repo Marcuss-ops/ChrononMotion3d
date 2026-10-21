@@ -26,4 +26,12 @@ CAMERA_MOTION_RECIPE("camera_motion_web3d_lateral_slide", recipe.durationFrames 
 CAMERA_MOTION_RECIPE("camera_motion_web3d_dolly_arc", recipe.durationFrames = 90; recipe.distStart = 1.22f; recipe.distEnd = 0.82f; recipe.yawStart = -4.f; recipe.yawEnd = 4.f; recipe.highEnergy = true; recipe.easing = "cinematic";)
 CAMERA_MOTION_RECIPE("camera_motion_web3d_crane_down", recipe.durationFrames = 100; recipe.yStart = -0.16f; recipe.yEnd = 0.04f; recipe.pitchStart = 16.f; recipe.pitchEnd = -6.f; recipe.easing = "gentle_out";)
 CAMERA_MOTION_RECIPE("camera_motion_web3d_slow_drift", recipe.durationFrames = 150; recipe.xStart = -0.045f; recipe.xEnd = 0.045f; recipe.yawStart = -5.f; recipe.yawEnd = 5.f; recipe.rollStart = -1.5f; recipe.rollEnd = 1.5f; recipe.easing = "smooth";)
+CAMERA_MOTION_RECIPE("camera_motion_archival_top_down_paper_push", recipe.durationFrames = 120; recipe.waypoints = {
+    {0.00f, {8.0f, 3.2f, 12.0f}, {0.0f, 0.1f, 0.0f}, 45.0f, "smooth"},
+    {0.21f, {6.0f, 7.8f, 8.0f}, {0.0f, 0.65f, 0.0f}, 43.0f, "smooth"},
+    {0.43f, {3.0f, 9.8f, 5.5f}, {0.0f, 1.65f, 0.0f}, 38.0f, "smooth"},
+    {0.67f, {1.0f, 7.5f, 4.0f}, {0.0f, 1.65f, 0.0f}, 30.0f, "smooth"},
+    {0.80f, {0.4f, 6.5f, 3.0f}, {0.0f, 1.65f, 0.0f}, 26.0f, "smooth"},
+    {1.00f, {0.0f, 4.2f, 1.8f}, {0.0f, 1.65f, 0.0f}, 24.0f, "smooth"}
+};)
 
