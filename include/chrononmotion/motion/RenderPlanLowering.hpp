@@ -14,8 +14,10 @@
 // boundary-guardrail: allowed — this optional offline adapter is the explicit
 // conversion boundary into Chronon3D typed RenderPlan authoring data.
 #include <chronon3d/render_plan/render_plan.hpp>
+#include <chronon3d/render_plan/render_plan_compiler.hpp>
 
 #include <optional>
+#include <memory>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -59,6 +61,14 @@ namespace chrononmotion::motion {
     /// contract; physical focal-length/f-stop lens optics remain unrepresentable.
     [[nodiscard]] chronon3d::render_plan::CameraPlan lowerCameraPose(
         const CameraPose& pose, float nearPlane = 1.f, float farPlane = 10000.f);
+
+    /// Create a runtime provider for C3D's exact presentation sample times.
+    /// The caller must keep the rig immutable for the provider's lifetime and
+    /// supply a stable fingerprint for that authored rig.
+    [[nodiscard]] chronon3d::render_plan::RuntimeCameraSampleProvider
+    makeCameraSampleProvider(std::shared_ptr<const CameraRig> rig, float fps,
+                             std::string fingerprint,
+                             float nearPlane = 1.f, float farPlane = 10000.f);
 
     /// Replace the positions in a mesh layer with one baked RigProgram geometry
     /// frame. Existing UVs and material are retained when topology matches;

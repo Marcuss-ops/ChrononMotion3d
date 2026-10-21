@@ -12,6 +12,7 @@
 #include "motion_check.hpp"
 
 #include <cmath>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -119,6 +120,24 @@ void checkCameraBake() {
         identical = posX2->keyframes[i].value[0] == posX->keyframes[i].value[0];
     }
     check(identical, "camera bake is bit-deterministic across runs");
+
+    auto runtimeRig = std::make_shared<CameraRig>();
+    runtimeRig->positionTrack().add(0.f, Vector3(0.f, 0.f, 1200.f), Easing::easeInOut());
+    runtimeRig->positionTrack().add(1.f, Vector3(120.f, 30.f, 800.f), Easing::linear());
+    const auto provider = makeCameraSampleProvider(
+        runtimeRig, kFps, "camera-bake-roundtrip-runtime-rig");
+    constexpr double kSubframe = 15.5;
+    const CameraPose expectedSubframe = runtimeRig->sample(
+        static_cast<float>(kSubframe / static_cast<double>(kFps)));
+    const auto resolvedSubframe = provider.sample(kSubframe);
+    checkNear(resolvedSubframe.position[0], expectedSubframe.position.x, kEps,
+              "runtime provider samples the rig at the exact fractional frame");
+    checkNear(resolvedSubframe.position[1], expectedSubframe.position.y, kEps,
+              "runtime provider preserves the fractional-frame vertical pose");
+    checkNear(resolvedSubframe.position[2], -expectedSubframe.position.z, kEps,
+              "runtime provider applies the canonical depth conversion at subframe time");
+    check(provider.fingerprint == "camera-bake-roundtrip-runtime-rig",
+          "runtime camera provider carries its caller-supplied stable identity");
 
     (void)layer;
 }

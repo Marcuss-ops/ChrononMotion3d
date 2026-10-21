@@ -1082,6 +1082,31 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     return camera;
 }
 
+chronon3d::render_plan::RuntimeCameraSampleProvider makeCameraSampleProvider(
+    std::shared_ptr<const CameraRig> rig, float fps, std::string fingerprint,
+    float nearPlane, float farPlane) {
+    if (!rig || !std::isfinite(fps) || fps <= 0.f || fingerprint.empty())
+        throw std::invalid_argument(
+            "makeCameraSampleProvider: rig, positive finite fps, and stable fingerprint are required");
+    if (!std::isfinite(nearPlane) || !std::isfinite(farPlane) ||
+        nearPlane <= 0.f || farPlane <= nearPlane)
+        throw std::invalid_argument(
+            "makeCameraSampleProvider: clipping planes are invalid");
+
+    chronon3d::render_plan::RuntimeCameraSampleProvider provider;
+    provider.fingerprint = std::move(fingerprint);
+    provider.sample = [rig = std::move(rig), fps, nearPlane, farPlane](double frame) {
+        if (!std::isfinite(frame) || frame < 0.0 || frame > 1'000'000.0)
+            throw std::invalid_argument(
+                "CameraSampleProvider: frame must be finite and in [0, 1000000]");
+        const float seconds = static_cast<float>(frame / static_cast<double>(fps));
+        if (!std::isfinite(seconds))
+            throw std::invalid_argument("CameraSampleProvider: sample time is not representable");
+        return lowerCameraPose(rig->sample(seconds), nearPlane, farPlane);
+    };
+    return provider;
+}
+
 std::vector<ShapePathCommandPlan> lowerBakedPath(const BakedPath& path) {
     if (path.empty() || path.size() > 65536 || path.front().type != BakedPathCommandType::MoveTo)
         throw std::invalid_argument("lowerBakedPath: path must begin with moveto and contain 1..65536 commands");
