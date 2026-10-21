@@ -14,7 +14,7 @@
 // boundary-guardrail: allowed — this optional offline adapter is the explicit
 // conversion boundary into Chronon3D typed RenderPlan authoring data.
 #include <chronon3d/render_plan/render_plan.hpp>
-#include <chronon3d/render_plan/render_plan_compiler.hpp>
+#include <chronon3d/render_plan/camera_sample_provider.hpp>
 
 #include <optional>
 #include <memory>
@@ -44,6 +44,9 @@ namespace chrononmotion::motion {
         std::optional<chronon3d::render_plan::MotionBlurPlan> temporalMotionBlur{};
         /// Optional rig supplies deterministic time-varying pose samples during lowering.
         const CameraRig* cameraRig{nullptr};
+        /// Keep the rig's initial pose in `camera`, but leave time-varying camera
+        /// evaluation to a runtime CameraSampleProvider instead of baking dense tracks.
+        bool bakeCameraAnimation{true};
     };
 
     /// Evaluate the MotionScene at each output frame, compile each evaluated
@@ -62,7 +65,8 @@ namespace chrononmotion::motion {
     [[nodiscard]] chronon3d::render_plan::CameraPlan lowerCameraPose(
         const CameraPose& pose, float nearPlane = 1.f, float farPlane = 10000.f);
 
-    /// Create a runtime provider for C3D's exact presentation sample times.
+    /// Create a runtime provider for C3D's exact presentation/shutter sample
+    /// times, including pre-roll times before frame zero.
     /// The caller must keep the rig immutable for the provider's lifetime and
     /// supply a stable fingerprint for that authored rig.
     [[nodiscard]] chronon3d::render_plan::RuntimeCameraSampleProvider
