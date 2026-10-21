@@ -90,6 +90,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/CameraSequence.cpp
         src/chrononmotion/motion/CameraFocusSequence.cpp
         src/chrononmotion/motion/TitleCameraRecipe.cpp
+        src/chrononmotion/motion/CameraShake.cpp
         src/chrononmotion/motion/Lighting.cpp
         src/chrononmotion/motion/AuthoringPolicy.cpp
         src/chrononmotion/motion/Procedural.cpp
@@ -282,6 +283,10 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_camera_focus_sequence tests/motion_camera_focus_sequence.cpp)
     target_link_libraries(chrononmotion_camera_focus_sequence PRIVATE chrononmotion)
     add_test(NAME chrononmotion_camera_focus_sequence COMMAND chrononmotion_camera_focus_sequence)
+
+    add_executable(chrononmotion_camera_shake tests/motion_camera_shake.cpp)
+    target_link_libraries(chrononmotion_camera_shake PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_camera_shake COMMAND chrononmotion_camera_shake)
 
     # Eye-trace continuity, screen-space camera math, analytic pose derivatives
     # and multi-aspect auto-reframing.
