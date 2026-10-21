@@ -34,6 +34,14 @@ struct CameraTrajectorySample {
     float rollDegrees{0.f};
 };
 
+struct CameraTrajectoryAuthoringOptions {
+    /// Aim along the trajectory tangent; degenerate tangents reuse the last
+    /// valid direction before falling back to an authored target.
+    bool orientAlongPath{false};
+    /// Clear path roll while following the tangent.
+    bool keepHorizon{true};
+};
+
 /// A camera path with continuous frame sampling, segment timing and optional
 /// per-segment arc-length remapping. CameraRig remains the owner of evaluation
 /// into renderer-ready camera tracks.
@@ -74,7 +82,8 @@ private:
 /// Bake a continuous trajectory into CM3D CameraRig channels. Sub-frame
 /// subdivision preserves the path shape for shutter sampling after lowering.
 void authorCameraTrajectory(CameraRig& rig, const CameraTrajectory& trajectory,
-                            int startFrame, float fps, unsigned samplesPerFrame = 4);
+                            int startFrame, float fps, unsigned samplesPerFrame = 4,
+                            CameraTrajectoryAuthoringOptions options = {});
 
 } // namespace chrononmotion::motion::camera
 
