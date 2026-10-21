@@ -88,6 +88,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/CameraFraming.cpp
         src/chrononmotion/motion/CameraMotion.cpp
         src/chrononmotion/motion/CameraRecipe.cpp
+        src/chrononmotion/motion/CameraMotionRecipeRegistry.cpp
         src/chrononmotion/motion/CameraSequence.cpp
         src/chrononmotion/motion/CameraFocusSequence.cpp
         src/chrononmotion/motion/TitleCameraRecipe.cpp
