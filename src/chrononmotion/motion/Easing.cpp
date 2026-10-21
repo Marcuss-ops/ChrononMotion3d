@@ -151,6 +151,11 @@ namespace chrononmotion::motion {
         return Easing(Kind::CubicBezier, 0.42f, 0.f, 0.58f, 1.f);
     }
 
+    Easing Easing::inOutCubic() {
+
+        return Easing(Kind::CubicInOut, 0.f, 0.f, 1.f, 1.f);
+    }
+
     Easing Easing::cubicBezier(float x1, float y1, float x2, float y2) {
 
         return Easing(Kind::CubicBezier, std::clamp(x1, 0.f, 1.f), y1, std::clamp(x2, 0.f, 1.f), y2);
@@ -218,6 +223,9 @@ namespace chrononmotion::motion {
             }
             case Kind::CubicBezier:
                 return bezierComponent(solveForS(x, x1_, x2_), y1_, y2_);
+            case Kind::CubicInOut:
+                return x < 0.5f ? 4.f * x * x * x
+                                : 1.f - std::pow(-2.f * x + 2.f, 3.f) * 0.5f;
             case Kind::Linear:
                 break;
         }
@@ -285,6 +293,9 @@ namespace chrononmotion::motion {
                 if (std::fabs(dx) < 1e-6f) return 0.f;
                 return dy / dx;
             }
+            case Kind::CubicInOut:
+                return x < 0.5f ? 12.f * x * x
+                                : 3.f * (1.f - x) * (1.f - x) * 4.f;
         }
         return 0.f;
     }

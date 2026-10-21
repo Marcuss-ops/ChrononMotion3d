@@ -23,6 +23,7 @@ namespace chrononmotion::motion {
         enum class Kind {
             Linear,
             CubicBezier,
+            CubicInOut,
             BounceOut,
             ElasticOut,
             ExpoOut,
@@ -36,6 +37,8 @@ namespace chrononmotion::motion {
         [[nodiscard]] static Easing easeIn();
         [[nodiscard]] static Easing easeOut();
         [[nodiscard]] static Easing easeInOut();
+        /// Polynomial cubic ease-in-out used by the RenderPlan v3 contract.
+        [[nodiscard]] static Easing inOutCubic();
         [[nodiscard]] static Easing cubicBezier(float x1, float y1, float x2, float y2);
 
         /// Ease-out that travels past the target and settles: control y = 1 + amount.
