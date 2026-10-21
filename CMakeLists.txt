@@ -92,6 +92,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/CameraRecipe.cpp
         src/chrononmotion/motion/CameraMotionRecipeRegistry.cpp
         src/chrononmotion/motion/CameraSequence.cpp
+        src/chrononmotion/motion/DocumentaryCameraPath.cpp
         src/chrononmotion/motion/CameraPanelChoreography.cpp
         src/chrononmotion/motion/CameraFocusSequence.cpp
         src/chrononmotion/motion/TitleCameraRecipe.cpp
@@ -304,6 +305,10 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_camera_sequence tests/motion_camera_sequence.cpp)
     target_link_libraries(chrononmotion_camera_sequence PRIVATE chrononmotion)
     add_test(NAME chrononmotion_camera_sequence COMMAND chrononmotion_camera_sequence)
+
+    add_executable(chrononmotion_documentary_camera_path tests/motion_documentary_camera_path.cpp)
+    target_link_libraries(chrononmotion_documentary_camera_path PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_documentary_camera_path COMMAND chrononmotion_documentary_camera_path)
 
     # Eye-trace continuity, screen-space camera math, analytic pose derivatives
     # and multi-aspect auto-reframing.
