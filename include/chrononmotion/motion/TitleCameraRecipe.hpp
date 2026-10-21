@@ -43,9 +43,26 @@ namespace chrononmotion::motion::camera {
         Vector2 viewport{1920.f, 1080.f};
     };
 
+    /// A compact editorial push-and-settle camera recipe. Callers select a
+    /// named motion and timing; CM3D owns its resolved optical distances,
+    /// yaw and CameraRig key authoring.
+    enum class PushSettlePreset : std::uint8_t { Tight, Quiet, GentleAngle, Documentary };
+
+    struct PushSettlePlan {
+        float startDistance{1250.f};
+        float endDistance{1100.f};
+        float startYawDegrees{-1.5f};
+        float endYawDegrees{0.f};
+        int inFrame{0};
+        int duration{90};
+        int settleFrames{12};
+    };
+
     [[nodiscard]] float titleFramingDistance(TitleFraming framing, float fovDegrees);
     [[nodiscard]] TitleCameraPlan resolveTitleCameraPlan(TitleMove move, const TitleRecipeShot& shot);
     void applyTitleCameraRequest(CameraRig& rig, const TitleCameraRequest& request);
+    [[nodiscard]] PushSettlePlan resolvePushSettlePlan(PushSettlePreset preset, int durationFrames);
+    void applyPushSettlePlan(CameraRig& rig, const PushSettlePlan& plan, float fps);
 
 }
 
