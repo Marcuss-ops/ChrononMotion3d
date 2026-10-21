@@ -18,6 +18,54 @@ bool finite(const Vector3& value) {
 
 } // namespace
 
+CameraTrackValidationReport validateCameraTrack(
+    const CameraRig& rig, const CameraTrackValidationOptions& options) {
+    if (options.totalFrames <= 0 || options.settleWindowFrames < 1 ||
+        !std::isfinite(options.framesPerSecond) || options.framesPerSecond <= 0.f ||
+        !std::isfinite(options.maxPositionStep) || options.maxPositionStep < 0.f ||
+        !std::isfinite(options.minimumMidTrackSpeed) || options.minimumMidTrackSpeed < 0.f) {
+        throw std::invalid_argument("validateCameraTrack: invalid frame range or thresholds");
+    }
+
+    CameraTrackValidationReport report;
+    Vector3 previous = rig.sample(0.f).position;
+    const int third = options.totalFrames / 3;
+    const int settleStart = std::max(0, options.totalFrames - options.settleWindowFrames);
+    for (int frame = 1; frame <= options.totalFrames; ++frame) {
+        const float seconds = static_cast<float>(frame) / options.framesPerSecond;
+        const auto derivative = rig.sampleDerivative(seconds);
+        const Vector3 position = rig.sample(seconds).position;
+        if (!finite(position) || !finite(derivative.linearVelocity)) {
+            report.passed = false;
+            report.failures.push_back("camera track contains a non-finite sample at frame " +
+                                      std::to_string(frame));
+            return report;
+        }
+        const Vector3 delta = position.clone().sub(previous);
+        report.maxPositionStep = std::max(report.maxPositionStep, delta.length());
+        previous = position;
+        if (frame >= third && frame <= 2 * third)
+            report.maxMidTrackSpeed = std::max(report.maxMidTrackSpeed,
+                                               derivative.linearVelocity.length());
+        if (frame >= settleStart)
+            report.maxSettleSpeed = std::max(report.maxSettleSpeed,
+                                             derivative.linearVelocity.length());
+    }
+    if (report.maxPositionStep > options.maxPositionStep) {
+        report.passed = false;
+        report.failures.push_back("camera track exceeds the per-frame continuity limit");
+    }
+    if (!(report.maxMidTrackSpeed > options.minimumMidTrackSpeed)) {
+        report.passed = false;
+        report.failures.push_back("camera track has insufficient motion in its middle section");
+    }
+    if (!(report.maxSettleSpeed < report.maxMidTrackSpeed)) {
+        report.passed = false;
+        report.failures.push_back("camera track does not slow down in its settle window");
+    }
+    return report;
+}
+
 CameraValidator& CameraValidator::addBounds(CameraValidationBounds bounds) {
     if (bounds.name.empty() || !finite(bounds.center) || !finite(bounds.halfExtent) ||
         bounds.halfExtent.x < 0.f || bounds.halfExtent.y < 0.f || bounds.halfExtent.z < 0.f)

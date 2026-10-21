@@ -158,6 +158,12 @@ int main() {
     if (!(start.position.z > middle.position.z) ||
         std::abs(end.position.x - (panStart.position.x + move.panOffset.x)) > 0.1f)
         throw std::runtime_error("panel choreography must resolve its push, pan and settle through CameraRig");
+    const auto trackValidation = validateCameraTrack(panelRig,
+        CameraTrackValidationOptions{.totalFrames = 90, .settleWindowFrames = 12,
+                                     .framesPerSecond = 30.f});
+    if (!trackValidation.passed || !(trackValidation.maxPositionStep > 0.f) ||
+        !(trackValidation.maxMidTrackSpeed > trackValidation.maxSettleSpeed))
+        throw std::runtime_error("CM3D camera track validation must check continuity and settling");
 
     const auto didone = resolvePushSettlePlan(PushSettlePreset::GentleAngle, 60);
     if (didone.startDistance != 1200.f || didone.endDistance != 1120.f ||

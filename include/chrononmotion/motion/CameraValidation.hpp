@@ -36,6 +36,27 @@ struct CameraValidationReport {
     std::vector<std::string> failures;
 };
 
+struct CameraTrackValidationOptions {
+    int totalFrames{0};
+    int settleWindowFrames{12};
+    float framesPerSecond{30.f};
+    float maxPositionStep{240.f};
+    float minimumMidTrackSpeed{1.f};
+};
+
+struct CameraTrackValidationReport {
+    bool passed{true};
+    float maxPositionStep{0.f};
+    float maxMidTrackSpeed{0.f};
+    float maxSettleSpeed{0.f};
+    std::vector<std::string> failures;
+};
+
+/// Validate continuity and settling of an authored CameraRig track. This is
+/// deterministic and samples the rig directly at each output-frame boundary.
+[[nodiscard]] CameraTrackValidationReport validateCameraTrack(
+    const CameraRig& rig, const CameraTrackValidationOptions& options);
+
 /// Geometric checks on an already-authored camera pose. This module does not
 /// render pixels; it validates projected bounds, framing, and depth ordering.
 class CameraValidator {
