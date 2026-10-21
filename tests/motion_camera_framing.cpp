@@ -50,6 +50,30 @@ int main() {
     if (first.pose.position.distanceTo(second.pose.position) > 1e-4f)
         throw std::runtime_error("framing session must be deterministic at a held pose");
 
+    CameraFramingRequest shifted = request;
+    shifted.safeArea = CameraSafeArea::full();
+    shifted.targets = {{{80.f, -30.f, -20.f}, {120.f, 30.f, 20.f}, 1.f}};
+    shifted.hysteresis = 0.25f;
+    CameraFramingSession transition;
+    const auto beforeShift = solver.solve(shifted, base, &transition);
+    shifted.targets = {{{-120.f, -30.f, -20.f}, {-80.f, 30.f, 20.f}, 1.f}};
+    const auto easedShift = solver.solve(shifted, base, &transition);
+    if (!(easedShift.pose.position.x < beforeShift.pose.position.x && easedShift.pose.position.x > -100.f))
+        throw std::runtime_error("framing hysteresis must ease a changed target between prior and desired aim: " +
+            std::to_string(beforeShift.pose.position.x) + " -> " + std::to_string(easedShift.pose.position.x));
+
+    CameraFramingRequest aimMove = request;
+    aimMove.safeArea = CameraSafeArea::full();
+    aimMove.strategy = CameraFramingStrategy::AimOnly;
+    aimMove.targets = {{{0.f, -10.f, -10.f}, {0.f, 10.f, 10.f}, 1.f}};
+    aimMove.aimDeadZoneDegrees = 20.f;
+    CameraFramingSession aimSession;
+    const auto initialAim = solver.solve(aimMove, base, &aimSession);
+    aimMove.targets = {{{100.f, -10.f, -10.f}, {120.f, 10.f, 10.f}, 1.f}};
+    const auto heldAim = solver.solve(aimMove, base, &aimSession);
+    if (std::abs(heldAim.pose.target.x - initialAim.pose.target.x) > 1e-4f)
+        throw std::runtime_error("framing aim dead zone must suppress small angular corrections");
+
     request.strategy = CameraFramingStrategy::FitHighest;
     request.targets.push_back({{-400.f, -250.f, -20.f}, {400.f, 250.f, 20.f}, 0.25f});
     const auto highest = solver.solve(request, base);
