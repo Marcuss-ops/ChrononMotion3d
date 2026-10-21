@@ -16,6 +16,8 @@
 #include <chronon3d/render_plan/render_plan.hpp>
 #include <chronon3d/render_plan/camera_sample_provider.hpp>
 
+#include <nlohmann/json.hpp>
+
 #include <optional>
 #include <memory>
 #include <span>
@@ -67,11 +69,22 @@ namespace chrononmotion::motion {
         const CameraPose& pose, float nearPlane = 1.f, float farPlane = 10000.f);
 
     /// Sample a rig at every integer presentation frame and lower the complete
-    /// renderer-facing camera state. This is the canonical offline camera bake
-    /// used by RenderPlan lowering and external plan producers.
+    /// renderer-facing camera state. `CameraSamplePlan::frame` is an absolute
+    /// presentation-frame index; its time in seconds is frame * fps_den / fps_num
+    /// from the enclosing canvas. For shutter rendering, C3D requests additional
+    /// samples at sub-frame times derived from MotionBlurPlan::shutter_angle
+    /// (angle / 360 / fps) and `samples`; these are sampled exactly by the runtime
+    /// provider. This is the canonical offline camera bake used by RenderPlan
+    /// lowering and external plan producers.
     [[nodiscard]] std::vector<chronon3d::render_plan::CameraSamplePlan>
     bakeResolvedCameraSamples(const CameraRig& rig, float fps, std::size_t frameCount,
-                              float nearPlane = 1.f, float farPlane = 10000.f);
+                              float nearPlane = 1.f, float farPlane = 10000.f,
+                              const Vector3& cameraPositionOffset = Vector3{});
+
+    /// Serialize CM3D-resolved camera samples into the canonical RenderPlan V3
+    /// JSON field shape. This is the shared bridge for Template plan producers.
+    [[nodiscard]] nlohmann::json cameraSamplesToJson(
+        const std::vector<chronon3d::render_plan::CameraSamplePlan>& samples);
 
     /// Create a runtime provider for C3D's exact presentation/shutter sample
     /// times, including pre-roll times before frame zero.

@@ -1583,6 +1583,7 @@ void testTypedChronon3dLowering() {
     cameraPose.fStop = 0.f;
     const auto loweredCameraPoseDof = lowerCameraPose(cameraPose, 0.1f, 2000.f);
     auto cameraOnlyScene = MotionScene("camera DoF parity", 30.f);
+    animatedDofRig.setSensorWidth(32.f).setLensShift({0.03f, -0.02f});
     cameraOnlyScene.evaluate(0);
     CameraRig animatedDofRig(26, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     animatedDofRig.setPosition({0.f, 0.f, -8.f}).setLegacyDefocusStrength(0.04f).setFocusDistance(480.f);
@@ -1604,6 +1605,9 @@ void testTypedChronon3dLowering() {
               "resolved camera samples preserve focus, aperture, and blur over time");
     }
     const auto animatedDofJson = nlohmann::json::parse(renderPlanToJson(animatedDofPlan));
+    check(animatedDofPlan.camera_samples->front().camera.sensor_width_mm == 32.f &&
+          animatedDofPlan.camera_samples->front().camera.lens_shift == std::array<float, 2>{0.03f, -0.02f},
+          "resolved camera samples preserve physical sensor width and normalized lens shift");
     check(animatedDofJson.contains("camera_samples") &&
           animatedDofJson["camera_samples"].size() == animatedDofPlan.camera_samples->size() &&
           !animatedDofJson.contains("camera_animation"),

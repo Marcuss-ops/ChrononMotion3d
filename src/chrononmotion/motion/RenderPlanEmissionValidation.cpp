@@ -1239,6 +1239,10 @@ namespace chrononmotion::motion {
                 camera.dof_aperture < 0.f || camera.dof_aperture > 1.f ||
                 !finite(camera.dof_max_blur) || camera.dof_max_blur < 0.f || camera.dof_max_blur > 256.f)
                 return "the camera has depth-of-field values outside the RenderPlan contract";
+            if (!finite(camera.sensor_width_mm) || camera.sensor_width_mm < 1.f || camera.sensor_width_mm > 100.f ||
+                !finite(camera.lens_shift[0]) || !finite(camera.lens_shift[1]) ||
+                std::abs(camera.lens_shift[0]) > 1.f || std::abs(camera.lens_shift[1]) > 1.f)
+                return "the camera sensor width or lens shift is outside the RenderPlan contract";
             if (!finite(camera.focal_length_mm) ||
                 (camera.focal_length_mm != 0.f &&
                  (camera.focal_length_mm < 12.f || camera.focal_length_mm > 200.f)) ||

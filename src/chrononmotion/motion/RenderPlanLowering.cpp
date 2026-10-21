@@ -953,6 +953,9 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     ensureFinite(pose.target.y, "camera target");
     ensureFinite(pose.target.z, "camera target");
     ensureFinite(pose.focalLength, "camera focal length");
+    ensureFinite(pose.sensorWidth, "camera sensor width");
+    ensureFinite(pose.lensShift.x, "camera lens shift x");
+    ensureFinite(pose.lensShift.y, "camera lens shift y");
     ensureFinite(pose.legacyDefocusStrength, "legacy defocus strength");
     ensureFinite(pose.focusDistance, "camera focus distance");
     ensureFinite(pose.maxBlur, "camera maximum blur");
@@ -962,7 +965,9 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     if (pose.hasTarget || pose.roll != 0.f)
         throw std::invalid_argument(
             "lowerCameraPose: resolve look-at and roll into orientation before lowering; RenderPlan has no target/roll metadata channels");
-    if ((pose.focalLength != 0.f && (pose.focalLength < 12.f || pose.focalLength > 200.f)) ||
+    if (pose.sensorWidth < 1.f || pose.sensorWidth > 100.f ||
+        std::abs(pose.lensShift.x) > 1.f || std::abs(pose.lensShift.y) > 1.f ||
+        (pose.focalLength != 0.f && (pose.focalLength < 12.f || pose.focalLength > 200.f)) ||
         (pose.fStop != 0.f && (pose.fStop < 0.7f || pose.fStop > 32.f)) ||
         pose.irisBlades < 0 || pose.irisBlades > 12 ||
         pose.highlightGain < 0.f || pose.highlightGain > 8.f)
@@ -1008,6 +1013,8 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     camera.near = nearPlane;
     camera.far = farPlane;
     camera.focal_length_mm = pose.focalLength;
+    camera.sensor_width_mm = pose.sensorWidth;
+    camera.lens_shift = {pose.lensShift.x, pose.lensShift.y};
     camera.f_stop = pose.fStop;
     camera.iris_blades = pose.irisBlades;
     if (depthOfFieldAuthored) {
@@ -1023,7 +1030,8 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
 }
 
 std::vector<chronon3d::render_plan::CameraSamplePlan> bakeResolvedCameraSamples(
-    const CameraRig& rig, float fps, std::size_t frameCount, float nearPlane, float farPlane) {
+    const CameraRig& rig, float fps, std::size_t frameCount, float nearPlane, float farPlane,
+    const Vector3& cameraPositionOffset) {
     if (!std::isfinite(fps) || fps <= 0.f)
         throw std::invalid_argument("bakeResolvedCameraSamples: fps must be finite and positive");
     if (frameCount == 0 || frameCount > 65536)
@@ -1032,11 +1040,38 @@ std::vector<chronon3d::render_plan::CameraSamplePlan> bakeResolvedCameraSamples(
     samples.reserve(frameCount);
     for (std::size_t frame = 0; frame < frameCount; ++frame) {
         CameraPose pose = rig.sample(static_cast<float>(frame) / fps);
+        pose.position.add(cameraPositionOffset);
         pose.hasTarget = false;
         pose.roll = 0.f;
         samples.push_back({static_cast<double>(frame), lowerCameraPose(pose, nearPlane, farPlane)});
     }
     return samples;
+}
+
+nlohmann::json cameraSamplesToJson(
+    const std::vector<chronon3d::render_plan::CameraSamplePlan>& samples) {
+    if (samples.empty())
+        throw std::invalid_argument("cameraSamplesToJson: at least one resolved sample is required");
+    nlohmann::json result = nlohmann::json::array();
+    for (const auto& sample : samples) {
+        const auto& camera = sample.camera;
+        nlohmann::json value = {
+            {"type", camera.type}, {"position", camera.position},
+            {"rotation_deg", camera.rotation_deg}, {"fov_deg", camera.fov_deg},
+            {"near", camera.near}, {"far", camera.far}, {"zoom", camera.zoom},
+            {"sensor_width_mm", camera.sensor_width_mm}, {"lens_shift", camera.lens_shift},
+            {"dof", {{"enabled", camera.dof_enabled},
+                     {"focus_distance", camera.dof_focus_distance},
+                     {"aperture", camera.dof_aperture}, {"max_blur", camera.dof_max_blur}}}};
+        if (camera.focal_length_mm > 0.f) value["focal_length_mm"] = camera.focal_length_mm;
+        if (camera.f_stop > 0.f) value["f_stop"] = camera.f_stop;
+        value["iris_blades"] = camera.iris_blades;
+        if (camera.dof_f_stop > 0.f) value["dof"]["f_stop"] = camera.dof_f_stop;
+        value["dof"]["iris_blades"] = camera.dof_iris_blades;
+        value["dof"]["highlight_gain"] = camera.dof_highlight_gain;
+        result.push_back({{"frame", sample.frame}, {"camera", std::move(value)}});
+    }
+    return result;
 }
 
 chronon3d::render_plan::RuntimeCameraSampleProvider makeCameraSampleProvider(
