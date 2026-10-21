@@ -1059,7 +1059,8 @@ namespace chrononmotion::motion {
 
             rig.positionTrack().add(time, camPos, Easing::linear());
             rig.targetTrack().add(time, targetPos, Easing::linear());
-            rig.focusDistanceTrack().add(time, radius, Easing::linear());
+            rig.focusDistanceTrack().add(
+                time, camPos.distanceTo(targetPos), Easing::linear());
         }
     }
 

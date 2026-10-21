@@ -456,6 +456,21 @@ namespace {
             check(rig.sample(at(60)).position.z < rig.sample(at(0)).position.z, "DepthPeel moves forward through Z layers");
         }
 
+        // 17. camera_bullet_time_orbit_freeze keeps focus on the aimed plane
+        // when the orbit has a non-zero vertical offset.
+        {
+            CameraRig rig(17);
+            constexpr float radius = 7.f;
+            constexpr float height = 12.f;
+            cameraBulletTimeOrbitFreeze(
+                rig, sA, 0, 30, radius, height, 180.f, 0.16f, kFps);
+            const CameraPose pose = rig.sample(at(0));
+            checkNear(pose.focusDistance, pose.position.distanceTo(pose.target), 1e-4f,
+                      "BulletTime focus distance matches the off-axis-height orbit distance");
+            check(pose.focusDistance > radius,
+                  "BulletTime focus includes the camera height above the subject");
+        }
+
         // 10. camera_arc_between_subjects
         {
             CameraRig rig(10);
