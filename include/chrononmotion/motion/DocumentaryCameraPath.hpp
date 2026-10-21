@@ -7,6 +7,8 @@
 #include "chrononmotion/motion/CameraRig.hpp"
 
 #include <vector>
+#include <span>
+#include <string_view>
 
 namespace chrononmotion::motion::camera {
 
@@ -15,6 +17,9 @@ enum class DocumentaryMove {
     Reveal90, CornerTurn, ForegroundPhotoPass, PhotoStack, FilmstripHandoff,
     SplitDepth, ArchiveCraneReveal
 };
+
+[[nodiscard]] std::span<const DocumentaryMove> documentaryMoves() noexcept;
+[[nodiscard]] std::string_view documentaryMoveId(DocumentaryMove move) noexcept;
 
 struct DocumentaryCameraAnchor {
     Vector3 center{0.f, 0.f, 0.f};
