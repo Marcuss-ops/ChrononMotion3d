@@ -361,8 +361,10 @@ namespace chrononmotion::motion {
         const Vector3 targetA = subjectA.resolve(scene, t0);
         const Vector3 targetB = subjectB.resolve(scene, t1);
 
-        const float distA = current.position.distanceTo(targetA);
-        const float distB = current.position.distanceTo(targetB);
+        const float distA = CameraFocusResolver::resolveFocus(
+            CameraFocusMode::TargetDistance, current, targetA);
+        const float distB = CameraFocusResolver::resolveFocus(
+            CameraFocusMode::TargetDistance, current, targetB);
 
         rig.focusDistanceTrack().add(t0, distA, easing);
         rig.focusDistanceTrack().add(t1, distB, Easing::linear());
