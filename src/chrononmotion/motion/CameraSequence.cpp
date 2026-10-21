@@ -1,6 +1,7 @@
 #include "chrononmotion/motion/CameraSequence.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
+#include "chrononmotion/motion/CameraFraming.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
 
 #include <algorithm>
@@ -152,10 +153,10 @@ namespace chrononmotion::motion::camera {
         if (!finiteSubject(subject) || !(subject.halfWidth > 0.f) || !(subject.halfHeight > 0.f) ||
             !(subject.fov > 0.f) || !(viewport.x > 0.f) || !(viewport.y > 0.f))
             throw std::invalid_argument("framingDistance: subject, FOV and viewport must be positive and finite");
-        const float aspect = viewport.x / std::max(viewport.y, 1.f);
         const float clampedFill = std::clamp(fill, 0.1f, 0.98f);
-        return framingDistanceForBounds(subject.halfWidth, subject.halfHeight, subject.fov,
-                                        aspect, clampedFill);
+        const float margin = (1.f - clampedFill) * 0.5f;
+        return CameraFramingSolver::distanceForBounds(subject.halfWidth, subject.halfHeight,
+            0.f, subject.fov, viewport, CameraSafeArea{margin, margin, margin, margin});
     }
 
     void applySequence(CameraRig& rig, const CameraSequence& sequence, float fps, const Vector2& viewport) {

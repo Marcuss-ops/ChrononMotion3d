@@ -83,7 +83,9 @@ CameraFramingResult CameraFramingSolver::solve(const CameraFramingRequest& req,
         req.viewport.x <= 0.f || req.viewport.y <= 0.f ||
         !std::isfinite(base.fov) || base.fov <= 0.f || base.fov >= 180.f ||
         !std::isfinite(req.minDistance) || !std::isfinite(req.maxDistance) ||
-        req.minDistance <= 0.f || req.maxDistance < req.minDistance) {
+        !std::isfinite(req.targetVelocity.x) || !std::isfinite(req.targetVelocity.y) ||
+        !std::isfinite(req.targetVelocity.z) || !std::isfinite(req.lookAheadSeconds) ||
+        req.lookAheadSeconds < 0.f || req.minDistance <= 0.f || req.maxDistance < req.minDistance) {
         result.ok = false;
         return result;
     }
@@ -97,7 +99,15 @@ CameraFramingResult CameraFramingSolver::solve(const CameraFramingRequest& req,
         }
     }
 
-    const auto targets = activeTargets(req);
+    auto targets = activeTargets(req);
+    Vector3 predictedOffset = req.targetVelocity;
+    predictedOffset.multiplyScalar(req.lookAheadSeconds);
+    if (req.lookAheadSeconds > 0.f) {
+        for (auto& bounds : targets) {
+            bounds.min.add(predictedOffset);
+            bounds.max.add(predictedOffset);
+        }
+    }
     const Vector3 center = weightedCenter(targets);
     const float safeWidth = std::clamp(1.f - req.safeArea.left - req.safeArea.right, 0.05f, 1.f);
     const float safeHeight = std::clamp(1.f - req.safeArea.top - req.safeArea.bottom, 0.05f, 1.f);
@@ -175,6 +185,26 @@ CameraFramingResult CameraFramingSolver::solve(const CameraFramingRequest& req,
     if (session) { session->previous = framed; session->hasPrevious = true; }
     result.ok = true;
     return result;
+}
+
+float CameraFramingSolver::distanceForBounds(float halfWidth, float halfHeight,
+                                              float halfDepth, float fovDegrees,
+                                              const Vector2& viewport,
+                                              const CameraSafeArea& safeArea) {
+    if (!std::isfinite(halfWidth) || !std::isfinite(halfHeight) || !std::isfinite(halfDepth) ||
+        halfWidth < 0.f || halfHeight < 0.f || halfDepth < 0.f ||
+        !std::isfinite(fovDegrees) || fovDegrees <= 0.f || fovDegrees >= 180.f ||
+        !std::isfinite(viewport.x) || !std::isfinite(viewport.y) || viewport.x <= 0.f || viewport.y <= 0.f)
+        throw std::invalid_argument("distanceForBounds: extents, FOV and viewport must be valid");
+    const float aspect = viewport.x / viewport.y;
+    const float safeWidth = std::clamp(1.f - safeArea.left - safeArea.right, 0.05f, 1.f);
+    const float safeHeight = std::clamp(1.f - safeArea.top - safeArea.bottom, 0.05f, 1.f);
+    const float fill = std::min(safeWidth, safeHeight);
+    const float tanHalf = std::tan(std::max(fovDegrees * 0.5f * 3.14159265358979323846f / 180.f, 1e-4f));
+    const float fitWidth = halfWidth * 2.f;
+    const float fitHeight = halfHeight * 2.f * aspect;
+    const float fit = std::max(fitWidth, fitHeight);
+    return fit / (2.f * tanHalf * aspect * fill) + halfDepth;
 }
 
 } // namespace chrononmotion::motion
