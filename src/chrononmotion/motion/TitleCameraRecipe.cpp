@@ -35,7 +35,7 @@ namespace chrononmotion::motion::camera {
 
 std::span<const TitleMove> titleCameraMoves() noexcept { return kTitleMoves; }
 
-std::string_view titleCameraMoveId(TitleMove move) noexcept {
+std::string_view titleMoveId(TitleMove move) noexcept {
     switch (move) {
         case TitleMove::SlowPush: return "title_camera_slow_push";
         case TitleMove::SlowPullOut: return "title_camera_slow_pull_out";

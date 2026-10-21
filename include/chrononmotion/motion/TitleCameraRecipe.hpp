@@ -23,7 +23,7 @@ namespace chrononmotion::motion::camera {
 
     /// Canonical title-move order and stable product IDs.
     [[nodiscard]] std::span<const TitleMove> titleCameraMoves() noexcept;
-    [[nodiscard]] std::string_view titleCameraMoveId(TitleMove move) noexcept;
+    [[nodiscard]] std::string_view titleMoveId(TitleMove move) noexcept;
 
     struct TitleRecipeShot {
         TitleFraming framing{TitleFraming::Medium};
