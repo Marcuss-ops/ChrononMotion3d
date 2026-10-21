@@ -54,6 +54,18 @@ int main() try {
                   farWord.irisBlades == 8 && near(farWord.maxBlur, 10.f) && near(farWord.highlightGain, 1.25f),
           "physical lens and renderer DOF parameters are preserved on the rig");
 
+    CameraRig focusTrackRig;
+    focusTrackRig.setPosition({0.f, 0.f, 10.f}).setTarget({0.f, 0.f, 0.f});
+    applyTargetFocusTrack(focusTrackRig, 0, 10, 30.f);
+    check(near(focusTrackRig.sample(5.f / 30.f).focusDistance, 10.f),
+          "CM3D resolves target focus for every evaluated camera sample");
+    CameraRig planeFocusRig;
+    planeFocusRig.setPosition({0.f, 0.f, 10.f}).setTarget({0.f, 0.f, 0.f});
+    applyZPlaneFocusTrack(planeFocusRig, 0, 10, 0, 0.f, -5.f, 30.f);
+    check(near(planeFocusRig.sample(0.f).focusDistance, 10.f) &&
+                  near(planeFocusRig.sample(10.f / 30.f).focusDistance, 15.f),
+          "CM3D resolves a world-plane rack focus along the optical axis");
+
     std::cout << "Camera focus sequence checks passed\n";
     return 0;
 } catch (const std::exception& error) {
