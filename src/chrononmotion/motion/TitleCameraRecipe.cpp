@@ -159,4 +159,51 @@ namespace chrononmotion::motion::camera {
                 throw std::invalid_argument("applyTitleCameraRequest: title anchor leaves safe area");
         }
     }
+
+    PushSettlePlan resolvePushSettlePlan(PushSettlePreset preset, int durationFrames) {
+        PushSettlePlan plan;
+        plan.duration = durationFrames > 0 ? durationFrames : 90;
+        plan.settleFrames = std::min(plan.settleFrames, plan.duration);
+        switch (preset) {
+            case PushSettlePreset::Tight:
+                plan.startDistance = 1100.f; plan.endDistance = 1030.f;
+                plan.startYawDegrees = 0.f;
+                break;
+            case PushSettlePreset::Quiet:
+                plan.startDistance = 1150.f; plan.endDistance = 1130.f;
+                plan.startYawDegrees = 0.f;
+                break;
+            case PushSettlePreset::GentleAngle:
+                plan.startDistance = 1200.f; plan.endDistance = 1120.f;
+                plan.startYawDegrees = -0.8f;
+                break;
+            case PushSettlePreset::Documentary:
+                plan.startDistance = 1250.f; plan.endDistance = 1100.f;
+                plan.startYawDegrees = -1.5f;
+                break;
+        }
+        return plan;
+    }
+
+    void applyPushSettlePlan(CameraRig& rig, const PushSettlePlan& plan, float fps) {
+        if (!std::isfinite(fps) || fps <= 0.f || plan.inFrame < 0 || plan.duration <= 0 ||
+            plan.settleFrames < 0 || plan.settleFrames > plan.duration ||
+            !std::isfinite(plan.startDistance) || !std::isfinite(plan.endDistance) ||
+            !std::isfinite(plan.startYawDegrees) || !std::isfinite(plan.endYawDegrees))
+            throw std::invalid_argument("applyPushSettlePlan: invalid camera motion values");
+        const float t0 = static_cast<float>(plan.inFrame) / fps;
+        const float tSettle = static_cast<float>(plan.inFrame + plan.duration - plan.settleFrames) / fps;
+        const float t1 = static_cast<float>(plan.inFrame + plan.duration) / fps;
+        const float midDistance = plan.startDistance + (plan.endDistance - plan.startDistance) * 0.85f;
+        rig.positionTrack().add(t0, Vector3(0.f, 0.f, plan.startDistance), Easing::easeInOut())
+            .add(tSettle, Vector3(0.f, 0.f, midDistance), Easing::easeOut())
+            .add(t1, Vector3(0.f, 0.f, plan.endDistance), Easing::linear());
+        if (std::fabs(plan.startYawDegrees - plan.endYawDegrees) > 0.0001f) {
+            Quaternion start, end;
+            start.setFromAxisAngle(Vector3(0.f, 1.f, 0.f), math::degToRad(plan.startYawDegrees));
+            end.setFromAxisAngle(Vector3(0.f, 1.f, 0.f), math::degToRad(plan.endYawDegrees));
+            rig.orientationTrack().add(t0, start, Easing::easeOut())
+                .add(t1, end, Easing::linear());
+        }
+    }
 }

@@ -1,6 +1,7 @@
 #include "chrononmotion/motion/CameraFraming.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
 #include "chrononmotion/motion/CameraPanelChoreography.hpp"
+#include "chrononmotion/motion/TitleCameraRecipe.hpp"
 
 #include <cmath>
 #include <stdexcept>
@@ -119,5 +120,18 @@ int main() {
     if (!(start.position.z > middle.position.z) ||
         std::abs(end.position.x - (panStart.position.x + move.panOffset.x)) > 0.1f)
         throw std::runtime_error("panel choreography must resolve its push, pan and settle through CameraRig");
+
+    const auto didone = resolvePushSettlePlan(PushSettlePreset::GentleAngle, 60);
+    if (didone.startDistance != 1200.f || didone.endDistance != 1120.f ||
+        didone.startYawDegrees != -0.8f || didone.duration != 60)
+        throw std::runtime_error("push-settle presets must resolve their canonical CM3D values");
+    CameraRig didoneRig;
+    applyPushSettlePlan(didoneRig, didone, 30.f);
+    const auto didoneStart = didoneRig.sample(0.f);
+    const auto didoneSettle = didoneRig.sample(48.f / 30.f);
+    const auto didoneEnd = didoneRig.sample(60.f / 30.f);
+    if (didoneStart.position.z != 1200.f || std::abs(didoneSettle.position.z - 1132.f) > 0.01f ||
+        didoneEnd.position.z != 1120.f)
+        throw std::runtime_error("CM3D must author the push-settle camera keys");
     return 0;
 }
