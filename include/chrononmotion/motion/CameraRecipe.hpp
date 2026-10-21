@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <span>
+#include <vector>
 
 namespace chrononmotion::motion::camera {
 
@@ -49,6 +50,14 @@ namespace chrononmotion::motion::camera {
         bool twoShot{false}, needsOccluder{false}, highEnergy{false};
         float cutAt{0.5f};
         bool snapIn{false};
+        struct Waypoint {
+            float progress{0.f};
+            Vector3 positionOffset{0.f, 0.f, 0.f};
+            Vector3 targetOffset{0.f, 0.f, 0.f};
+            float fov{50.f};
+            const char* easing{"smooth"};
+        };
+        std::vector<Waypoint> waypoints{};
     };
 
     /// A named, reusable numeric camera recipe owned by ChrononMotion3D.
