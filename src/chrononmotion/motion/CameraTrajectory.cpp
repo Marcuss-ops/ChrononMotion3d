@@ -225,7 +225,8 @@ std::shared_ptr<CameraTrajectory> CameraTrajectoryBuilder::build() {
 }
 
 void authorCameraTrajectory(CameraRig& rig, const CameraTrajectory& trajectory,
-                            int startFrame, float fps, unsigned samplesPerFrame) {
+                            int startFrame, float fps, unsigned samplesPerFrame,
+                            CameraTrajectoryAuthoringOptions options) {
     if (startFrame < 0 || !(fps > 0.f) || !std::isfinite(fps) || samplesPerFrame == 0)
         throw std::invalid_argument("authorCameraTrajectory: invalid timing or sampling density");
     const float duration = trajectory.totalFrames();
@@ -242,21 +243,41 @@ void authorCameraTrajectory(CameraRig& rig, const CameraTrajectory& trajectory,
             [](const CameraTrajectoryPoint& point) { return point.target.has_value(); });
         if (firstTarget != trajectory.points().end()) fallbackTarget = *firstTarget->target;
     }
+    Vector3 lastTangent{};
+    Vector3 finalTarget = fallbackTarget;
+    float finalRoll = 0.f;
     for (unsigned long long i = 0; i <= sampleCount; ++i) {
         const float pathFrame = std::min(duration,
             static_cast<float>(i) / static_cast<float>(samplesPerFrame));
         const float time = (static_cast<float>(startFrame) + pathFrame) / fps;
         const auto pose = trajectory.sample(pathFrame);
         rig.positionTrack().add(time, pose.position, Easing::linear());
-        rig.rollTrack().add(time, pose.rollDegrees * 3.14159265358979323846f / 180.f,
-                            Easing::linear());
-        if (hasTargetChannel)
-            rig.targetTrack().add(time, pose.target.value_or(fallbackTarget), Easing::linear());
+        if (options.orientAlongPath) {
+            Vector3 direction = pose.tangent;
+            if (direction.lengthSq() > 1e-12f) {
+                direction.normalize();
+                lastTangent = direction;
+            } else if (lastTangent.lengthSq() > 1e-12f) {
+                direction = lastTangent;
+            }
+            finalTarget = direction.lengthSq() > 1e-12f
+                ? Vector3{}.addVectors(pose.position, direction)
+                : pose.target.value_or(fallbackTarget);
+            rig.targetTrack().add(time, finalTarget, Easing::linear());
+            finalRoll = options.keepHorizon ? 0.f :
+                pose.rollDegrees * 3.14159265358979323846f / 180.f;
+            rig.rollTrack().add(time, finalRoll, Easing::linear());
+        } else {
+            finalTarget = pose.target.value_or(fallbackTarget);
+            finalRoll = pose.rollDegrees * 3.14159265358979323846f / 180.f;
+            rig.rollTrack().add(time, finalRoll, Easing::linear());
+            if (hasTargetChannel)
+                rig.targetTrack().add(time, finalTarget, Easing::linear());
+        }
     }
     const auto finalPose = trajectory.sample(duration);
-    rig.setPosition(finalPose.position).setRoll(
-        finalPose.rollDegrees * 3.14159265358979323846f / 180.f);
-    if (hasTargetChannel) rig.setTarget(finalPose.target.value_or(fallbackTarget));
+    rig.setPosition(finalPose.position).setRoll(finalRoll);
+    if (hasTargetChannel || options.orientAlongPath) rig.setTarget(finalTarget);
 }
 
 } // namespace chrononmotion::motion::camera
