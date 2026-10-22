@@ -9,10 +9,10 @@ using namespace threepp;
 
 namespace {
 
-    Sphere _sphere;
-    Vector3 _position;
-    Matrix4 _inverseMatrix;
-    Ray _ray;
+    thread_local Sphere _sphere;
+    thread_local Vector3 _position;
+    thread_local Matrix4 _inverseMatrix;
+    thread_local Ray _ray;
 
     void testPoint(
             const Vector3& point,
