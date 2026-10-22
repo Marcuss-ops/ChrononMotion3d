@@ -258,6 +258,15 @@ as a full-GPU PASS.
 This runner also exposed and fixed the root-target directional-light direction
 track being ignored by MotionScene evaluation.
 
+The 2026-10-22 direct-PBO rerun is recorded separately at
+`out/threepp_certification/nvidia/T05-direct-pbo-20261022/`. It submits and
+muxes 150/150 frames, uses the mapped GL PBO as the external CUDA AVFrame for
+NVENC, reports no CPU framebuffer readback in the encode path, and performs no
+explicit CUDA device-to-device copy per frame. The framebuffer-to-PBO transfer
+remains; CPU diagnostic reads are a separate pass. This closes the encoder
+handoff canary only. Keep T05 `PARTIAL` until shadow quality and production
+Chronon3D composition integration are accepted.
+
 ## T14 run result
 
 The NVIDIA EGL backend now creates a display-free pbuffer on the RTX A4000. The
