@@ -8,8 +8,8 @@ using namespace threepp;
 
 namespace {
 
-    Matrix4 _identityMatrix;
-    Matrix4 _offsetMatrix;
+    thread_local Matrix4 _identityMatrix;
+    thread_local Matrix4 _offsetMatrix;
 
 }// namespace
 

@@ -15,21 +15,21 @@ using namespace threepp;
 
 namespace {
 
-    Vector3 _intersectPoint;
-    Vector3 _worldScale;
-    Vector3 _mvPosition;
+    thread_local Vector3 _intersectPoint;
+    thread_local Vector3 _worldScale;
+    thread_local Vector3 _mvPosition;
 
-    Vector2 _alignedPosition;
-    Vector2 _rotatedPosition;
-    Matrix4 _viewWorldMatrix;
+    thread_local Vector2 _alignedPosition;
+    thread_local Vector2 _rotatedPosition;
+    thread_local Matrix4 _viewWorldMatrix;
 
-    Vector3 _vA;
-    Vector3 _vB;
-    Vector3 _vC;
+    thread_local Vector3 _vA;
+    thread_local Vector3 _vB;
+    thread_local Vector3 _vC;
 
-    Vector2 _uvA;
-    Vector2 _uvB;
-    Vector2 _uvC;
+    thread_local Vector2 _uvA;
+    thread_local Vector2 _uvB;
+    thread_local Vector2 _uvC;
 
 
     void transformVertex(Vector3& vertexPosition, const Vector3& mvPosition, const Vector2& center, const Vector3& scale, const std::optional<std::pair<float, float>>& sincos) {

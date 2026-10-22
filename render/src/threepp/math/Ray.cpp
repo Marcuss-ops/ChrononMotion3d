@@ -12,15 +12,15 @@ using namespace threepp;
 
 namespace {
 
-    Vector3 _vector;
+    thread_local Vector3 _vector;
 
-    Vector3 _segCenter;
-    Vector3 _segDir;
-    Vector3 _diff;
+    thread_local Vector3 _segCenter;
+    thread_local Vector3 _segDir;
+    thread_local Vector3 _diff;
 
-    Vector3 _edge1;
-    Vector3 _edge2;
-    Vector3 _normal;
+    thread_local Vector3 _edge1;
+    thread_local Vector3 _edge2;
+    thread_local Vector3 _normal;
 
 }// namespace
 

@@ -5,13 +5,13 @@ using namespace threepp;
 
 namespace {
 
-    Vector3 _basePosition;
+    thread_local Vector3 _basePosition;
 
-    Vector4 _skinIndex;
-    Vector4 _skinWeight;
+    thread_local Vector4 _skinIndex;
+    thread_local Vector4 _skinWeight;
 
-    Vector3 _vector;
-    Matrix4 _matrix;
+    thread_local Vector3 _vector;
+    thread_local Matrix4 _matrix;
 
 }// namespace
 

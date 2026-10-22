@@ -11,10 +11,10 @@ using namespace threepp;
 
 namespace {
 
-    Vector3 _v0;
-    Vector3 _v1;
-    Vector3 _normal;
-    Triangle _triangle;
+    thread_local Vector3 _v0;
+    thread_local Vector3 _v1;
+    thread_local Vector3 _normal;
+    thread_local Triangle _triangle;
 
     struct EdgeData {
         unsigned int index0;
