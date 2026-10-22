@@ -15,6 +15,11 @@ extern "C" {
 #include "glad/glad.h"
 
 #include <cstdio>
+#include <array>
+#include <condition_variable>
+#include <cstdlib>
+#include <mutex>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -71,6 +76,30 @@ public:
         cuda_check(cudaGraphicsGLRegisterBuffer(&graphics_resource_, pbo_, cudaGraphicsRegisterFlagsReadOnly),
                    "cudaGraphicsGLRegisterBuffer");
 
+        // Experimental zero-copy input lane: FFmpeg/NVENC receives the CUDA
+        // pointer mapped from a ring of GL PBOs directly. A frame-owned lease
+        // keeps each PBO mapped until libavcodec releases the input AVFrame.
+        // Keep the established D2D path as the fallback until the lane is
+        // explicitly enabled and certified on the target driver.
+        const char* zeroCopyEnv = std::getenv("CHRONON_GLCUDA_ZERO_COPY");
+        zero_copy_enabled_ = zeroCopyEnv && std::string(zeroCopyEnv) == "1";
+        if (zero_copy_enabled_) {
+            glDeleteBuffers(1, &pbo_);
+            pbo_ = 0;
+            cuda_check(cudaGraphicsUnregisterResource(graphics_resource_),
+                       "cudaGraphicsUnregisterResource(single PBO)");
+            graphics_resource_ = nullptr;
+            for (auto& slot : pbo_slots_) {
+                glGenBuffers(1, &slot.pbo);
+                glBindBuffer(GL_PIXEL_PACK_BUFFER, slot.pbo);
+                glBufferData(GL_PIXEL_PACK_BUFFER, static_cast<GLsizeiptr>(width_) * height_ * 4,
+                             nullptr, GL_STREAM_READ);
+                cuda_check(cudaGraphicsGLRegisterBuffer(&slot.resource, slot.pbo,
+                             cudaGraphicsRegisterFlagsReadOnly), "cudaGraphicsGLRegisterBuffer(ring)");
+            }
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        }
+
         const std::string device_id = std::to_string(devices_[0]);
         av_check(av_hwdevice_ctx_create(&cuda_device_, AV_HWDEVICE_TYPE_CUDA, device_id.c_str(), nullptr,
                                         AV_CUDA_USE_PRIMARY_CONTEXT), "av_hwdevice_ctx_create(CUDA primary)");
@@ -125,6 +154,10 @@ public:
     // a device-to-device copy fills an FFmpeg CUDA frame for NVENC. No host pixel
     // pointer is created in this production encode path.
     void encode_current_target(int64_t pts) {
+        if (zero_copy_enabled_) {
+            encode_current_target_zero_copy(pts);
+            return;
+        }
         GLint previous_read_fbo = 0;
         GLint previous_pack_buffer = 0;
         GLint previous_pack_alignment = 4;
@@ -183,6 +216,13 @@ public:
         if (finished_) return;
         av_check(avcodec_send_frame(codec_, nullptr), "avcodec_send_frame(flush)");
         drain_packets(true);
+        if (zero_copy_enabled_) {
+            std::unique_lock lock(slot_mutex_);
+            slot_cv_.wait(lock, [&] {
+                for (const auto& slot : pbo_slots_) if (slot.leased) return false;
+                return true;
+            });
+        }
         av_check(av_write_trailer(format_), "av_write_trailer");
         header_written_ = false;
         finished_ = true;
@@ -191,8 +231,101 @@ public:
     [[nodiscard]] int frames_submitted() const { return frames_submitted_; }
     [[nodiscard]] int packets_written() const { return packets_written_; }
     [[nodiscard]] const std::string& device_name() const { return device_name_; }
+    [[nodiscard]] bool zero_copy_input_enabled() const { return zero_copy_enabled_; }
+    [[nodiscard]] int explicit_cuda_d2d_copies_per_frame() const { return zero_copy_enabled_ ? 0 : 1; }
 
 private:
+    struct PboSlot {
+        GLuint pbo{};
+        cudaGraphicsResource* resource{};
+        bool leased{};
+    };
+    struct SlotLease {
+        GlCudaNvencEncoder* owner{};
+        std::size_t slot{};
+    };
+    static void release_slot_lease(void* opaque, uint8_t*) {
+        std::unique_ptr<SlotLease> lease(static_cast<SlotLease*>(opaque));
+        auto* owner = lease->owner;
+        cudaSetDevice(owner->devices_[0]);
+        cudaGraphicsUnmapResources(1, &owner->pbo_slots_[lease->slot].resource, 0);
+        {
+            std::lock_guard lock(owner->slot_mutex_);
+            owner->pbo_slots_[lease->slot].leased = false;
+        }
+        owner->slot_cv_.notify_one();
+    }
+    void encode_current_target_zero_copy(int64_t pts) {
+        std::size_t slotIndex = 0;
+        {
+            std::unique_lock lock(slot_mutex_);
+            slot_cv_.wait(lock, [&] {
+                for (std::size_t i = 0; i < pbo_slots_.size(); ++i)
+                    if (!pbo_slots_[i].leased) { slotIndex = i; return true; }
+                return false;
+            });
+            pbo_slots_[slotIndex].leased = true;
+        }
+        auto& slot = pbo_slots_[slotIndex];
+        GLint previous_read_fbo = 0, previous_draw_fbo = 0, previous_pack_buffer = 0;
+        GLint previous_pack_alignment = 4;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previous_read_fbo);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previous_draw_fbo);
+        glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &previous_pack_buffer);
+        glGetIntegerv(GL_PACK_ALIGNMENT, &previous_pack_alignment);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, previous_read_fbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, flip_framebuffer_);
+        glBlitFramebuffer(0, 0, width_, height_, 0, height_, width_, 0,
+                          GL_COLOR_BUFFER_BIT, GL_NEAREST);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, flip_framebuffer_);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, slot.pbo);
+        glReadPixels(0, 0, width_, height_, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, static_cast<GLuint>(previous_pack_buffer));
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(previous_read_fbo));
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(previous_draw_fbo));
+        glPixelStorei(GL_PACK_ALIGNMENT, previous_pack_alignment);
+        gl_check("GL zero-copy PBO read");
+
+        cuda_check(cudaGraphicsMapResources(1, &slot.resource, 0), "cudaGraphicsMapResources(zero-copy)");
+        void* device_pixels = nullptr;
+        size_t mapped_bytes = 0;
+        cuda_check(cudaGraphicsResourceGetMappedPointer(&device_pixels, &mapped_bytes, slot.resource),
+                   "cudaGraphicsResourceGetMappedPointer(zero-copy)");
+        const auto frameBytes = static_cast<size_t>(width_) * height_ * 4;
+        if (mapped_bytes < frameBytes) {
+            cudaGraphicsUnmapResources(1, &slot.resource, 0);
+            std::lock_guard lock(slot_mutex_);
+            slot.leased = false;
+            slot_cv_.notify_one();
+            throw std::runtime_error("mapped zero-copy GL PBO is smaller than one RGBA frame");
+        }
+
+        av_frame_unref(frame_);
+        frame_->format = AV_PIX_FMT_CUDA;
+        frame_->width = width_;
+        frame_->height = height_;
+        frame_->hw_frames_ctx = av_buffer_ref(frames_);
+        frame_->data[0] = static_cast<uint8_t*>(device_pixels);
+        frame_->linesize[0] = width_ * 4;
+        auto* lease = new SlotLease{this, slotIndex};
+        frame_->buf[0] = av_buffer_create(static_cast<uint8_t*>(device_pixels), frameBytes,
+                                          &release_slot_lease, lease, 0);
+        if (!frame_->buf[0]) {
+            delete lease;
+            cudaGraphicsUnmapResources(1, &slot.resource, 0);
+            std::lock_guard lock(slot_mutex_);
+            slot.leased = false;
+            slot_cv_.notify_one();
+            throw std::runtime_error("av_buffer_create failed for zero-copy PBO lease");
+        }
+        frame_->pts = pts;
+        av_check(avcodec_send_frame(codec_, frame_), "avcodec_send_frame(NVENC zero-copy PBO)");
+        drain_packets(false);
+        av_frame_unref(frame_);
+        ++frames_submitted_;
+    }
     static void cuda_check(cudaError_t result, const char* operation) {
         if (result != cudaSuccess)
             throw std::runtime_error(std::string(operation) + ": " + cudaGetErrorString(result));
@@ -243,6 +376,10 @@ private:
         if (cuda_device_) av_buffer_unref(&cuda_device_);
         if (graphics_resource_) cudaGraphicsUnregisterResource(graphics_resource_);
         if (pbo_) glDeleteBuffers(1, &pbo_);
+        for (auto& slot : pbo_slots_) {
+            if (slot.resource) cudaGraphicsUnregisterResource(slot.resource);
+            if (slot.pbo) glDeleteBuffers(1, &slot.pbo);
+        }
         if (flip_framebuffer_) glDeleteFramebuffers(1, &flip_framebuffer_);
         if (flip_texture_) glDeleteTextures(1, &flip_texture_);
     }
@@ -268,6 +405,10 @@ private:
     bool header_written_{};
     bool finished_{};
     std::string device_name_;
+    bool zero_copy_enabled_{};
+    std::array<PboSlot, 8> pbo_slots_{};
+    std::mutex slot_mutex_;
+    std::condition_variable slot_cv_;
 };
 
 } // namespace chrononmotion::certification

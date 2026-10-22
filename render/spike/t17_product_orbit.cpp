@@ -289,7 +289,7 @@ int main(int argc, char** argv) try {
     std::ofstream metadata(output / "metadata.json");
     metadata << std::fixed << std::setprecision(3)
              << "{\n  \"test_id\": \"T17\",\n  \"status\": \"" << (pass ? "PARTIAL" : "FAIL") << "\",\n  \"technical_checks_passed\": " << (pass ? "true" : "false") << ",\n"
-             << "  \"pipeline\": \"four Khronos GLBs + CameraRig orbit/focus tracks -> MotionSceneBridge -> EffectComposer -> BokehPass -> GL PBO -> CUDA -> NVENC\",\n"
+             << "  \"pipeline\": \"four Khronos GLBs + CameraRig orbit/focus tracks -> MotionSceneBridge -> EffectComposer -> BokehPass -> GL framebuffer/PBO -> CUDA-mapped external AVFrame -> NVENC\",\n"
              << "  \"width\": " << W << ",\n  \"height\": " << H << ",\n  \"fps\": " << FPS
              << ",\n  \"frames\": " << FRAMES << ",\n  \"duration_seconds\": 5.0,\n"
              << "  \"focus_distances\": [" << focusDistances[0] << ", " << focusDistances[1] << ", " << focusDistances[2] << ", " << focusDistances[3] << "],\n"
@@ -321,7 +321,10 @@ int main(int argc, char** argv) try {
                   glRenderer.find("Software") == std::string::npos) ? "true" : "false")
              << ",\n  \"cpu_framebuffer_readback_in_encode_path\": false"
              << ",\n  \"diagnostic_cpu_readback_passes\": 151"
-             << ",\n  \"gpu_resident_zero_copy\": false"
+             << ",\n  \"gpu_resident_zero_copy\": " << (gpuEncoder.zero_copy_input_enabled() ? "true" : "false")
+             << ",\n  \"explicit_cuda_d2d_copies_per_encoded_frame\": " << gpuEncoder.explicit_cuda_d2d_copies_per_frame()
+             << ",\n  \"gpu_framebuffer_to_pbo_transfer\": true"
+             << ",\n  \"zero_copy_scope\": \"mapped GL PBO is the external CUDA AVFrame input; no explicit CUDA D2D copy; framebuffer-to-PBO transfer remains\""
              << ",\n  \"vram_bytes\": null\n}\n";
     renderer.dispose();
     std::cout << "T17 " << (pass ? "PARTIAL (GPU-resident encode verified; diagnostics read back separately)" : "FAIL") << " sharpness=" << focusScores[0][0] << ',' << focusScores[0][1] << ',' << focusScores[0][2] << ',' << focusScores[0][3]
