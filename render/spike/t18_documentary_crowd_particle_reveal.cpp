@@ -549,7 +549,10 @@ int run(const fs::path& asset, const fs::path& out) {
          << ",\n  \"packets_muxed\": " << gpuEncoder.packets_written()
          << ",\n  \"cpu_framebuffer_readback_in_encode_path\": false"
          << ",\n  \"diagnostic_cpu_readback_passes\": 151"
-         << ",\n  \"gpu_resident_zero_copy\": false"
+         << ",\n  \"gpu_resident_zero_copy\": " << (gpuEncoder.zero_copy_input_enabled() ? "true" : "false")
+         << ",\n  \"explicit_cuda_d2d_copies_per_encoded_frame\": " << gpuEncoder.explicit_cuda_d2d_copies_per_frame()
+         << ",\n  \"gpu_framebuffer_to_pbo_transfer\": true"
+         << ",\n  \"zero_copy_scope\": \"mapped GL PBO is the external CUDA AVFrame input; no explicit CUDA D2D copy; framebuffer-to-PBO transfer remains\""
          << ",\n  \"vram_bytes\": null\n}\n";
 
     renderer.dispose();

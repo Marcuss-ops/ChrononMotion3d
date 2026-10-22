@@ -136,6 +136,17 @@ foreach(_file IN LISTS _sources)
         endif()
         set(_code "${_line}")
 
+        # An explicit, reasoned opt-out lives in a comment on the same line, so
+        # it has to be recognised *before* comments are stripped from the code
+        # under test. Otherwise the remedy named in this check's own failure
+        # message ("add a 'boundary-guardrail: allowed' comment") could never
+        # match, because the comment is already gone by then.
+        string(TOLOWER "${_line}" _raw_lower)
+        string(FIND "${_raw_lower}" "boundary-guardrail: allowed" _allowed)
+        if(NOT _allowed EQUAL -1)
+            continue()
+        endif()
+
         if(_is_cmake)
             string(FIND "${_code}" "#" _hash)
             if(NOT _hash EQUAL -1)
@@ -154,12 +165,6 @@ foreach(_file IN LISTS _sources)
         endif()
 
         string(TOLOWER "${_code}" _lower)
-
-        # An explicit, reasoned opt-out on the same line.
-        string(FIND "${_lower}" "boundary-guardrail: allowed" _allowed)
-        if(NOT _allowed EQUAL -1)
-            continue()
-        endif()
 
         foreach(_token IN LISTS _guardrails)
             string(FIND "${_lower}" "${_token}" _found)
