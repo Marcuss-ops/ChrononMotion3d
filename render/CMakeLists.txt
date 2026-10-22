@@ -257,7 +257,8 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_compile_options(chrononmotion_t16_camera_truth PRIVATE -Wall -Wextra)
     if(CHRONONMOTION_WERROR)
         target_compile_options(chrononmotion_t16_camera_truth PRIVATE -Werror
-                -Wno-error=reorder -Wno-error=unused-parameter)
+                -Wno-error=reorder -Wno-error=unused-parameter
+                -Wno-error=missing-field-initializers)
     endif()
     add_test(NAME chrononmotion_t16_camera_truth
             COMMAND chrononmotion_t16_camera_truth
@@ -379,6 +380,17 @@ target_include_directories(chrononmotion_render_dof_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
 target_link_libraries(chrononmotion_render_dof_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
+
+add_executable(chrononmotion_render_t17_product_orbit spike/t17_product_orbit.cpp)
+target_include_directories(chrononmotion_render_t17_product_orbit PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_t17_product_orbit PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
+add_executable(chrononmotion_render_t18_documentary_crowd_particle_reveal spike/t18_documentary_crowd_particle_reveal.cpp)
+target_include_directories(chrononmotion_render_t18_documentary_crowd_particle_reveal PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_t18_documentary_crowd_particle_reveal PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 add_executable(chrononmotion_render_shadow_certification spike/shadow_certification.cpp)
 target_include_directories(chrononmotion_render_shadow_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
