@@ -135,7 +135,7 @@ chrononmotion::motion::DirectionalLight& build_scene(chrononmotion::motion::Moti
 
     add_box(scene, 1, "environment_night", {48.f, 30.f, 0.25f}, {0.f, 0.f, -6.f},
             MaterialDescriptor::unlit(1, Color(0x1c3652)));
-    auto& floor = add_box(scene, 2, "environment_floor", {48.f, 0.22f, 36.f}, {0.f, -5.1f, -3.f},
+    add_box(scene, 2, "environment_floor", {48.f, 0.22f, 36.f}, {0.f, -5.1f, -3.f},
             MaterialDescriptor::unlit(2, Color(0x31475b)));
     add_box(scene, 3, "environment_left_arch", {0.18f, 8.5f, 0.35f}, {-7.f, 0.f, -2.5f},
             MaterialDescriptor::emissive(3, Color(0x294867), 0.35f));
