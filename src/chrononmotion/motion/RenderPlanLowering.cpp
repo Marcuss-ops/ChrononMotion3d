@@ -85,7 +85,8 @@ bool samePose(const ResolvedPose& a, const ResolvedPose& b) {
 }
 
 ResolvedPose resolvePose(const Matrix4& matrix, float opacity, bool visible,
-                         const Vector3& anchor, bool needsOriginPivot) {
+                         const Vector3& anchor, bool needsOriginPivot,
+                         bool allowReflection) {
     if (!matrixFinite(matrix))
         throw std::invalid_argument("lowerToRenderPlan: world matrix contains non-finite values");
     const Vector3 origin = transformPoint(matrix, Vector3(0.f, 0.f, 0.f));
@@ -106,15 +107,18 @@ ResolvedPose resolvePose(const Matrix4& matrix, float opacity, bool visible,
     const Vector3 normalizedZ = z / sz;
     if (!close(normalizedX.length(), 1.f) || !close(normalizedY.length(), 1.f) || !close(normalizedZ.length(), 1.f))
         throw std::invalid_argument("lowerToRenderPlan: invalid normalized world basis");
-    if (normalizedX.clone().cross(normalizedY).dot(normalizedZ) < 0.f)
+    const bool reflected = normalizedX.clone().cross(normalizedY).dot(normalizedZ) < 0.f;
+    if (reflected && !allowReflection)
         throw std::invalid_argument("lowerToRenderPlan: reflected world transform cannot be represented without changing winding");
+    Vector3 rotationX = normalizedX;
+    if (reflected) rotationX.negate();
     Matrix4 rotation;
-    rotation.makeBasis(normalizedX, normalizedY, normalizedZ);
+    rotation.makeBasis(rotationX, normalizedY, normalizedZ);
     Euler angles;
     angles.setFromRotationMatrix(rotation);
     ResolvedPose result;
     result.position = origin;
-    result.scale.set(sx, sy, sz);
+    result.scale.set(reflected ? -sx : sx, sy, sz);
     result.rotation.set(angles.x, angles.y, angles.z);
     if (!std::isfinite(opacity))
         throw std::invalid_argument("lowerToRenderPlan: world opacity is non-finite");
@@ -700,8 +704,11 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             const bool checkAnchor = supplied != options.contentLayers.end() &&
                 (supplied->second.type == LayerType::Text || supplied->second.type == LayerType::Shape ||
                  supplied->second.type == LayerType::Particles || supplied->second.type == LayerType::Light);
+            const bool allowReflection = supplied != options.contentLayers.end() &&
+                supplied->second.type == LayerType::Image;
             const ResolvedPose pose = resolvePose(transform.world, transform.opacity, transform.visible,
-                                                  scene.state(transform.id).local.anchor, checkAnchor);
+                                                  scene.state(transform.id).local.anchor, checkAnchor,
+                                                  allowReflection);
             samples[index].push_back(pose);
         }
     }

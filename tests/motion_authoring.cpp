@@ -607,6 +607,24 @@ void testTypedChronon3dLowering() {
     check(sameLoweredPlan(v3, repeatedV3),
           "typed V3 lowering repeats every emitted transform and keyframe bit-exactly");
 
+    MotionScene reflectedImageScene("reflected image plane", 30.f);
+    auto& reflectedImage = reflectedImageScene.addContent(
+        81, "wall image", ContentRef::image("wall-photo", Vector2(100.f, 60.f)));
+    reflectedImage.scaled(Vector3(-1.f, 1.f, 1.f)).alive(0, 0);
+    RenderPlanLoweringOptions reflectedImageOptions = options;
+    reflectedImageOptions.jobId = "reflected_image_plane";
+    reflectedImageOptions.contentLayers.clear();
+    LayerPlan reflectedImageContent;
+    reflectedImageContent.type = LayerType::Image;
+    reflectedImageContent.asset = "wall-photo";
+    reflectedImageContent.color = {0.f, 0.f, 0.f, 0.f};
+    reflectedImageContent.size = {100.f, 60.f};
+    reflectedImageContent.size_dimensions = 2;
+    reflectedImageOptions.contentLayers.emplace("81", reflectedImageContent);
+    const auto reflectedImagePlan = lowerToRenderPlan(reflectedImageScene, reflectedImageOptions);
+    check(reflectedImagePlan.layers.size() == 1 && reflectedImagePlan.layers[0].scale[0] < 0.f,
+          "typed lowering preserves a reflected image plane using signed X scale");
+
     chronon3d::render_plan::MotionBlurPlan scenePlanBlur;
     scenePlanBlur.shutter_angle = 180.f;
     scenePlanBlur.samples = 8;
