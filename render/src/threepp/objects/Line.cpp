@@ -11,9 +11,9 @@ using namespace threepp;
 
 namespace {
 
-    Sphere _sphere;
-    Matrix4 _inverseMatrix;
-    Ray _ray;
+    thread_local Sphere _sphere;
+    thread_local Matrix4 _inverseMatrix;
+    thread_local Ray _ray;
 
 }// namespace
 

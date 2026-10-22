@@ -8,10 +8,10 @@ using namespace threepp;
 
 namespace {
 
-    Vector3 _v0{};
-    Vector3 _v1{};
-    Vector3 _v2{};
-    Vector3 _v3{};
+    thread_local Vector3 _v0{};
+    thread_local Vector3 _v1{};
+    thread_local Vector3 _v2{};
+    thread_local Vector3 _v3{};
 
 }// namespace
 
