@@ -158,7 +158,7 @@ int main(int argc, char** argv) try {
     key.intensity = 2.2f;
     key.transform.position = chrononmotion::Vector3(-3.f, 5.f, 5.f);
 
-    chrononmotion::motion::CameraRig cameraRig(100, 42.f, float(W) / H, 0.1f, 100.f);
+    chrononmotion::motion::CameraRig cameraRig(100, 48.f, float(W) / H, 0.1f, 100.f);
     cameraRig.setPosition({0.f, 0.f, 9.5f}).setTarget({0.f, 0.f, 0.f});
     cameraRig.setLegacyDefocusStrength(0.055f).setMaxBlur(36.f);
     constexpr std::array<unsigned, 4> sampleFrames{0, 50, 100, 149};
@@ -182,7 +182,7 @@ int main(int argc, char** argv) try {
     const std::string glRenderer = rendererName ? rendererName : "unknown";
     chrononmotion::certification::require_nvidia_renderer(glRenderer);
     renderer.setClearColor(Color(0x090d16));
-    threepp::motion::MotionSceneBridge bridge(42.f, float(W) / H, 0.1f, 100.f);
+    threepp::motion::MotionSceneBridge bridge(48.f, float(W) / H, 0.1f, 100.f);
     for (std::size_t i = 0; i < subjects.size(); ++i)
         bridge.bindAsset("dof_asset_" + std::to_string(i), loadedAssets[i]);
     EffectComposer::Options options;
@@ -281,7 +281,7 @@ int main(int argc, char** argv) try {
           << "  \"asset_directory\": \"" << assetDirectory.generic_string() << "\",\n"
           << "  \"assets\": [\"Avocado.glb\", \"CesiumMilkTruck.glb\", \"BoxTextured.glb\", \"NumberedUVCube.glb\"],\n"
           << "  \"view_depths\": [" << subjects[0].viewDepth << ", " << subjects[1].viewDepth << ", " << subjects[2].viewDepth << ", " << subjects[3].viewDepth << "],\n"
-          << "  \"camera\": {\"position\": [0, 0, 9.5], \"fov_deg\": 42, \"orbit_yaw_degrees\": [-18, 18]},\n"
+          << "  \"camera\": {\"position\": [0, 0, 9.5], \"fov_deg\": 48, \"orbit_yaw_degrees\": [-18, 18]},\n"
           << "  \"focus_distance_track\": [[0," << focusDistances[0] << "],[1.667," << focusDistances[1]
           << "],[3.333," << focusDistances[2] << "],[4.967," << focusDistances[3] << " ]],\n"
           << "  \"lighting\": {\"ambient\": 0.75, \"directional\": 2.2},\n"
