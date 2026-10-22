@@ -248,7 +248,7 @@ int main(int argc, char** argv) try {
     std::ofstream metadata(output / "metadata.json");
     metadata << std::fixed << std::setprecision(6)
              << "{\n  \"test_id\": \"T05\",\n  \"status\": \"" << "PARTIAL" << "\",\n  \"technical_checks_passed\": true,\n"
-             << "  \"pipeline\": \"MotionScene shadow flags and animated light -> MotionSceneBridge -> threepp GLShadowMap PFCSoft -> GLRenderer -> GL PBO -> CUDA -> NVENC\",\n"
+             << "  \"pipeline\": \"MotionScene shadow flags and animated light -> MotionSceneBridge -> threepp GLShadowMap PFCSoft -> GLRenderer -> GL framebuffer/PBO -> CUDA-mapped external AVFrame -> NVENC\",\n"
              << "  \"width\": " << W << ",\n  \"height\": " << H << ",\n  \"fps\": " << FPS
              << ",\n  \"frames\": " << FRAMES << ",\n  \"duration_seconds\": 5.0,\n"
              << "  \"shadow_map_resolution\": [1024,1024],\n  \"shadow_bias\": " << key.shadowBias
@@ -273,7 +273,10 @@ int main(int argc, char** argv) try {
                   glRenderer.find("Software") == std::string::npos) ? "true" : "false")
              << ",\n  \"cpu_framebuffer_readback_in_encode_path\": false"
              << ",\n  \"diagnostic_cpu_readback_passes\": 157"
-             << ",\n  \"gpu_resident_zero_copy\": false"
+             << ",\n  \"gpu_resident_zero_copy\": " << (gpuEncoder.zero_copy_input_enabled() ? "true" : "false")
+             << ",\n  \"explicit_cuda_d2d_copies_per_encoded_frame\": " << gpuEncoder.explicit_cuda_d2d_copies_per_frame()
+             << ",\n  \"gpu_framebuffer_to_pbo_transfer\": true"
+             << ",\n  \"zero_copy_scope\": \"mapped GL PBO is the external CUDA AVFrame input; no explicit CUDA D2D copy; framebuffer-to-PBO transfer remains\""
              << ",\n  \"vram_bytes\": null\n}\n";
     renderer.dispose();
     std::cout << "T05 PARTIAL (GPU-resident encode verified; CPU readbacks are diagnostics only) shadow mask pixels=" << masks[0].count << ',' << masks[1].count << ',' << masks[2].count
