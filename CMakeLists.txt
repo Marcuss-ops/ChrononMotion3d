@@ -142,7 +142,7 @@ if(CHRONON3D_INCLUDE_DIR)
     endif()
     # RenderPlan's public headers use fmt formatting/validation APIs; resolve
     # them even in adapter builds that do not inherit C3D's vcpkg toolchain.
-    find_package(fmt CONFIG REQUIRED)
+    find_package(fmt CONFIG REQUIRED) # boundary-guardrail: allowed — public C3D RenderPlan headers expose fmt in this offline adapter only.
     add_library(chrononmotion_chronon3d_adapter STATIC
         src/chrononmotion/motion/RenderPlanLowering.cpp
         src/chrononmotion/motion/RenderPlanEmission.cpp
