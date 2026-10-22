@@ -127,6 +127,13 @@ foreach(_file IN LISTS _sources)
     set(_lineno 0)
     foreach(_line IN LISTS _lines)
         math(EXPR _lineno "${_lineno} + 1")
+        # Preserve the opt-out marker before stripping CMake's '#' comments.
+        # For CMakeLists.txt, the marker is necessarily written as a comment.
+        string(TOLOWER "${_line}" _raw_lower)
+        string(FIND "${_raw_lower}" "boundary-guardrail: allowed" _raw_allowed)
+        if(NOT _raw_allowed EQUAL -1)
+            continue()
+        endif()
         set(_code "${_line}")
 
         if(_is_cmake)
