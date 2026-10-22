@@ -290,11 +290,11 @@ int run(const fs::path& asset, const fs::path& out) {
     floor->receiveShadow = true;
     bridge.scene()->add(floor);
 
-    // Cinematic orbit: sweep ~100 degrees around the crowd while dollying in
+    // Cinematic orbit: sweep ~64 degrees around the crowd while dollying in
     // and easing the height down, then lift off. Target rides the lead chest.
     chrononmotion::motion::CameraRig camera(700, 44.f, float(W) / H, 0.05f, 1000.f);
     const float radius0 = 6.4f, radius1 = 3.9f;
-    const float azimuth0 = 0.28f, azimuth1 = 2.1f;   // radians, CCW sweep
+    const float azimuth0 = 0.28f, azimuth1 = 1.4f;   // radians, CCW sweep; keep the lens on the lead side of the crowd
     const float height0 = 2.f, height1 = 1.05f;
     const Vector3 pivot{0.f, floorY + leadSize.y * 0.55f, -0.5f};
     for (int k = 0; k <= 4; ++k) {
@@ -512,7 +512,7 @@ int run(const fs::path& asset, const fs::path& out) {
              "  \"lead_asset\": \"" << asset.filename().string() << "\",\n  \"lead_clip\": \"" << clip->name()
           << "\",\n  \"mannequins\": 5,\n  \"mannequin_style\": \"procedural low-poly primitives\",\n"
              "  \"particles\": 48,\n  \"animated_matte\": \"256x256 RGBA camera-facing iris\",\n"
-             "  \"camera\": \"orbit + dolly-in 100deg, CameraRig tracks\",\n"
+             "  \"camera\": \"orbit + dolly-in 64deg, CameraRig tracks\",\n"
              "  \"shadow_light\": \"key directional (castsShadow=true, mapSize 2048)\",\n"
              "  \"output\": \"1920x1080 30fps 150 frames\",\n"
              "  \"gpu_gate\": \"PARTIAL canary; full T18 certification remains open\"\n}\n";
