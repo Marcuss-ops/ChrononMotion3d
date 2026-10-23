@@ -13,6 +13,8 @@ namespace chrononmotion::motion::detail {
 [[nodiscard]] const char* outputFormatName(chronon3d::render_plan::OutputFormat format);
 [[nodiscard]] std::optional<std::string> textSpanColorHex(const chronon3d::Color& color);
 [[nodiscard]] std::string render_plan_emission_problem(const chronon3d::render_plan::RenderPlan& plan);
+[[nodiscard]] std::string emissionCameraProblem(const chronon3d::render_plan::CameraPlan& camera);
+[[nodiscard]] std::string emissionBudgetProblem(const chronon3d::render_plan::RenderPlan& plan);
 }
 
 namespace chrononmotion::motion {
