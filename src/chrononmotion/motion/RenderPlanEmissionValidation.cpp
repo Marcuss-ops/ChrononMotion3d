@@ -557,8 +557,11 @@ namespace chrononmotion::motion {
                 return owner + " is a particles layer with no particle emitter";
             if (layer.type == LayerType::Light && !layer.light)
                 return owner + " is a light layer with no light payload";
-            if (layer.type == LayerType::Mesh && (!layer.asset.empty() || !layer.source.empty())) {
-                return owner + " is a mesh layer with an asset/source reference; the plan requires inline geometry";
+            if (layer.type == LayerType::Mesh && !layer.source.empty()) {
+                return owner + " is a mesh layer with a source reference; the plan requires inline geometry";
+            }
+            if (layer.type == LayerType::Mesh && !layer.asset.empty() && !layer.inline_mesh) {
+                return owner + " is a mesh layer with a texture asset but no inline geometry";
             }
             if (layer.type == LayerType::Mesh && layer.animation && !layer.animation->tracks.empty()) {
                 return owner + " carries transform tracks; use V3 inline_mesh baked geometry samples";
