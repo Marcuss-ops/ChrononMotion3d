@@ -89,6 +89,9 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/CameraFraming.cpp
         src/chrononmotion/motion/CameraValidation.cpp
         src/chrononmotion/motion/CameraMotion.cpp
+        src/chrononmotion/motion/CameraMotionRecipes.cpp
+        src/chrononmotion/motion/CameraMotionRecipesAdvanced.cpp
+        src/chrononmotion/motion/CameraMotionRecipesExtended.cpp
         src/chrononmotion/motion/CameraRecipe.cpp
         src/chrononmotion/motion/CameraMotionRecipeRegistry.cpp
         src/chrononmotion/motion/CameraSequence.cpp
@@ -108,6 +111,10 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/RigProgram.cpp
         src/chrononmotion/motion/RigOperators.cpp
         src/chrononmotion/motion/OfflineBaking.cpp
+        src/chrononmotion/motion/OfflineAudio.cpp
+        src/chrononmotion/motion/OfflineLayout.cpp
+        src/chrononmotion/motion/OfflinePathBaking.cpp
+        src/chrononmotion/motion/OfflineCollections.cpp
         src/chrononmotion/motion/SvgPathParser.cpp
         # presets — one translation unit per family, plus the shared vocabulary
         src/chrononmotion/motion/Presets_Common.cpp
@@ -201,7 +208,7 @@ endif()
 target_include_directories(chrononmotion PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
-# Internal translation-unit headers (JsonDom, JsonWriter): shared by motion
+# Internal translation-unit headers (JsonDom, JsonWriter, OfflineBakingInternal): shared by motion
 # sources across directories, never installed, never public API.
 target_include_directories(chrononmotion PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/chrononmotion/motion)
