@@ -228,7 +228,7 @@ int main(int argc, char** argv) {
     // 5. Anatomical RigProgram: opposed head controls plus restrained chest flex.
     chrononmotion::motion::RigProgram rigProgram;
     {
-        for (chrononmotion::motion::RigNodeId id : {1u, 2u, 4u}) {
+        for (chrononmotion::motion::RigNodeId id : {1u, 2u, 3u}) {
             chrononmotion::motion::RigNode ctrl;
             ctrl.id = id;
             ctrl.kind = chrononmotion::motion::RigNodeKind::Controller;
@@ -246,7 +246,7 @@ int main(int argc, char** argv) {
         rigProgram.animation.push_back(std::move(headAnim));
 
         chrononmotion::motion::RigAnimatedNode headLeftAnim;
-        headLeftAnim.id = 4;
+        headLeftAnim.id = 2;
         headLeftAnim.tracks.position.add(0.f, chrononmotion::Vector3(0.f, 0.f, 0.f), chrononmotion::motion::Easing::easeInOut());
         headLeftAnim.tracks.position.add(durationSec * 0.25f, chrononmotion::Vector3(0.f, 0.f, 0.f), chrononmotion::motion::Easing::easeInOut());
         headLeftAnim.tracks.position.add(durationSec * 0.50f, chrononmotion::Vector3(0.f, 0.f, 0.f), chrononmotion::motion::Easing::easeInOut());
@@ -256,7 +256,7 @@ int main(int argc, char** argv) {
 
         // Chest motion stays small and secondary to the head turn.
         chrononmotion::motion::RigAnimatedNode breathAnim;
-        breathAnim.id = 2;
+        breathAnim.id = 3;
         breathAnim.tracks.position.add(0.f, chrononmotion::Vector3(0.f, 0.f, 0.f), chrononmotion::motion::Easing::easeInOut());
         breathAnim.tracks.position.add(durationSec * 0.25f, chrononmotion::Vector3(0.45f, 0.f, 0.f), chrononmotion::motion::Easing::easeInOut());
         breathAnim.tracks.position.add(durationSec * 0.50f, chrononmotion::Vector3(0.15f, 0.f, 0.f), chrononmotion::motion::Easing::easeInOut());
@@ -270,20 +270,22 @@ int main(int argc, char** argv) {
         headWarp.amount = 1.f;
         addCreatorAnchors(headWarp, planeW, planeH);
 
-        chrononmotion::motion::RigPin headMove;
-        headMove.kind = chrononmotion::motion::RigPinKind::Position;
-        headMove.rest = chrononmotion::Vector3(-0.015f * planeW, 0.21f * planeH, 0.f);
-        headMove.target = chrononmotion::Vector3(0.005f * planeW, 0.208f * planeH, 0.025f * planeH);
-        headMove.radius = 0.31f * planeH;
-        headMove.weight = 1.0f;
-        headWarp.pins.push_back(headMove);
+        // Keep a neutral anchor first in the PinWarp stack, then rotate the
+        // whole head mass around the neck; no facial feature is translated.
+        chrononmotion::motion::RigPin headAnchor;
+        headAnchor.kind = chrononmotion::motion::RigPinKind::Position;
+        headAnchor.rest = chrononmotion::Vector3(0.f, -0.15f * planeH, 0.f);
+        headAnchor.target = headAnchor.rest;
+        headAnchor.radius = 0.72f * planeH;
+        headAnchor.weight = 1.f;
+        headWarp.pins.push_back(headAnchor);
 
         chrononmotion::motion::RigPin headTilt;
         headTilt.kind = chrononmotion::motion::RigPinKind::Rotation;
-        headTilt.rest = chrononmotion::Vector3(-0.015f * planeW, 0.08f * planeH, 0.f);
-        headTilt.rotation.setFromAxisAngle(chrononmotion::Vector3(0.f, 0.f, 1.f), -0.025f);
-        headTilt.radius = 0.34f * planeH;
-        headTilt.weight = 0.72f;
+        headTilt.rest = chrononmotion::Vector3(0.f, -0.15f * planeH, 0.f);
+        headTilt.rotation.setFromAxisAngle(chrononmotion::Vector3(0.f, 0.f, 1.f), -0.10f);
+        headTilt.radius = 0.72f * planeH;
+        headTilt.weight = 1.0f;
         headWarp.pins.push_back(headTilt);
 
         // Operator 1: mirrored leftward head motion.
@@ -291,11 +293,9 @@ int main(int argc, char** argv) {
         headWarpLeft.kind = chrononmotion::motion::RigDeformerKind::PinWarp;
         headWarpLeft.amount = 1.f;
         addCreatorAnchors(headWarpLeft, planeW, planeH);
-        auto headMoveLeft = headMove;
-        headMoveLeft.target = chrononmotion::Vector3(-0.035f * planeW, 0.208f * planeH, 0.025f * planeH);
-        headWarpLeft.pins.push_back(headMoveLeft);
+        headWarpLeft.pins.push_back(headAnchor);
         auto headTiltLeft = headTilt;
-        headTiltLeft.rotation.setFromAxisAngle(chrononmotion::Vector3(0.f, 0.f, 1.f), 0.025f);
+        headTiltLeft.rotation.setFromAxisAngle(chrononmotion::Vector3(0.f, 0.f, 1.f), 0.10f);
         headWarpLeft.pins.push_back(headTiltLeft);
 
         // Operator 2: restrained thoracic expansion.
@@ -323,9 +323,9 @@ int main(int argc, char** argv) {
         rigProgram.weights.push_back(chrononmotion::motion::RigWeightBinding{
             1, chrononmotion::motion::RigWeightKind::Deformer, 1, 0});
         rigProgram.weights.push_back(chrononmotion::motion::RigWeightBinding{
-            4, chrononmotion::motion::RigWeightKind::Deformer, 1, 1});
+            2, chrononmotion::motion::RigWeightKind::Deformer, 1, 1});
         rigProgram.weights.push_back(chrononmotion::motion::RigWeightBinding{
-            2, chrononmotion::motion::RigWeightKind::Deformer, 1, 2});
+            3, chrononmotion::motion::RigWeightKind::Deformer, 1, 2});
     }
 
     chrononmotion::motion::RigProgramEvaluator rigEvaluator(rigProgram);
