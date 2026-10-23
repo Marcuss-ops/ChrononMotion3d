@@ -162,8 +162,8 @@ void applyDocumentaryCameraPath(CameraRig& rig, const DocumentaryCameraPath& pat
         case DocumentaryMove::FocusDrop:
             point(handoff, openingCamera, openingTarget);
             point(end, photoCam, last.center);
-            rig.legacyDefocusStrengthTrack().add(at(start, fps), 0.18f, Easing::linear())
-                .add(at(end, fps), 0.18f, Easing::linear());
+            rig.fStopTrack().add(at(start, fps), 3.7f, Easing::linear())
+                .add(at(end, fps), 3.7f, Easing::linear());
             break;
         case DocumentaryMove::Reveal90: {
             const Vector3 side(path.title.center.x + path.cameraDistance, path.title.center.y,
@@ -221,8 +221,8 @@ void applyDocumentaryCameraPath(CameraRig& rig, const DocumentaryCameraPath& pat
             point(handoff, arc, path.title.center, Easing::easeIn());
             point(mid, arc, last.center, Easing::easeOut());
             point(end, photoCam, last.center);
-            rig.legacyDefocusStrengthTrack().add(at(handoff, fps), 0.f, Easing::linear())
-                .add(at(end, fps), 0.06f, Easing::easeInOut());
+            rig.fStopTrack().add(at(handoff, fps), 0.f, Easing::linear())
+                .add(at(end, fps), 11.2f, Easing::easeInOut());
             break;
         }
         case DocumentaryMove::ArchiveCraneReveal: {

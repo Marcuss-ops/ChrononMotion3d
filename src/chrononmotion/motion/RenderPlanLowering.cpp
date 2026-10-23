@@ -963,7 +963,6 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     ensureFinite(pose.sensorWidth, "camera sensor width");
     ensureFinite(pose.lensShift.x, "camera lens shift x");
     ensureFinite(pose.lensShift.y, "camera lens shift y");
-    ensureFinite(pose.legacyDefocusStrength, "legacy defocus strength");
     ensureFinite(pose.focusDistance, "camera focus distance");
     ensureFinite(pose.maxBlur, "camera maximum blur");
     ensureFinite(pose.fStop, "camera f-stop");
@@ -979,14 +978,13 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
         pose.irisBlades < 0 || pose.irisBlades > 12 ||
         pose.highlightGain < 0.f || pose.highlightGain > 8.f)
         throw std::invalid_argument("lowerCameraPose: physical lens/iris settings are outside the RenderPlan contract");
-    if (!std::isfinite(pose.legacyDefocusStrength) || pose.legacyDefocusStrength < 0.f || pose.legacyDefocusStrength > 1.f ||
-        !std::isfinite(pose.focusDistance) || pose.focusDistance < 0.f || pose.focusDistance > 10'000'000.f ||
+    if (!std::isfinite(pose.focusDistance) || pose.focusDistance < 0.f || pose.focusDistance > 10'000'000.f ||
         pose.maxBlur < 0.f || pose.maxBlur > 256.f)
         throw std::invalid_argument(
             "lowerCameraPose: depth-of-field values are outside the RenderPlan contract");
-    const bool depthOfFieldAuthored = pose.legacyDefocusStrength != 0.f || pose.focusDistance != 0.f || pose.maxBlur != 0.f ||
+    const bool depthOfFieldAuthored = pose.focusDistance != 0.f || pose.maxBlur != 0.f ||
                                       pose.fStop != 0.f || pose.irisBlades != 0 || pose.highlightGain != 0.f;
-    const bool depthOfFieldEnabled = pose.legacyDefocusStrength > 0.f || pose.fStop > 0.f;
+    const bool depthOfFieldEnabled = pose.fStop > 0.f;
     if (depthOfFieldEnabled && pose.focusDistance <= 0.f)
         throw std::invalid_argument(
             "lowerCameraPose: depth of field with an aperture requires a positive focus distance");
@@ -1026,7 +1024,9 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     camera.iris_blades = pose.irisBlades;
     if (depthOfFieldAuthored) {
         camera.dof_enabled = depthOfFieldEnabled;
-        camera.dof_aperture = pose.legacyDefocusStrength; // RenderPlan legacy field name.
+        // RenderPlan legacy transport field, gain domain: derived from the
+        // authored f/stop through the sanctioned bridge, never authored here.
+        camera.dof_aperture = blurGainFromFStop(pose.fStop);
         if (pose.focusDistance > 0.f) camera.dof_focus_distance = pose.focusDistance;
         if (pose.maxBlur > 0.f) camera.dof_max_blur = pose.maxBlur;
         camera.dof_f_stop = pose.fStop;

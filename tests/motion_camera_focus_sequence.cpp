@@ -29,7 +29,6 @@ int main() try {
     sequence.cameraDistance = 1080.f;
     sequence.baseFov = 48.f;
     sequence.focusFov = 38.f;
-    sequence.legacyDefocusStrength = 0.18f;
     sequence.fStop = 5.6f;
     sequence.maxBlur = 10.f;
     sequence.highlightGain = 1.25f;
@@ -50,7 +49,7 @@ int main() try {
           "camera reaches the second off-center subject");
     check(near(farWord.focusDistance, 1160.f), "rack focus reaches the far subject's axial plane");
     check(near(farWord.fov, 38.f), "the focus FOV is authored at the destination");
-    check(near(farWord.legacyDefocusStrength, 0.18f) && near(farWord.fStop, 5.6f) &&
+    check(near(farWord.fStop, 5.6f) &&
                   farWord.irisBlades == 8 && near(farWord.maxBlur, 10.f) && near(farWord.highlightGain, 1.25f),
           "physical lens and renderer DOF parameters are preserved on the rig");
 
