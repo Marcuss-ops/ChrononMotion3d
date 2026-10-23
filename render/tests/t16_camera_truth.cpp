@@ -274,6 +274,22 @@ int main(int argc, char** argv) try {
             "CAM-01 FOV 50->30 did not measurably change pixels");
     camera.setFov(50.f);
 
+    // CAM-05: isolate the integrated GPU BokehPass at the rack-focus frame.
+    const RGB dofOn = render(composer, *bokeh, bridge, scene, camera, 75);
+    bokeh->enabled = false;
+    const RGB dofOff = render(composer, *bokeh, bridge, scene, camera, 75);
+    bokeh->enabled = true;
+    const auto dofChanged = changed_pixels(dofOff, dofOn, 3);
+    require(dofChanged > static_cast<std::size_t>(width) * height / 100,
+            "CAM-05 BokehPass on/off did not measurably change GPU-rendered pixels");
+    RGB dofDifference(dofOn.size());
+    for (std::size_t pixel = 0; pixel < dofOn.size(); ++pixel)
+        dofDifference[pixel] = static_cast<unsigned char>(std::min(
+            255, std::abs(int(dofOn[pixel]) - int(dofOff[pixel])) * 4));
+    write_png(output / "frame_075_dof_off.png", dofOff, width, height);
+    write_png(output / "frame_075_dof_on.png", dofOn, width, height);
+    write_png(output / "frame_075_dof_difference_x4.png", dofDifference, width, height);
+
     // CAM-06: image plate is intentionally unlit; the 3D title/environment
     // respond to the key. Compare isolated portrait and title ROIs.
     key.intensity = 0.f;
@@ -297,6 +313,59 @@ int main(int argc, char** argv) try {
     // CAM-08: direct access after other frames must reproduce frame 75 exactly.
     const RGB random75 = render(composer, *bokeh, bridge, scene, camera, 75);
     require(random75 == samples[2], "CAM-08 random-access frame 75 differs from sequential output");
+    RGB sequential135;
+    for (int frame = 0; frame <= 135; ++frame)
+        sequential135 = render(composer, *bokeh, bridge, scene, camera, frame);
+    const RGB random135 = render(composer, *bokeh, bridge, scene, camera, 135);
+    require(random135 == sequential135,
+            "CAM-08 random-access frame 135 differs from sequential output");
+    write_png(output / "frame_135_sequential.png", sequential135, width, height);
+    write_png(output / "frame_135_random_access.png", random135, width, height);
+
+    // 180-degree shutter at 30 fps exposes the camera over a half-frame
+    // interval. Sample the authored CM3D CameraRig directly at eight exact
+    // sub-frame times, render each on the active GL device, then accumulate.
+    const RGB shutterOff = samples[2];
+    std::vector<std::uint32_t> shutterSum(shutterOff.size(), 0);
+    constexpr int shutterSamples = 8;
+    std::array<double, shutterSamples> shutterFrameTimes{};
+    for (int sampleIndex = 0; sampleIndex < shutterSamples; ++sampleIndex) {
+        const double offsetFrames =
+            ((static_cast<double>(sampleIndex) + 0.5) / shutterSamples - 0.5) * 0.5;
+        const double frameTime = 75.0 + offsetFrames;
+        shutterFrameTimes[static_cast<std::size_t>(sampleIndex)] = frameTime;
+        bridge.evaluateAndSync(scene, 75, nullptr);
+        const float seconds = static_cast<float>(frameTime / fps);
+        const auto pose = camera.sample(seconds);
+        const auto glCamera = bridge.camera();
+        glCamera->position.set(pose.position.x, pose.position.y, pose.position.z);
+        glCamera->quaternion.set(pose.orientation.x, pose.orientation.y,
+                                 pose.orientation.z, pose.orientation.w);
+        glCamera->fov = pose.fov;
+        glCamera->updateMatrixWorld(true);
+        glCamera->updateProjectionMatrix();
+        bokeh->focus = pose.focusDistance;
+        composer.render(1.f / fps);
+        const RGB pixels = composer.readRGBPixels();
+        require(pixels.size() == shutterOff.size(),
+                "180-degree shutter sample returned an invalid framebuffer");
+        for (std::size_t pixel = 0; pixel < pixels.size(); ++pixel)
+            shutterSum[pixel] += pixels[pixel];
+    }
+    RGB shutterOn(shutterOff.size());
+    RGB shutterDifference(shutterOff.size());
+    for (std::size_t pixel = 0; pixel < shutterOff.size(); ++pixel) {
+        shutterOn[pixel] = static_cast<unsigned char>(
+            (shutterSum[pixel] + shutterSamples / 2) / shutterSamples);
+        shutterDifference[pixel] = static_cast<unsigned char>(std::min(
+            255, std::abs(int(shutterOn[pixel]) - int(shutterOff[pixel])) * 4));
+    }
+    const auto shutterChanged = changed_pixels(shutterOff, shutterOn, 3);
+    require(shutterChanged > static_cast<std::size_t>(width) * height / 1000,
+            "180-degree shutter sub-frame accumulation did not change rendered pixels");
+    write_png(output / "frame_075_shutter_off.png", shutterOff, width, height);
+    write_png(output / "frame_075_shutter_180deg_8samples.png", shutterOn, width, height);
+    write_png(output / "frame_075_shutter_difference_x4.png", shutterDifference, width, height);
 
     // CAM-02/03: use the renderer's actual view/projection to measure apparent
     // scale and relative displacement of anchors on the three depth planes.
@@ -360,7 +429,9 @@ int main(int argc, char** argv) try {
     // Small contact sheet: three columns, two rows, nearest-neighbor reduction.
     constexpr int columns = 3, rows = 2, tileWidth = 640, tileHeight = 360;
     RGB sheet(static_cast<std::size_t>(columns * tileWidth) * rows * tileHeight * 3, 8);
-    for (std::size_t f = 0; f < samples.size(); ++f) {
+    const std::array<RGB, 6> contactSamples{
+        samples[0], samples[1], samples[2], samples[3], samples[4], shutterOn};
+    for (std::size_t f = 0; f < contactSamples.size(); ++f) {
         const int ox = int(f % columns) * tileWidth;
         const int oy = int(f / columns) * tileHeight;
         for (int y = 0; y < tileHeight; ++y) for (int x = 0; x < tileWidth; ++x) {
@@ -369,7 +440,7 @@ int main(int argc, char** argv) try {
             const auto si = (static_cast<std::size_t>(height - 1 - sy) * width + sx) * 3;
             const auto di = (static_cast<std::size_t>(rows * tileHeight - 1 - (oy + y)) *
                              columns * tileWidth + ox + x) * 3;
-            std::copy_n(samples[f].data() + si, 3, sheet.data() + di);
+            std::copy_n(contactSamples[f].data() + si, 3, sheet.data() + di);
         }
     }
     write_png(output / "contact_sheet.png", sheet, columns * tileWidth, rows * tileHeight);
@@ -396,8 +467,18 @@ int main(int argc, char** argv) try {
              << "  \"near_to_far_projected_width_ratio\": " << nearWidth / farWidth << ",\n"
              << "  \"camera_max_step_world_units\": " << maxStep << ",\n"
              << "  \"random_access_frame_75_matches\": true,\n"
+             << "  \"random_access_frame_135_matches\": true,\n"
+             << "  \"dof_probe\": {\"changed_pixels\": " << dofChanged
+             << ", \"result\": \"PASS\"},\n"
+             << "  \"shutter_probe\": {\"angle_degrees\": 180, \"fps\": 30, \"samples\": "
+             << shutterSamples << ", \"frame_times\": [";
+    for (std::size_t i = 0; i < shutterFrameTimes.size(); ++i)
+        metadata << (i ? ", " : "") << shutterFrameTimes[i];
+    metadata << "], \"changed_pixels\": " << shutterChanged
+             << ", \"result\": \"PASS\"},\n"
+             << "  \"shutter_note\": \"CM3D CameraRig exact sub-frame samples rendered on GL device and equally accumulated; this is a focused camera shutter probe, not a Chronon3D RenderPlan parity gate\",\n"
              << "  \"subject_asset\": \"MrBeast 2023 cropped portrait, CC BY 4.0; see source attribution\",\n"
-             << "  \"dof_gate\": \"PASS: integrated threepp BokehPass racks focus from portrait to title\"\n}\n";
+             << "  \"dof_gate\": \"PASS: integrated threepp BokehPass racks focus from portrait to title; frame-75 GPU on/off pixel ablation passed\"\n}\n";
     require(bool(metadata), "failed to write T16 camera truth metadata");
     renderer.setRenderTarget(nullptr);
     renderer.dispose();
