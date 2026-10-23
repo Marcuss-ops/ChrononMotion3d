@@ -1,4 +1,5 @@
 #include "chrononmotion/motion/DocumentaryCameraPath.hpp"
+#include "chrononmotion/math/Finite.hpp"
 
 #include "chrononmotion/motion/CameraFocusSequence.hpp"
 #include "chrononmotion/motion/CameraFraming.hpp"
@@ -36,7 +37,7 @@ Vector3 cameraAt(const DocumentaryCameraAnchor& anchor, float distance) {
 
 void validate(const DocumentaryCameraPath& path, float fps) {
     const auto finiteAnchor = [](const DocumentaryCameraAnchor& a) {
-        return std::isfinite(a.center.x) && std::isfinite(a.center.y) && std::isfinite(a.center.z) &&
+        return math::isFinite(a.center) &&
                std::isfinite(a.halfWidth) && std::isfinite(a.halfHeight) &&
                a.halfWidth > 0.f && a.halfHeight > 0.f &&
                std::isfinite(a.orientation.x) && std::isfinite(a.orientation.y) &&

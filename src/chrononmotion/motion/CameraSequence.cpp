@@ -1,4 +1,5 @@
 #include "chrononmotion/motion/CameraSequence.hpp"
+#include "chrononmotion/math/Finite.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
 #include "chrononmotion/motion/CameraFraming.hpp"
@@ -41,8 +42,7 @@ namespace chrononmotion::motion::camera {
 
         float at(int frame, float fps) { return static_cast<float>(frame) / fps; }
         bool finiteSubject(const SequenceSubject& s) {
-            return std::isfinite(s.center.x) && std::isfinite(s.center.y) &&
-                   std::isfinite(s.center.z) && std::isfinite(s.halfWidth) &&
+            return math::isFinite(s.center) && std::isfinite(s.halfWidth) &&
                    std::isfinite(s.halfHeight) && std::isfinite(s.fov);
         }
 

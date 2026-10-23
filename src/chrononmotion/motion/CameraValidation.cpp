@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/CameraValidation.hpp"
 
+#include "chrononmotion/math/Finite.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
 
 #include <algorithm>
@@ -11,10 +12,6 @@
 
 namespace chrononmotion::motion {
 namespace {
-
-bool finite(const Vector3& value) {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-}
 
 } // namespace
 
@@ -35,7 +32,7 @@ CameraTrackValidationReport validateCameraTrack(
         const float seconds = static_cast<float>(frame) / options.framesPerSecond;
         const auto derivative = rig.sampleDerivative(seconds);
         const Vector3 position = rig.sample(seconds).position;
-        if (!finite(position) || !finite(derivative.linearVelocity)) {
+        if (!math::isFinite(position) || !math::isFinite(derivative.linearVelocity)) {
             report.passed = false;
             report.failures.push_back("camera track contains a non-finite sample at frame " +
                                       std::to_string(frame));
@@ -67,7 +64,7 @@ CameraTrackValidationReport validateCameraTrack(
 }
 
 CameraValidator& CameraValidator::addBounds(CameraValidationBounds bounds) {
-    if (bounds.name.empty() || !finite(bounds.center) || !finite(bounds.halfExtent) ||
+    if (bounds.name.empty() || !math::isFinite(bounds.center) || !math::isFinite(bounds.halfExtent) ||
         bounds.halfExtent.x < 0.f || bounds.halfExtent.y < 0.f || bounds.halfExtent.z < 0.f)
         throw std::invalid_argument("CameraValidator::addBounds: name and finite non-negative bounds required");
     bounds_.push_back(std::move(bounds));
@@ -118,7 +115,7 @@ CameraValidator& CameraValidator::requireEstimatedFrameVisibility(float minVisib
 }
 
 CameraValidationReport CameraValidator::validate(const CameraPose& pose, const Vector2& viewport) const {
-    if (!finite(pose.position) || !std::isfinite(pose.fov) || pose.fov <= 0.f || pose.fov >= 180.f ||
+    if (!math::isFinite(pose.position) || !std::isfinite(pose.fov) || pose.fov <= 0.f || pose.fov >= 180.f ||
         !std::isfinite(viewport.x) || !std::isfinite(viewport.y) || viewport.x <= 0.f || viewport.y <= 0.f)
         throw std::invalid_argument("CameraValidator::validate: finite pose, FOV and positive viewport required");
 

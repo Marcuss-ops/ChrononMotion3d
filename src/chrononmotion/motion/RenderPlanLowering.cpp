@@ -1,4 +1,5 @@
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
+#include "chrononmotion/math/Finite.hpp"
 
 #include "chrononmotion/math/Euler.hpp"
 #include "chrononmotion/math/MathUtils.hpp"
@@ -533,7 +534,7 @@ RenderPlan lowerSamplesToRenderPlan(
             (output.type == LayerType::Image || output.type == LayerType::Video ||
              output.type == LayerType::Text || output.type == LayerType::Shape)) {
             const Vector2 measured = layer.content.metrics.naturalSize;
-            if (measured.x > 0.f && measured.y > 0.f && std::isfinite(measured.x) && std::isfinite(measured.y))
+            if (measured.x > 0.f && measured.y > 0.f && math::isFinite(measured))
                 output.size = {measured.x, measured.y};
             else if (output.type == LayerType::Video)
                 output.size = {static_cast<float>(options.width), static_cast<float>(options.height)};
@@ -1119,7 +1120,7 @@ std::vector<ShapePathCommandPlan> lowerBakedPath(const BakedPath& path) {
     for (const auto& command : path) {
         ShapePathCommandPlan value;
         if (command.type != BakedPathCommandType::Close &&
-            (!std::isfinite(command.point.x) || !std::isfinite(command.point.y)))
+            (!math::isFinite(command.point)))
             throw std::invalid_argument("lowerBakedPath: path coordinates must be finite");
         switch (command.type) {
             case BakedPathCommandType::MoveTo:

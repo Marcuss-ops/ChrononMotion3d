@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/Constraints.hpp"
 #include "chrononmotion/math/Euler.hpp"
+#include "chrononmotion/math/Finite.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -11,11 +12,8 @@ namespace chrononmotion::motion {
                          const Quaternion& targetRotation,
                          const Vector3& targetScale,
                          float seconds) noexcept {
-        const auto finite = [](const Vector3& v) {
-            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
-        };
-        if (!std::isfinite(spec.amount) || !std::isfinite(seconds) || !finite(targetPosition) ||
-            !finite(targetScale) || !std::isfinite(targetRotation.lengthSq())) return false;
+        if (!std::isfinite(spec.amount) || !std::isfinite(seconds) || !math::isFinite(targetPosition) ||
+            !math::isFinite(targetScale) || !std::isfinite(targetRotation.lengthSq())) return false;
         const float amount = std::clamp(spec.amount, 0.f, 1.f);
         if (amount == 0.f) return true;
         switch (spec.kind) {

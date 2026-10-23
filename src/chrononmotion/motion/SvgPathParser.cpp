@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/OfflineBaking.hpp"
 
+#include "chrononmotion/math/Finite.hpp"
 #include "chrononmotion/math/MathUtils.hpp"
 
 #include <algorithm>
@@ -14,10 +15,6 @@ namespace chrononmotion::motion {
 namespace {
 
 constexpr float kEpsilon = 1e-6f;
-
-bool finite(const Vector2& value) {
-    return std::isfinite(value.x) && std::isfinite(value.y);
-}
 
 class SvgParser {
 public:
@@ -148,10 +145,10 @@ public:
         if (output.empty() || output.front().type != BakedPathCommandType::MoveTo)
             fail("SVG path must begin with moveto");
         for (const auto& value : output) {
-            if (value.type != BakedPathCommandType::Close && !finite(value.point))
+            if (value.type != BakedPathCommandType::Close && !math::isFinite(value.point))
                 fail("parsed coordinates overflow finite range");
             if (value.type == BakedPathCommandType::CubicTo &&
-                (!finite(value.control1) || !finite(value.control2)))
+                (!math::isFinite(value.control1) || !math::isFinite(value.control2)))
                 fail("parsed controls overflow finite range");
         }
         return output;
@@ -234,7 +231,7 @@ private:
         const Vector2 c1(static_cast<float>(from.x + dx / 3.0), static_cast<float>(from.y + dy / 3.0));
         const Vector2 c2(static_cast<float>(from.x + dx * (2.0 / 3.0)),
                          static_cast<float>(from.y + dy * (2.0 / 3.0)));
-        if (!finite(c1) || !finite(c2))
+        if (!math::isFinite(c1) || !math::isFinite(c2))
             throw std::invalid_argument("SVG path: line conversion overflowed finite range");
         path.push_back({BakedPathCommandType::CubicTo, to, c1, c2});
         // The command stores controls in the established (point, c1, c2) form.
@@ -247,7 +244,7 @@ private:
                          static_cast<float>((static_cast<double>(from.y) + 2.0 * control.y) / 3.0));
         const Vector2 c2(static_cast<float>((2.0 * control.x + to.x) / 3.0),
                          static_cast<float>((2.0 * control.y + to.y) / 3.0));
-        if (!finite(c1) || !finite(c2))
+        if (!math::isFinite(c1) || !math::isFinite(c2))
             throw std::invalid_argument("SVG path: quadratic conversion overflowed finite range");
         path.push_back({BakedPathCommandType::CubicTo, to, c1, c2});
     }

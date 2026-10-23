@@ -1,4 +1,5 @@
 #include "chrononmotion/motion/CameraFocusSequence.hpp"
+#include "chrononmotion/math/Finite.hpp"
 
 #include "chrononmotion/motion/CameraMotion.hpp"
 #include "chrononmotion/motion/Easing.hpp"
@@ -39,8 +40,7 @@ namespace chrononmotion::motion::camera {
         }
         int priorFocus = -1;
         for (const auto& subject : sequence.subjects) {
-            if (!std::isfinite(subject.anchor.x) || !std::isfinite(subject.anchor.y) ||
-                !std::isfinite(subject.anchor.z) || !std::isfinite(subject.focusDepth) ||
+            if (!math::isFinite(subject.anchor) || !std::isfinite(subject.focusDepth) ||
                 subject.focusDepth < 0.f || subject.focusFrame < 0 || subject.focusFrame <= priorFocus) {
                 throw std::invalid_argument("applyFocusSequence: subject anchors and focus frames must be finite and ordered");
             }
