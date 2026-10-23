@@ -42,7 +42,7 @@ namespace chrononmotion::motion {
                 return true;
             }
             case ConstraintKind::SurfaceAttach: {
-                if (!finite(spec.surfaceNormal) || !finite(spec.surfaceOffset) ||
+                if (!math::isFinite(spec.surfaceNormal) || !math::isFinite(spec.surfaceOffset) ||
                     std::abs(spec.surfaceNormal.lengthSq() - 1.f) > 1e-4f) return false;
                 Vector3 normal = spec.surfaceNormal; normal.applyQuaternion(targetRotation);
                 Vector3 offset = spec.surfaceOffset; offset.multiply(targetScale).applyQuaternion(targetRotation);
@@ -75,7 +75,7 @@ namespace chrononmotion::motion {
             case ConstraintKind::LimitPosition:
             case ConstraintKind::LimitRotation:
             case ConstraintKind::LimitScale: {
-                if (!finite(spec.minimum) || !finite(spec.maximum)) return false;
+                if (!math::isFinite(spec.minimum) || !math::isFinite(spec.maximum)) return false;
                 for (unsigned i = 0; i < 3; ++i)
                     if (spec.minimum[i] > spec.maximum[i]) return false;
                 if (spec.kind == ConstraintKind::LimitRotation && !local.orientation.equals(Quaternion{})) {
