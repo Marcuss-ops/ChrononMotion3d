@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/RigOperators.hpp"
-#include <array>
+
+#include "chrononmotion/math/Finite.hpp"#include <array>
 #include <cmath>
 #include <stdexcept>
 
@@ -55,7 +56,6 @@ namespace chrononmotion::motion {
             {RigSolverKind::Morph, "Morph", RigOperatorCategory::Solver, RigEvaluationStage::Geometry},
             {RigSolverKind::PoseMixer, "PoseMixer", RigOperatorCategory::Solver, RigEvaluationStage::PoseMix}
         });
-        bool finite(const Vector3& v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); }
     }
     std::span<const RigOperatorDescriptor> rigOperatorRegistry() { return catalog; }
     const RigOperatorDescriptor& rigOperator(RigOperatorKind kind) {
@@ -66,9 +66,9 @@ namespace chrononmotion::motion {
         (void) rigOperator(spec.kind);
         if (!std::isfinite(spec.amount) || spec.amount < 0.f || spec.amount > 1.f ||
             !std::isfinite(spec.distance) || spec.distance < 0.f || !std::isfinite(spec.progress) ||
-            !finite(spec.axis) || !finite(spec.minimum) || !finite(spec.maximum) ||
+            !math::isFinite(spec.axis) || !math::isFinite(spec.minimum) || !math::isFinite(spec.maximum) ||
             !std::isfinite(spec.restLength) || spec.restLength <= 0.f || !std::isfinite(spec.damping) || spec.damping < 0.f ||
-            !std::isfinite(spec.roll) || !finite(spec.surfaceNormal) || !finite(spec.surfaceOffset) ||
+            !std::isfinite(spec.roll) || !math::isFinite(spec.surfaceNormal) || !math::isFinite(spec.surfaceOffset) ||
             (spec.kind == ConstraintKind::SurfaceAttach &&
              (std::abs(spec.surfaceNormal.lengthSq() - 1.f) > 1e-4f || std::abs(spec.surfaceNormal.dot(spec.surfaceOffset)) > 1e-4f)) ||
             (spec.kind == ConstraintKind::FollowPath && !spec.path))

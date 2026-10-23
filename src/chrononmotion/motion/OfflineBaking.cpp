@@ -1,6 +1,7 @@
 #include "chrononmotion/motion/OfflineBaking.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
+#include "chrononmotion/math/Finite.hpp"
 #include "chrononmotion/motion/Layer.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
 
@@ -20,14 +21,6 @@ constexpr float kEpsilon = 1e-6f;
 constexpr std::size_t kMaximumBakedFrames = 1'000'001;
 constexpr std::size_t kMaximumBakedWork = 100'000'000;
 constexpr std::size_t kMaximumBakedPathCommands = 1'000'000;
-
-bool finite(const Vector2& value) {
-    return std::isfinite(value.x) && std::isfinite(value.y);
-}
-
-bool finite(const Vector3& value) {
-    return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
-}
 
 struct DoubleVector3 {
     double x;
@@ -128,10 +121,10 @@ void validateBakedPath(const BakedPath& path, const char* function) {
             continue;
         }
         if (command.type == BakedPathCommandType::MoveTo) hasCurrentSubpath = true;
-        if (!finite(command.point))
+        if (!math::isFinite(command.point))
             throw std::invalid_argument(std::string(function) + ": path coordinates must be finite");
         if (command.type == BakedPathCommandType::CubicTo &&
-            (!finite(command.control1) || !finite(command.control2)))
+            (!math::isFinite(command.control1) || !math::isFinite(command.control2)))
             throw std::invalid_argument(std::string(function) + ": cubic controls must be finite");
     }
 }
@@ -153,9 +146,9 @@ BakedVerletChain bakeVerletChain(const VerletChainSpec& spec, int firstFrame, in
     validateFrameRange(firstFrame, lastFrame);
     if (spec.joints.size() < 2 || spec.joints.size() > 65536 || !std::isfinite(spec.fps) || spec.fps <= 0.f ||
         !std::isfinite(spec.damping) || spec.damping < 0.f || spec.damping >= 1.f ||
-        !finite(spec.gravity) || spec.iterations == 0 || spec.iterations > 256 ||
+        !math::isFinite(spec.gravity) || spec.iterations == 0 || spec.iterations > 256 ||
         !std::isfinite(spec.stiffness) || spec.stiffness < 0.f || !std::isfinite(spec.mass) || spec.mass <= 0.f ||
-        !finite(spec.force) || !std::isfinite(spec.drag) || spec.drag < 0.f ||
+        !math::isFinite(spec.force) || !std::isfinite(spec.drag) || spec.drag < 0.f ||
         !std::isfinite(spec.maxAngle) || spec.maxAngle < 0.f || spec.maxAngle > math::PI)
         throw std::invalid_argument("bakeVerletChain: invalid chain or simulation parameters");
     const std::size_t requestedFrames = static_cast<std::size_t>(lastFrame - firstFrame) + 1;
@@ -164,7 +157,7 @@ BakedVerletChain bakeVerletChain(const VerletChainSpec& spec, int firstFrame, in
         throw std::invalid_argument("bakeVerletChain: requested samples or solver work exceed the offline budget");
     validateFrameTimes(spec.fps, firstFrame, lastFrame, "bakeVerletChain");
     for (const auto& point : spec.joints)
-        if (!finite(point)) throw std::invalid_argument("bakeVerletChain: joints must be finite");
+        if (!math::isFinite(point)) throw std::invalid_argument("bakeVerletChain: joints must be finite");
     const std::vector<Vector2> rest = spec.joints;
     std::vector<float> lengths;
     lengths.reserve(rest.size() - 1);
@@ -187,12 +180,12 @@ BakedVerletChain bakeVerletChain(const VerletChainSpec& spec, int firstFrame, in
         throw std::invalid_argument("bakeVerletChain: nonfinite or unstable fixed step");
     const float dragFactor = std::exp(-spec.drag * dt);
     const Vector2 acceleration = spec.gravity + spec.force * (1.f / spec.mass);
-    if (!finite(acceleration)) throw std::invalid_argument("bakeVerletChain: force acceleration overflow");
+    if (!math::isFinite(acceleration)) throw std::invalid_argument("bakeVerletChain: force acceleration overflow");
     for (std::size_t frame = 0; frame < frames; ++frame) {
         result.samples.push_back(current);
         const int frameNumber = firstFrame + static_cast<int>(frame);
         for (std::size_t joint = 0; joint < current.size(); ++joint) {
-            if (!finite(current[joint]))
+            if (!math::isFinite(current[joint]))
                 throw std::invalid_argument("bakeVerletChain: simulation state overflowed finite range");
             addVectorKey(result.jointPositions[joint], frameNumber, spec.fps, current[joint]);
         }
@@ -232,7 +225,7 @@ BakedVerletChain bakeVerletChain(const VerletChainSpec& spec, int firstFrame, in
             }
         }
         for (const Vector2& point : current)
-            if (!finite(point))
+            if (!math::isFinite(point))
                 throw std::invalid_argument("bakeVerletChain: simulation state overflowed finite range");
         const auto& sampledPose = result.samples.back();
         for (std::size_t segment = 0; segment + 1 < rest.size(); ++segment) {
@@ -248,7 +241,7 @@ BakedRigidBodies2D bakeRigidBodies2D(std::vector<RigidBody2D> bodies,
                                       const RigidBodyWorld2D& world,
                                       int firstFrame, int lastFrame) {
     validateFrameRange(firstFrame, lastFrame);
-    if (!std::isfinite(world.fps) || world.fps <= 0.f || !finite(world.gravity) ||
+    if (!std::isfinite(world.fps) || world.fps <= 0.f || !math::isFinite(world.gravity) ||
         !std::isfinite(world.floorY) || !std::isfinite(world.left) ||
         !std::isfinite(world.right) || world.left >= world.right ||
         bodies.size() > 4096 || world.solverIterations == 0 || world.solverIterations > 128 ||
@@ -266,7 +259,7 @@ BakedRigidBodies2D bakeRigidBodies2D(std::vector<RigidBody2D> bodies,
         throw std::invalid_argument("bakeRigidBodies2D: collision work exceeds the offline operation budget");
     std::unordered_set<std::uint32_t> ids;
     for (const auto& body : bodies) {
-        if (!ids.insert(body.id).second || !finite(body.position) || !finite(body.velocity) ||
+        if (!ids.insert(body.id).second || !math::isFinite(body.position) || !math::isFinite(body.velocity) ||
             !std::isfinite(body.radius) || body.radius <= 0.f || !std::isfinite(body.mass) ||
             !std::isfinite(body.restitution) || body.restitution < 0.f || body.restitution > 1.f ||
             !std::isfinite(body.friction) || body.friction < 0.f || body.friction > 1.f ||
@@ -302,7 +295,7 @@ BakedRigidBodies2D bakeRigidBodies2D(std::vector<RigidBody2D> bodies,
                 body.velocity.y = -body.velocity.y * body.restitution;
                 body.velocity.x *= 1.f - body.friction;
             }
-            if (!finite(body.position) || !finite(body.velocity))
+            if (!math::isFinite(body.position) || !math::isFinite(body.velocity))
                 throw std::invalid_argument("bakeRigidBodies2D: simulation state overflowed");
             positions.push_back(body.position);
             addVectorKey(result.positionTracks[i], frameNumber, world.fps, body.position);
@@ -383,7 +376,7 @@ BakedRigidBodies2D bakeRigidBodies2D(std::vector<RigidBody2D> bodies,
                 }
             }
             for (const auto& body : bodies) {
-                if (!finite(body.position) || !finite(body.velocity))
+                if (!math::isFinite(body.position) || !math::isFinite(body.velocity))
                     throw std::invalid_argument("bakeRigidBodies2D: simulation state overflowed finite range");
             }
         }
@@ -394,7 +387,7 @@ BakedRigidBodies2D bakeRigidBodies2D(std::vector<RigidBody2D> bodies,
 IK2Result solveTwoSegmentIK2D(const Vector2& root, const Vector2& target,
                                float upperLength, float lowerLength,
                                float parentRotation, bool bendPositive) {
-    if (!finite(root) || !finite(target) || !std::isfinite(upperLength) ||
+    if (!math::isFinite(root) || !math::isFinite(target) || !std::isfinite(upperLength) ||
         !std::isfinite(lowerLength) || upperLength <= 0.f || lowerLength <= 0.f ||
         !std::isfinite(parentRotation))
         throw std::invalid_argument("solveTwoSegmentIK2D: positions and positive segment lengths must be finite");
@@ -442,7 +435,7 @@ IK2Result solveTwoSegmentIK2D(const Vector2& root, const Vector2& target,
     result.shoulderRotation = wrapAngle(static_cast<float>(shoulder) - parentRotation);
     result.elbowRotation = wrapAngle(lowerAngle - static_cast<float>(shoulder));
     result.targetReachable = reachable;
-    if (!finite(result.elbow) || !finite(result.end) || !std::isfinite(result.shoulderRotation) ||
+    if (!math::isFinite(result.elbow) || !math::isFinite(result.end) || !std::isfinite(result.shoulderRotation) ||
         !std::isfinite(result.elbowRotation))
         throw std::invalid_argument("solveTwoSegmentIK2D: solved pose exceeds finite float range");
     return result;
@@ -452,12 +445,12 @@ IK3Result solveIKChain3D(std::span<const Vector3> initialJoints,
                          const Vector3& target, const Vector3& pole,
                          unsigned iterations, float tolerance) {
     if (initialJoints.size() < 2 || initialJoints.size() > 65536 ||
-        !finite(target) || !finite(pole) || iterations == 0 || iterations > 256 ||
+        !math::isFinite(target) || !math::isFinite(pole) || iterations == 0 || iterations > 256 ||
         !std::isfinite(tolerance) || tolerance <= 0.f) {
         throw std::invalid_argument("solveIKChain3D: chain, target, pole and solver settings must be valid");
     }
     for (const auto& joint : initialJoints) {
-        if (!finite(joint)) throw std::invalid_argument("solveIKChain3D: initial joints must be finite");
+        if (!math::isFinite(joint)) throw std::invalid_argument("solveIKChain3D: initial joints must be finite");
     }
 
     std::vector<DoubleVector3> positions;
@@ -576,7 +569,7 @@ IK3Result solveIKChain3D(std::span<const Vector3> initialJoints,
 BakedIKChain3D bakeIKChain3D(const IK3BakeSpec& spec, int firstFrame, int lastFrame) {
     validateFrameRange(firstFrame, lastFrame);
     if (spec.initialJoints.size() < 2 || spec.targetTrack.empty() ||
-        !finite(spec.pole) || !std::isfinite(spec.fps) || spec.fps <= 0.f ||
+        !math::isFinite(spec.pole) || !std::isfinite(spec.fps) || spec.fps <= 0.f ||
         spec.iterations == 0 || spec.iterations > 256 ||
         !std::isfinite(spec.tolerance) || spec.tolerance <= 0.f) {
         throw std::invalid_argument("bakeIKChain3D: chain, target track and solver settings must be valid");
@@ -588,7 +581,7 @@ BakedIKChain3D bakeIKChain3D(const IK3BakeSpec& spec, int firstFrame, int lastFr
             throw std::invalid_argument("bakeIKChain3D: target track must not require a scene link resolver");
     }
     for (const auto& key : spec.targetTrack.keys()) {
-        if (!std::isfinite(key.time) || !finite(key.value))
+        if (!std::isfinite(key.time) || !math::isFinite(key.value))
             throw std::invalid_argument("bakeIKChain3D: target track keys must be finite");
     }
     const std::size_t frameCount = static_cast<std::size_t>(lastFrame - firstFrame) + 1;
@@ -820,7 +813,7 @@ FlowResult solveFlowLayout(const FlowSpec& spec, std::span<const FlowItem> items
         static_cast<unsigned>(spec.crossAlignment) > static_cast<unsigned>(FlowCrossAlignment::Stretch))
         throw std::invalid_argument("solveFlowLayout: invalid axis or alignment");
     const float padding[] = {spec.padding.top, spec.padding.right, spec.padding.bottom, spec.padding.left};
-    if (!finite(origin) || !finite(spec.containerSize) || !std::isfinite(spec.gap) || spec.gap < 0.f)
+    if (!math::isFinite(origin) || !math::isFinite(spec.containerSize) || !std::isfinite(spec.gap) || spec.gap < 0.f)
         throw std::invalid_argument("solveFlowLayout: origin, container and gap must be finite; gap non-negative");
     for (float value : padding)
         if (!std::isfinite(value) || value < 0.f) throw std::invalid_argument("solveFlowLayout: padding must be finite and non-negative");
@@ -829,8 +822,8 @@ FlowResult solveFlowLayout(const FlowSpec& spec, std::span<const FlowItem> items
         throw std::invalid_argument("solveFlowLayout: item count exceeds 65536");
     float naturalMain = 0.f, naturalCross = 0.f;
     for (const auto& item : items) {
-        if (!ids.insert(item.id).second || !finite(item.measuredSize) || item.measuredSize.x < 0.f || item.measuredSize.y < 0.f ||
-            !finite(item.anchor) || item.anchor.x < 0.f || item.anchor.x > 1.f || item.anchor.y < 0.f || item.anchor.y > 1.f)
+        if (!ids.insert(item.id).second || !math::isFinite(item.measuredSize) || item.measuredSize.x < 0.f || item.measuredSize.y < 0.f ||
+            !math::isFinite(item.anchor) || item.anchor.x < 0.f || item.anchor.x > 1.f || item.anchor.y < 0.f || item.anchor.y > 1.f)
             throw std::invalid_argument("solveFlowLayout: duplicate ids or invalid measured item");
         const float main = spec.axis == FlowAxis::Row ? item.measuredSize.x : item.measuredSize.y;
         const float cross = spec.axis == FlowAxis::Row ? item.measuredSize.y : item.measuredSize.x;
@@ -887,14 +880,14 @@ FlowResult solveFlowLayout(const FlowSpec& spec, std::span<const FlowItem> items
         itemResult.size = Vector2(resolvedWidth, resolvedHeight);
         itemResult.position = Vector2(x + item.anchor.x * resolvedWidth, y + item.anchor.y * resolvedHeight);
         itemResult.bounds.set(Vector2(x, y), Vector2(x + resolvedWidth, y + resolvedHeight));
-        if (!finite(itemResult.position) || !finite(itemResult.size) || !finite(Vector2(x + resolvedWidth, y + resolvedHeight)))
+        if (!math::isFinite(itemResult.position) || !math::isFinite(itemResult.size) || !math::isFinite(Vector2(x + resolvedWidth, y + resolvedHeight)))
             throw std::invalid_argument("solveFlowLayout: resolved item overflows finite coordinates");
         result.items.push_back(itemResult);
         cursor += itemMain + effectiveGap;
     }
     const Vector2 maximum(origin.x + (spec.axis == FlowAxis::Row ? mainExtent : crossExtent),
                           origin.y + (spec.axis == FlowAxis::Row ? crossExtent : mainExtent));
-    if (!finite(maximum)) throw std::invalid_argument("solveFlowLayout: resolved container bounds overflow");
+    if (!math::isFinite(maximum)) throw std::invalid_argument("solveFlowLayout: resolved container bounds overflow");
     result.bounds.set(origin, maximum);
     return result;
 }
@@ -944,7 +937,7 @@ BakedPath interpolateBakedPaths(const BakedPath& from, const BakedPath& to, floa
         result[i].point.lerp(to[i].point, amount);
         result[i].control1.lerp(to[i].control1, amount);
         result[i].control2.lerp(to[i].control2, amount);
-        if (!finite(result[i].point) || !finite(result[i].control1) || !finite(result[i].control2))
+        if (!math::isFinite(result[i].point) || !math::isFinite(result[i].control1) || !math::isFinite(result[i].control2))
             throw std::invalid_argument("interpolateBakedPaths: commands must have finite coordinates");
     }
     return result;
@@ -991,7 +984,7 @@ std::vector<BakedPath> bakeWaveDeform(const BakedPath& rest, const WaveDeformerS
                 (std::sin(angular - temporalPhase) - std::sin(angular)) * spec.falloff.evaluate(point);
         if (spec.axis == WaveAxis::X) point.x += displacement;
         else point.y += displacement;
-        if (!finite(point)) throw std::invalid_argument("bakeWaveDeform: deformation overflowed finite coordinates");
+        if (!math::isFinite(point)) throw std::invalid_argument("bakeWaveDeform: deformation overflowed finite coordinates");
         return point;
     };
     std::vector<BakedPath> result;
@@ -1027,9 +1020,9 @@ std::vector<std::vector<Vector2>> bakeFieldSimulation(
     if (restPositions.size() != 0 && frameCount > kMaximumBakedFrames / restPositions.size())
         throw std::invalid_argument("bakeFieldSimulation: requested samples exceed the offline budget");
     for (const Vector2& point : restPositions)
-        if (!finite(point)) throw std::invalid_argument("bakeFieldSimulation: rest positions must be finite");
+        if (!math::isFinite(point)) throw std::invalid_argument("bakeFieldSimulation: rest positions must be finite");
     for (const auto& field : effectors) {
-        if (!finite(field.origin) || !std::isfinite(field.strength) ||
+        if (!math::isFinite(field.origin) || !std::isfinite(field.strength) ||
             !std::isfinite(field.falloffRadius) || field.falloffRadius <= 0.f ||
             !std::isfinite(field.coreRadius) || field.coreRadius < 0.f ||
             field.coreRadius >= field.falloffRadius ||
@@ -1079,7 +1072,7 @@ std::vector<std::vector<Vector2>> bakeFieldSimulation(
                     displaced.y += radial.y * amount;
                 }
             }
-            if (!finite(displaced)) throw std::invalid_argument("bakeFieldSimulation: field output overflowed finite range");
+            if (!math::isFinite(displaced)) throw std::invalid_argument("bakeFieldSimulation: field output overflowed finite range");
             pose.push_back(displaced);
         }
         result.push_back(std::move(pose));
@@ -1106,7 +1099,7 @@ std::vector<std::vector<BakedPath>> bakeSvgSkinDeform(
         (bindings.size() != rest.size() * 3))
         throw std::invalid_argument("bakeSvgSkinDeform: bones, frame matrices, and per-coordinate bindings must agree");
     for (std::size_t bone = 0; bone < bones.size(); ++bone) {
-        if (!finite(bones[bone].head) || !finite(bones[bone].tail) ||
+        if (!math::isFinite(bones[bone].head) || !math::isFinite(bones[bone].tail) ||
             bones[bone].head.distanceTo(bones[bone].tail) <= kEpsilon ||
             bones[bone].parentIndex >= static_cast<int>(bone) || bones[bone].parentIndex < -1)
             throw std::invalid_argument("bakeSvgSkinDeform: bones must have finite nonzero segments and parents before children");
@@ -1157,7 +1150,7 @@ std::vector<std::vector<BakedPath>> bakeSvgSkinDeform(
                 }
                 output.multiplyScalar(1.f / totalWeight);
                 Vector2 solved(output.x, output.y);
-                if (!finite(solved)) throw std::invalid_argument("bakeSvgSkinDeform: skinned point overflowed finite coordinates");
+                if (!math::isFinite(solved)) throw std::invalid_argument("bakeSvgSkinDeform: skinned point overflowed finite coordinates");
                 return solved;
             };
             command.point = skinPoint(command.point, coordinate++);
@@ -1233,7 +1226,7 @@ std::vector<std::vector<BakedPath>> bakePathPinDeform(
         throw std::invalid_argument("bakePathPinDeform: requested geometry or pin work exceeds the offline budget");
     for (const auto& pin : pins)
         if (!std::isfinite(pin.arcLengthT) || pin.arcLengthT < 0.f || pin.arcLengthT > 1.f ||
-            !finite(pin.target) || !finite(pin.oscillation) || !std::isfinite(pin.stiffness) ||
+            !math::isFinite(pin.target) || !math::isFinite(pin.oscillation) || !std::isfinite(pin.stiffness) ||
             pin.stiffness < 0.f || pin.stiffness > 1.f)
             throw std::invalid_argument("bakePathPinDeform: invalid pin data");
     std::vector<std::vector<BakedPath>> result;
@@ -1257,7 +1250,7 @@ std::vector<std::vector<BakedPath>> bakePathPinDeform(
                     displacement.addScaledVector(animatedTarget - pin.target, oscillationWeight);
                 }
                 point.add(displacement);
-                if (!finite(point)) throw std::invalid_argument("bakePathPinDeform: deformation overflowed finite coordinates");
+                if (!math::isFinite(point)) throw std::invalid_argument("bakePathPinDeform: deformation overflowed finite coordinates");
             };
             deformPoint(path[i].point, arc[i][2]);
             if (path[i].type == BakedPathCommandType::CubicTo) {
@@ -1328,7 +1321,7 @@ std::vector<const Layer*> selectCollection(const MotionScene& scene,
 std::vector<Layer*> instantiateCloner(MotionScene& scene, const Layer& prototype,
                                      const ClonerSpec& spec, std::string_view idPrefix) {
     if (spec.count == 0 || spec.count > 10000 || idPrefix.empty() || idPrefix.size() > 4096 ||
-        !finite(spec.offsetStep) || !finite(spec.scaleStep) || !std::isfinite(spec.rotationStepRad) ||
+        !math::isFinite(spec.offsetStep) || !math::isFinite(spec.scaleStep) || !std::isfinite(spec.rotationStepRad) ||
         !std::isfinite(spec.spiralRadiusStep) || spec.spiralRadiusStep < 0.f ||
         !std::isfinite(spec.spiralAngleStepRad) || !std::isfinite(spec.timeOffsetSeconds) ||
         spec.timeOffsetSeconds < 0.f ||
@@ -1388,7 +1381,7 @@ std::vector<Layer*> instantiateCloner(MotionScene& scene, const Layer& prototype
         }
         const Vector3 scaleFactor(std::pow(spec.scaleStep.x, i), std::pow(spec.scaleStep.y, i),
                                   std::pow(spec.scaleStep.z, i));
-        if (!finite(offset) || !finite(scaleFactor) || !std::isfinite(angle))
+        if (!math::isFinite(offset) || !math::isFinite(scaleFactor) || !std::isfinite(angle))
             throw std::invalid_argument("instantiateCloner: clone transform overflowed");
         Layer clone(prototype);
         for (auto& constraint : clone.constraints) {
@@ -1426,7 +1419,7 @@ std::vector<Layer*> instantiateCloner(MotionScene& scene, const Layer& prototype
         };
         const auto finiteVectorTrack = [&](const Track<Vector3>& track) {
             for (const auto& key : track.keys())
-                if (!finite(key.value)) return false;
+                if (!math::isFinite(key.value)) return false;
             return finiteTrackTimes(track);
         };
         const auto finiteOrientationTrack = [&](const Track<Quaternion>& track) {
@@ -1442,8 +1435,8 @@ std::vector<Layer*> instantiateCloner(MotionScene& scene, const Layer& prototype
                 if (!std::isfinite(key.value)) return false;
             return finiteTrackTimes(track);
         };
-        if (!finite(clone.transform.position) || !finite(clone.transform.anchor) ||
-            !finite(clone.transform.scale) || !finite(clone.transform.rotation) ||
+        if (!math::isFinite(clone.transform.position) || !math::isFinite(clone.transform.anchor) ||
+            !math::isFinite(clone.transform.scale) || !math::isFinite(clone.transform.rotation) ||
             !std::isfinite(clone.transform.opacity) ||
             !std::isfinite(static_cast<float>(clone.transform.orientation.x)) ||
             !std::isfinite(static_cast<float>(clone.transform.orientation.y)) ||
@@ -1466,7 +1459,7 @@ std::vector<BakedPath> expandPathRepeater(const BakedPath& path,
     if (path.empty() || path.size() > 65536 || path.front().type != BakedPathCommandType::MoveTo ||
         repeater.copies == 0 || repeater.copies > maximumCopies || maximumCopies > 100000 ||
         repeater.copies > kMaximumBakedPathCommands / path.size() ||
-        !finite(repeater.position) || !finite(repeater.scale) || !finite(repeater.anchor) ||
+        !math::isFinite(repeater.position) || !math::isFinite(repeater.scale) || !math::isFinite(repeater.anchor) ||
         !std::isfinite(repeater.rotationRadians))
         throw std::invalid_argument("expandPathRepeater: invalid path or repeater settings");
     std::vector<BakedPath> result;
@@ -1474,7 +1467,7 @@ std::vector<BakedPath> expandPathRepeater(const BakedPath& path,
     for (std::uint32_t copy = 0; copy < repeater.copies; ++copy) {
         const float power = static_cast<float>(copy);
         const Vector2 scale(std::pow(repeater.scale.x, power), std::pow(repeater.scale.y, power));
-        if (!finite(scale)) throw std::invalid_argument("expandPathRepeater: scale overflow");
+        if (!math::isFinite(scale)) throw std::invalid_argument("expandPathRepeater: scale overflow");
         const float angle = repeater.rotationRadians * power;
         const Vector2 translation = repeater.position * power;
         BakedPath transformedPath = path;
@@ -1485,9 +1478,9 @@ std::vector<BakedPath> expandPathRepeater(const BakedPath& path,
                 command.control1 = transformed(command.control1, repeater.anchor, scale, angle, translation);
                 command.control2 = transformed(command.control2, repeater.anchor, scale, angle, translation);
             }
-            if (!finite(command.point) ||
+            if (!math::isFinite(command.point) ||
                 (command.type == BakedPathCommandType::CubicTo &&
-                 (!finite(command.control1) || !finite(command.control2))))
+                 (!math::isFinite(command.control1) || !math::isFinite(command.control2))))
                 throw std::invalid_argument("expandPathRepeater: transformed command overflows finite coordinates");
         }
         result.push_back(std::move(transformedPath));

@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/RigDrivers.hpp"
-#include "chrononmotion/motion/RigOperators.hpp"
+
+#include "chrononmotion/math/Finite.hpp"#include "chrononmotion/motion/RigOperators.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,9 +11,6 @@
 
 namespace chrononmotion::motion {
     namespace {
-        bool finite(const Vector3& v) {
-            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
-        }
         unsigned dimensions(RigControllerKind kind) {
             switch (kind) {
                 case RigControllerKind::Scalar:
@@ -37,7 +35,7 @@ namespace chrononmotion::motion {
                     throw std::invalid_argument("RigDrivers: zero or duplicate ID");
         }
         Vector3 controllerValue(const RigController& c, Vector3 value) {
-            if (!finite(value)) throw std::invalid_argument("RigDrivers: nonfinite controller value");
+            if (!math::isFinite(value)) throw std::invalid_argument("RigDrivers: nonfinite controller value");
             const auto dims = dimensions(c.kind);
             for (unsigned axis = 0; axis < 3; ++axis) {
                 if (axis >= dims) {
@@ -74,8 +72,8 @@ namespace chrononmotion::motion {
         sortIds(graph_.nodes); sortIds(graph_.controllers);
         for (const auto& controller : graph_.controllers) {
             const auto node = byId(rig_.nodes(), controller.id);
-            if (rig_.nodes()[node].kind != RigNodeKind::Controller || !finite(controller.neutral) ||
-                !finite(controller.minimum) || !finite(controller.maximum))
+            if (rig_.nodes()[node].kind != RigNodeKind::Controller || !math::isFinite(controller.neutral) ||
+                !math::isFinite(controller.minimum) || !math::isFinite(controller.maximum))
                 throw std::invalid_argument("RigDrivers: invalid controller");
             const auto dims = dimensions(controller.kind);
             for (unsigned axis = 0; axis < 3; ++axis) {

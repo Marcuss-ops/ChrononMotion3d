@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/RigGraph.hpp"
-#include "chrononmotion/motion/MotionScene.hpp"
+
+#include "chrononmotion/math/Finite.hpp"#include "chrononmotion/motion/MotionScene.hpp"
 #include "chrononmotion/motion/OfflineBaking.hpp"
 #include "chrononmotion/motion/RigOperators.hpp"
 #include "chrononmotion/motion/TwoBoneIK.hpp"
@@ -15,14 +16,10 @@ namespace chrononmotion::motion {
         constexpr std::size_t noParent = std::numeric_limits<std::size_t>::max();
         constexpr std::size_t maxNodes = 10000;
         constexpr std::size_t maxSamples = 1000000;
-
-        bool finite(const Vector3& v) {
-            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
-        }
         void validateTransform(const Transform& t) {
             const auto& q = t.orientation;
             const float norm = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
-            if (!finite(t.position) || !finite(t.anchor) || !finite(t.rotation) || !finite(t.scale) ||
+            if (!math::isFinite(t.position) || !math::isFinite(t.anchor) || !math::isFinite(t.rotation) || !math::isFinite(t.scale) ||
                 !std::isfinite(norm) || std::abs(norm - 1.f) > 1e-4f ||
                 t.scale.x <= 0.f || t.scale.y <= 0.f || t.scale.z <= 0.f ||
                 !std::isfinite(t.opacity) || t.opacity < 0.f || t.opacity > 1.f)
@@ -80,7 +77,7 @@ namespace chrononmotion::motion {
                 throw std::invalid_argument("RigGraph: unknown node kind");
             validateTransform(node.bind);
             validateTransform(node.rest);
-            if (!std::isfinite(node.length) || node.length <= 0.f || !finite(node.primaryAxis) ||
+            if (!std::isfinite(node.length) || node.length <= 0.f || !math::isFinite(node.primaryAxis) ||
                 std::abs(node.primaryAxis.lengthSq() - 1.f) > 1e-4f)
                 throw std::invalid_argument("RigGraph: invalid bone length or axis");
             if (node.layerId) bindings.push_back(node.layerId);
@@ -98,7 +95,7 @@ namespace chrononmotion::motion {
                 if (constraint.kind < ConstraintKind::Billboard || constraint.kind > ConstraintKind::LookAtWithRoll ||
                     !std::isfinite(constraint.amount) || constraint.amount < 0.f || constraint.amount > 1.f ||
                     !std::isfinite(constraint.distance) || constraint.distance < 0.f ||
-                    !std::isfinite(constraint.progress) || !finite(constraint.minimum) || !finite(constraint.maximum) ||
+                    !std::isfinite(constraint.progress) || !math::isFinite(constraint.minimum) || !math::isFinite(constraint.maximum) ||
                     !std::isfinite(constraint.restLength) || constraint.restLength <= 0.f ||
                     constraint.amountTrack || (constraint.kind == ConstraintKind::FollowPath && !constraint.path))
                     throw std::invalid_argument("RigGraph: invalid or unsupported constraint spec");
@@ -281,8 +278,8 @@ namespace chrononmotion::motion {
     }
 
     RigPose RigEvaluator::solveIK(const RigIKChain& chain, std::span<const RigPoseValue> pose) const {
-        if (chain.joints.size() < 2 || chain.joints.size() > 257 || !finite(chain.target) ||
-            !finite(chain.pole) || !std::isfinite(chain.amount) || chain.amount < 0.f || chain.amount > 1.f ||
+        if (chain.joints.size() < 2 || chain.joints.size() > 257 || !math::isFinite(chain.target) ||
+            !math::isFinite(chain.pole) || !std::isfinite(chain.amount) || chain.amount < 0.f || chain.amount > 1.f ||
             chain.iterations == 0 || chain.iterations > 4096 || !std::isfinite(chain.tolerance) || chain.tolerance <= 0.f)
             throw std::invalid_argument("RigGraph: invalid IK chain");
         for (const auto& node : nodes_)

@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/RigDeformers.hpp"
-#include "chrononmotion/motion/RigOperators.hpp"
+
+#include "chrononmotion/math/Finite.hpp"#include "chrononmotion/motion/RigOperators.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -7,17 +8,16 @@
 namespace chrononmotion::motion {
     namespace {
         constexpr std::size_t budget = 1000000;
-        bool finite(const Vector3& v) { return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z); }
         void validatePoints(std::span<const Vector3> points) {
             if (points.size() > budget) throw std::invalid_argument("RigGeometry: vertex budget exceeded");
             for (const auto& point : points)
-                if (!finite(point)) throw std::invalid_argument("RigGeometry: nonfinite point");
+                if (!math::isFinite(point)) throw std::invalid_argument("RigGeometry: nonfinite point");
         }
         void validate(const RigDeformer& d) {
             (void) rigOperator(d.kind);
             if (d.kind < RigDeformerKind::Bend || d.kind > RigDeformerKind::SquashStretch ||
                 !std::isfinite(d.amount) || d.amount < 0.f || d.amount > 1.f || !std::isfinite(d.strength) ||
-                !std::isfinite(d.wavelength) || d.wavelength <= 0.f || !std::isfinite(d.phase) || !finite(d.origin))
+                !std::isfinite(d.wavelength) || d.wavelength <= 0.f || !std::isfinite(d.phase) || !math::isFinite(d.origin))
                 throw std::invalid_argument("DeformerStack: invalid operator");
             if ((d.kind == RigDeformerKind::SquashStretch || d.kind == RigDeformerKind::Bulge ||
                  d.kind == RigDeformerKind::Taper) && d.strength <= -1.f)
@@ -27,7 +27,7 @@ namespace chrononmotion::motion {
             if (d.kind == RigDeformerKind::Lattice) {
                 const auto& l = d.lattice;
                 if (l.columns < 2 || l.rows < 2 || l.columns > 64 || l.rows > 64 ||
-                    l.offsets.size() != l.columns * l.rows || !finite(l.minimum) || !finite(l.maximum) ||
+                    l.offsets.size() != l.columns * l.rows || !math::isFinite(l.minimum) || !math::isFinite(l.maximum) ||
                     l.maximum.x <= l.minimum.x || l.maximum.y <= l.minimum.y)
                     throw std::invalid_argument("DeformerStack: invalid lattice");
                 validatePoints(l.offsets);
@@ -35,7 +35,7 @@ namespace chrononmotion::motion {
             if (d.pins.size() > 256) throw std::invalid_argument("DeformerStack: pin budget exceeded");
             for (const auto& pin : d.pins)
                 if (pin.kind < RigPinKind::Position || pin.kind > RigPinKind::Stiffness ||
-                    !finite(pin.rest) || !finite(pin.target) || !finite(pin.scale) ||
+                    !math::isFinite(pin.rest) || !math::isFinite(pin.target) || !math::isFinite(pin.scale) ||
                     pin.scale.x <= 0.f || pin.scale.y <= 0.f || pin.scale.z <= 0.f ||
                     !std::isfinite(pin.rotation.lengthSq()) || std::abs(pin.rotation.lengthSq() - 1.f) > 1e-4f ||
                     !std::isfinite(pin.radius) || pin.radius <= 0.f || !std::isfinite(pin.weight) ||
@@ -142,7 +142,7 @@ namespace chrononmotion::motion {
                 const Vector3 desired = deform(point, op);
                 if (op.amount == 1.f) point = desired;
                 else point.lerpVectors(point, desired, op.amount);
-                if (!finite(point)) throw std::invalid_argument("DeformerStack: nonfinite result");
+                if (!math::isFinite(point)) throw std::invalid_argument("DeformerStack: nonfinite result");
             }
         }
         return result;
@@ -199,7 +199,7 @@ namespace chrononmotion::motion {
                 point.addScaledVector(transformed, weight); total += weight;
             }
             if (std::abs(total - 1.f) > 1e-5f) throw std::invalid_argument("RigSkin: weights must sum to one");
-            if (!finite(point)) throw std::invalid_argument("RigSkin: nonfinite result");
+            if (!math::isFinite(point)) throw std::invalid_argument("RigSkin: nonfinite result");
             result.push_back(point);
         }
         return result;

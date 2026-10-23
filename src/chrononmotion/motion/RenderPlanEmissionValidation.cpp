@@ -12,6 +12,7 @@
 // and a file that renders differently from its model is worse than no file.
 
 #include "chrononmotion/motion/RenderPlanEmission.hpp"
+#include "chrononmotion/math/Finite.hpp"
 #include "RenderPlanEmissionInternal.hpp"
 
 #include "JsonWriter.hpp"
@@ -871,11 +872,8 @@ namespace chrononmotion::motion {
                 if ((shape.type == ShapeContentTypePlan::Arc || shape.type == ShapeContentTypePlan::Grid) && !shape.stroke)
                     return owner + " procedural arc/grid requires a stroke";
                 for (const auto& command : shape.path) {
-                    const auto finite = [](const auto& point) {
-                        return std::isfinite(point[0]) && std::isfinite(point[1]);
-                    };
-                    if ((command.type != ShapePathCommandTypePlan::Close && !finite(command.point)) ||
-                        !finite(command.control1) || !finite(command.control2))
+                    if ((command.type != ShapePathCommandTypePlan::Close && !math::isFinite(command.point)) ||
+                        !math::isFinite(command.control1) || !math::isFinite(command.control2))
                         return owner + " has a path command with non-finite coordinates";
                 }
                 if (shape.stroke) {

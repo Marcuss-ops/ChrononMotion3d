@@ -1,4 +1,5 @@
 #include "chrononmotion/motion/CameraRig.hpp"
+#include "chrononmotion/math/Finite.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -80,7 +81,7 @@ namespace chrononmotion::motion {
     }
 
     CameraRig& CameraRig::setLensShift(const Vector2& shift) {
-        if (!std::isfinite(shift.x) || !std::isfinite(shift.y) ||
+        if (!math::isFinite(shift) ||
             std::abs(shift.x) > 1.f || std::abs(shift.y) > 1.f)
             throw std::invalid_argument("CameraRig::setLensShift: normalized viewport shift must be in [-1, 1]");
         lensShift_ = shift;
