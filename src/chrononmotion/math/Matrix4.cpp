@@ -460,8 +460,8 @@ float Matrix4::determinant() const {
     const float n31 = te[2], n32 = te[6], n33 = te[10], n34 = te[14];
     const float n41 = te[3], n42 = te[7], n43 = te[11], n44 = te[15];
 
-    //TODO: make this more efficient
-    //( based on http://www.euclideanspace.com/maths/algebra/matrix/functions/inverse/fourD/index.htm )
+    // Keep the explicit cofactor expansion and its operation order stable;
+    // replace it only if a focused benchmark justifies the numerical tradeoff.
 
     return (
             n41 * (+n14 * n23 * n32 - n13 * n24 * n32 - n14 * n22 * n33 + n12 * n24 * n33 + n13 * n22 * n34 -
