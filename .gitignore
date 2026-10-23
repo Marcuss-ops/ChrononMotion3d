@@ -21,6 +21,9 @@ plans/
 
 # Render output
 /out/
+render/spike/**/*.mp4
+# This is source footage consumed by spike renderers, not a generated output.
+!render/spike/assets/mrbeast_reference.mp4
 
 CMakeFiles/
 .tmp/
