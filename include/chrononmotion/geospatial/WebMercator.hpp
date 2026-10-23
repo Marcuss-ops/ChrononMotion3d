@@ -21,11 +21,6 @@
 #include "chrononmotion/geospatial/Geodetic.hpp"
 #include "chrononmotion/math/Vector2.hpp"
 
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
-#include <numbers>
-
 namespace chrononmotion::geospatial {
 
     /// The latitude beyond which Mercator has no finite image (the web map
@@ -35,30 +30,14 @@ namespace chrononmotion::geospatial {
     /// One tile edge, in pixels, at every zoom level.
     inline constexpr double kMercatorTileSize = 256.0;
 
-    [[nodiscard]] inline double clampMercatorLatitude(double latitudeDeg) noexcept {
-        return std::clamp(latitudeDeg, -kMercatorLatitudeLimit, kMercatorLatitudeLimit);
-    }
+    [[nodiscard]] double clampMercatorLatitude(double latitudeDeg) noexcept;
 
     /// Global pixel coordinate of a geographic point at `zoom`.
-    [[nodiscard]] inline Vector2 latLonToGlobalPixel(double latitudeDeg, double longitudeDeg,
-                                                     int zoom) noexcept {
-        const double scale = kMercatorTileSize * static_cast<double>(std::int64_t{1} << std::max(0, zoom));
-        const double lon = std::clamp(longitudeDeg, -180.0, 180.0);
-        const double latRad = clampMercatorLatitude(latitudeDeg) * std::numbers::pi / 180.0;
-        const double x = (lon + 180.0) / 360.0 * scale;
-        const double y = (1.0 - std::log(std::tan(latRad) + 1.0 / std::cos(latRad)) / std::numbers::pi)
-                       * 0.5 * scale;
-        return Vector2{static_cast<float>(x), static_cast<float>(y)};
-    }
+    [[nodiscard]] Vector2 latLonToGlobalPixel(double latitudeDeg, double longitudeDeg,
+                                              int zoom) noexcept;
 
     /// Inverse of `latLonToGlobalPixel`.
-    [[nodiscard]] inline GeoCoord globalPixelToLatLon(double x, double y, int zoom) noexcept {
-        const double scale = kMercatorTileSize * static_cast<double>(std::int64_t{1} << std::max(0, zoom));
-        const double lon = (x / scale) * 360.0 - 180.0;
-        const double n = std::numbers::pi - 2.0 * std::numbers::pi * (y / scale);
-        const double lat = std::atan(std::sinh(n)) * 180.0 / std::numbers::pi;
-        return GeoCoord{lat, lon, 0.0};
-    }
+    [[nodiscard]] GeoCoord globalPixelToLatLon(double x, double y, int zoom) noexcept;
 
     /// The geography a raster basemap covers, and where that raster sits.
     ///
@@ -73,39 +52,21 @@ namespace chrononmotion::geospatial {
         Vector2 rasterSize{1920.f, 1080.f};
 
         /// A window centred on a geographic point.
-        [[nodiscard]] static MapWindow centeredOn(const GeoCoord& center, int zoom, Vector2 rasterSize) {
-            const Vector2 centerPixel = latLonToGlobalPixel(center.latitudeDeg, center.longitudeDeg, zoom);
-            return MapWindow{zoom,
-                             Vector2{centerPixel.x - rasterSize.x * 0.5f,
-                                     centerPixel.y - rasterSize.y * 0.5f},
-                             rasterSize};
-        }
+        [[nodiscard]] static MapWindow centeredOn(const GeoCoord& center, int zoom, Vector2 rasterSize);
 
         /// Position of a geographic point inside the raster, in raster pixels
         /// (+x east, +y south, origin at the raster's top-left corner).
-        [[nodiscard]] Vector2 toRaster(const GeoCoord& point) const noexcept {
-            const Vector2 pixel = latLonToGlobalPixel(point.latitudeDeg, point.longitudeDeg, zoom);
-            return Vector2{pixel.x - topLeftPixel.x, pixel.y - topLeftPixel.y};
-        }
+        [[nodiscard]] Vector2 toRaster(const GeoCoord& point) const noexcept;
 
         /// Position of a geographic point in the plane the raster is drawn on,
         /// centred on the raster and with +y up (graphics space). This is the
         /// position a map-space layer is authored at, so a marker written here
         /// sits exactly on the geography the raster painted.
-        [[nodiscard]] Vector2 toPlane(const GeoCoord& point) const noexcept {
-            const Vector2 raster = toRaster(point);
-            return Vector2{raster.x - rasterSize.x * 0.5f,
-                           rasterSize.y * 0.5f - raster.y};
-        }
+        [[nodiscard]] Vector2 toPlane(const GeoCoord& point) const noexcept;
 
         /// The geographic bounds of the raster: west/south/east/north.
-        [[nodiscard]] GeoCoord northWest() const noexcept {
-            return globalPixelToLatLon(topLeftPixel.x, topLeftPixel.y, zoom);
-        }
-        [[nodiscard]] GeoCoord southEast() const noexcept {
-            return globalPixelToLatLon(topLeftPixel.x + rasterSize.x,
-                                       topLeftPixel.y + rasterSize.y, zoom);
-        }
+        [[nodiscard]] GeoCoord northWest() const noexcept;
+        [[nodiscard]] GeoCoord southEast() const noexcept;
     };
 
 } // namespace chrononmotion::geospatial

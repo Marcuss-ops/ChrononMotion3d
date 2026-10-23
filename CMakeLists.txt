@@ -34,6 +34,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/math/Color.cpp
         src/chrononmotion/math/Color_css.cpp
         src/chrononmotion/geospatial/MapFlyover.cpp
+        src/chrononmotion/geospatial/WebMercator.cpp
         src/chrononmotion/math/Euler.cpp
         src/chrononmotion/math/Interpolant.cpp
         src/chrononmotion/math/Line3.cpp
