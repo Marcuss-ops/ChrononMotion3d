@@ -39,6 +39,8 @@ Path& Path::moveTo(float x, float y) {
 
 Path& Path::lineTo(float x, float y) {
 
+    // Each curve owns endpoint values; currentPoint changes after the segment
+    // is appended, so the segment must keep its own snapshot.
     auto curve = std::make_unique<LineCurve>(this->currentPoint, Vector2(x, y));
     this->curves.emplace_back(std::move(curve));
 
