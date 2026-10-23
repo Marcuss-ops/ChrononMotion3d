@@ -229,7 +229,7 @@ namespace {
         // canvas pixels of the RenderPlan contract, the GL bokeh preview in UV
         // fractions of the canvas height, so the bridge is exactly a divide.
         CameraPose lensPose;
-        lensPose.legacyDefocusStrength = 0.25f;
+        lensPose.fStop = 2.688f; // blur gain 0.25 through the f/stop bridge
         lensPose.maxBlur = 54.f;
         checkNear(bokehPreviewAperture(lensPose, 1080.f), 0.25f / 1080.f, 1e-9f,
                   "the aperture bridge divides the strength by the canvas height");

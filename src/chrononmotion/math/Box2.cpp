@@ -7,7 +7,7 @@ using namespace chrononmotion;
 
 namespace {
 
-    Vector2 _vector;
+    thread_local Vector2 _vector;
 
 }
 

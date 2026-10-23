@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
         //    while the lens re-aims the focal plane on the active word. The
         //    rack order is word 1 -> word 2 -> word 3 -> whole band.
         CameraRig rig(100, 58.f, static_cast<float>(kWidth) / static_cast<float>(kHeight));
-        rig.setLegacyDefocusStrength(0.12f).setFStop(2.2f).setMaxBlur(22.f);
+        rig.setFStop(2.2f).setMaxBlur(22.f);
         rig.setTarget(Vector3{0.f, 0.f, 0.f});
 
         const auto timeAt = [](int framesIn) { return static_cast<float>(framesIn) / kFps; };

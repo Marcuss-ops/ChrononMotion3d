@@ -84,7 +84,6 @@ namespace chrononmotion::motion {
         pose.hasTarget = true;
         pose.fov = fov;
         pose.roll = roll;
-        pose.legacyDefocusStrength = legacyDefocusStrength;
         pose.fStop = fStop;
 
         CameraRig::lookAtPose(pose, targetPos);
@@ -285,8 +284,8 @@ namespace chrononmotion::motion {
             const float curFov = p0.fov + (p1.fov - p0.fov) * u;
             rig.fovTrack().add(time, curFov, Easing::linear());
 
-            const float curDefocusStrength = p0.legacyDefocusStrength + (p1.legacyDefocusStrength - p0.legacyDefocusStrength) * u;
-            rig.legacyDefocusStrengthTrack().add(time, curDefocusStrength, Easing::linear());
+            const float curFStop = p0.fStop + (p1.fStop - p0.fStop) * u;
+            rig.fStopTrack().add(time, curFStop, Easing::linear());
 
             const float curFocus = CameraFocusResolver::resolveFocus(
                 focusMode, samplePose, p0.target, p1.target, u,
@@ -300,7 +299,7 @@ namespace chrononmotion::motion {
 
     // 1. cameraFocusPush
     void cameraFocusPush(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
-                         float pushDistance, float startDefocusStrength, float endDefocusStrength,
+                         float pushDistance, float startFStop, float endFStop,
                          float fps, const Easing& easing, const MotionScene* scene) {
         authorizePresetForCamera(rig, "cameraFocusPush", scene);
         if (duration <= 0) throw std::invalid_argument("cameraFocusPush: duration must be positive");
@@ -328,8 +327,8 @@ namespace chrononmotion::motion {
         rig.targetTrack().add(t0, targetPos, easing);
         rig.targetTrack().add(t1, targetPos, Easing::linear());
 
-        rig.legacyDefocusStrengthTrack().add(t0, startDefocusStrength, easing);
-        rig.legacyDefocusStrengthTrack().add(t1, endDefocusStrength, Easing::linear());
+        rig.fStopTrack().add(t0, startFStop, easing);
+        rig.fStopTrack().add(t1, endFStop, Easing::linear());
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 4));
         for (unsigned int i = 0; i <= steps; ++i) {
@@ -345,7 +344,7 @@ namespace chrononmotion::motion {
 
     // 2. cameraRackFocusDuo
     void cameraRackFocusDuo(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
-                            int inFrame, int duration, float legacyDefocusStrength, float fps,
+                            int inFrame, int duration, float fStop, float fps,
                             const Easing& easing, const MotionScene* scene) {
         authorizePresetForCamera(rig, "cameraRackFocusDuo", scene);
         if (duration <= 0) throw std::invalid_argument("cameraRackFocusDuo: duration must be positive");
@@ -365,14 +364,14 @@ namespace chrononmotion::motion {
         rig.focusDistanceTrack().add(t0, distA, easing);
         rig.focusDistanceTrack().add(t1, distB, Easing::linear());
 
-        rig.legacyDefocusStrengthTrack().add(t0, legacyDefocusStrength, easing);
-        rig.legacyDefocusStrengthTrack().add(t1, legacyDefocusStrength, Easing::linear());
+        rig.fStopTrack().add(t0, fStop, easing);
+        rig.fStopTrack().add(t1, fStop, Easing::linear());
     }
 
     // 3. cameraDollyFocusHandoff
     void cameraDollyFocusHandoff(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                  int inFrame, int duration, const Vector3& dollyDelta,
-                                 float legacyDefocusStrength, float fps, const Easing& easing,
+                                 float fStop, float fps, const Easing& easing,
                                  const MotionScene* scene) {
         authorizePresetForCamera(rig, "cameraDollyFocusHandoff", scene);
         if (duration <= 0) throw std::invalid_argument("cameraDollyFocusHandoff: duration must be positive");
@@ -402,8 +401,8 @@ namespace chrononmotion::motion {
         rig.targetTrack().add(t0, targetA, easing);
         rig.targetTrack().add(t1, targetB, Easing::linear());
 
-        rig.legacyDefocusStrengthTrack().add(t0, legacyDefocusStrength, easing);
-        rig.legacyDefocusStrengthTrack().add(t1, legacyDefocusStrength, Easing::linear());
+        rig.fStopTrack().add(t0, fStop, easing);
+        rig.fStopTrack().add(t1, fStop, Easing::linear());
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 4));
         for (unsigned int i = 0; i <= steps; ++i) {
@@ -611,7 +610,7 @@ namespace chrononmotion::motion {
     // 8. cameraForegroundPassReveal
     void cameraForegroundPassReveal(CameraRig& rig, const ShotAnchor& foregroundA, const ShotAnchor& subjectB,
                                     int inFrame, int duration, const Vector3& lateralPassOffset,
-                                    float legacyDefocusStrength, float fps, const Easing& easing,
+                                    float fStop, float fps, const Easing& easing,
                                     const MotionScene* scene) {
         authorizePresetForCamera(rig, "cameraForegroundPassReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraForegroundPassReveal: duration must be positive");
@@ -637,8 +636,8 @@ namespace chrononmotion::motion {
         rig.targetTrack().add(t0, targetA, easing);
         rig.targetTrack().add(t1, targetB, Easing::linear());
 
-        rig.legacyDefocusStrengthTrack().add(t0, legacyDefocusStrength, easing);
-        rig.legacyDefocusStrengthTrack().add(t1, legacyDefocusStrength, Easing::linear());
+        rig.fStopTrack().add(t0, fStop, easing);
+        rig.fStopTrack().add(t1, fStop, Easing::linear());
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 4));
         for (unsigned int i = 0; i <= steps; ++i) {
@@ -659,7 +658,7 @@ namespace chrononmotion::motion {
     // 9. cameraDepthPeel
     void cameraDepthPeel(CameraRig& rig, const std::vector<ShotAnchor>& subjects,
                          int inFrame, int duration, float pushPerSubject,
-                         float legacyDefocusStrength, float fps, const Easing& easing,
+                         float fStop, float fps, const Easing& easing,
                          const MotionScene* scene) {
         authorizePresetForCamera(rig, "cameraDepthPeel", scene);
         if (subjects.size() < 2) {
@@ -674,8 +673,8 @@ namespace chrononmotion::motion {
         const CameraPose start = rig.sample(t0);
 
         Vector3 curPos = start.position;
-        rig.legacyDefocusStrengthTrack().add(t0, legacyDefocusStrength, Easing::linear());
-        rig.legacyDefocusStrengthTrack().add(t1, legacyDefocusStrength, Easing::linear());
+        rig.fStopTrack().add(t0, fStop, Easing::linear());
+        rig.fStopTrack().add(t1, fStop, Easing::linear());
 
         const std::size_t numSegs = subjects.size() - 1;
         const int segDuration = std::max(1, duration / static_cast<int>(numSegs));
@@ -877,7 +876,7 @@ namespace chrononmotion::motion {
     // 14. cameraParallaxGallery
     void cameraParallaxGallery(CameraRig& rig, const std::vector<ShotAnchor>& cards,
                                int inFrame, int duration, float cameraZOffset,
-                               float legacyDefocusStrength, float fps, const MotionScene* scene) {
+                               float fStop, float fps, const MotionScene* scene) {
         authorizePresetForCamera(rig, "cameraParallaxGallery", scene);
         if (cards.size() < 2) {
             throw std::invalid_argument("cameraParallaxGallery: requires at least two cards");
@@ -906,8 +905,8 @@ namespace chrononmotion::motion {
 
         keyVector3(rig.positionTrack(), t0, t1, startPos, endPos, Easing::easeInOut());
 
-        rig.legacyDefocusStrengthTrack().add(t0, legacyDefocusStrength, Easing::linear());
-        rig.legacyDefocusStrengthTrack().add(t1, legacyDefocusStrength, Easing::linear());
+        rig.fStopTrack().add(t0, fStop, Easing::linear());
+        rig.fStopTrack().add(t1, fStop, Easing::linear());
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 4));
         const std::size_t nCards = cards.size();
@@ -1026,7 +1025,7 @@ namespace chrononmotion::motion {
     // 17. cameraBulletTimeOrbitFreeze
     void cameraBulletTimeOrbitFreeze(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
                                      float radius, float height, float sweepDegrees,
-                                     float legacyDefocusStrength, float fps, const Easing& easing, const MotionScene* scene) {
+                                     float fStop, float fps, const Easing& easing, const MotionScene* scene) {
         authorizePresetForCamera(rig, "cameraBulletTimeOrbitFreeze", scene);
         if (duration <= 0) throw std::invalid_argument("cameraBulletTimeOrbitFreeze: duration must be positive");
 
@@ -1038,8 +1037,8 @@ namespace chrononmotion::motion {
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 16));
         const float sweepRad = math::degToRad(sweepDegrees);
 
-        rig.legacyDefocusStrengthTrack().add(t0, legacyDefocusStrength, Easing::linear());
-        rig.legacyDefocusStrengthTrack().add(t1, legacyDefocusStrength, Easing::linear());
+        rig.fStopTrack().add(t0, fStop, Easing::linear());
+        rig.fStopTrack().add(t1, fStop, Easing::linear());
 
         for (unsigned int i = 0; i <= steps; ++i) {
             const float progress = static_cast<float>(i) / static_cast<float>(steps);
@@ -1103,7 +1102,7 @@ namespace chrononmotion::motion {
 
     // 19. cameraSplitDiopterDualPlane
     void cameraSplitDiopterDualPlane(CameraRig& rig, const ShotAnchor& foregroundLeft, const ShotAnchor& backgroundRight,
-                                     int inFrame, int duration, float legacyDefocusStrength, float fps,
+                                     int inFrame, int duration, float fStop, float fps,
                                      const Easing& easing, const MotionScene* scene) {
         authorizePresetForCamera(rig, "cameraSplitDiopterDualPlane", scene);
         if (duration <= 0) throw std::invalid_argument("cameraSplitDiopterDualPlane: duration must be positive");
@@ -1118,8 +1117,8 @@ namespace chrononmotion::motion {
         const Vector3 startPos(pA.x + 1.2f, pA.y, pA.z + 5.5f);
         const Vector3 endPos(pA.x + 2.5f, pA.y, pA.z + 5.0f);
 
-        rig.legacyDefocusStrengthTrack().add(t0, legacyDefocusStrength, Easing::linear());
-        rig.legacyDefocusStrengthTrack().add(t1, legacyDefocusStrength, Easing::linear());
+        rig.fStopTrack().add(t0, fStop, Easing::linear());
+        rig.fStopTrack().add(t1, fStop, Easing::linear());
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 8));
         for (unsigned int i = 0; i <= steps; ++i) {

@@ -266,6 +266,18 @@ if(CHRONONMOTION_BUILD_TESTS)
     set_tests_properties(chrononmotion_t16_camera_truth PROPERTIES
             ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
 
+    # CAM-04 pixel truth: consumes a serialized C3D RenderPlan directly, so
+    # camera, layer geometry and image assets have one shared source of truth.
+    add_executable(chrononmotion_cam04_renderplan_pixels tests/cam04_renderplan_pixels.cpp)
+    target_link_libraries(chrononmotion_cam04_renderplan_pixels PRIVATE chrononmotion_render)
+    target_compile_options(chrononmotion_cam04_renderplan_pixels PRIVATE -Wall -Wextra)
+    add_test(NAME chrononmotion_cam04_renderplan_pixels
+            COMMAND chrononmotion_cam04_renderplan_pixels
+                    "${CMAKE_CURRENT_SOURCE_DIR}/../../Chronon3d/docs/evidence/camera-authority-migration/T16/scene.camera.three_depth.plan.json"
+                    "${CMAKE_CURRENT_BINARY_DIR}/CAM04_RenderPlan")
+    set_tests_properties(chrononmotion_cam04_renderplan_pixels PROPERTIES
+            ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
+
     add_executable(chrononmotion_t19b_camera_rig_contract tests/t19b_camera_rig_contract.cpp)
     target_link_libraries(chrononmotion_t19b_camera_rig_contract PRIVATE chrononmotion)
     target_compile_options(chrononmotion_t19b_camera_rig_contract PRIVATE -Wall -Wextra)

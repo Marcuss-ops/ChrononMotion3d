@@ -43,7 +43,7 @@ int main(int argc, char** argv) try {
     chrononmotion::motion::CameraRig rig(1901, 45.f, 16.f / 9.f, 1.f, 5000.f);
     rig.setPosition({keys.front().px, keys.front().py, -keys.front().pz})
        .setTarget({keys.front().tx, keys.front().ty, -keys.front().tz})
-       .setFov(45.f).setLegacyDefocusStrength(0.018f).setMaxBlur(32.f)
+       .setFov(45.f).setFStop(chrononmotion::motion::fStopFromBlurGain(0.018f)).setMaxBlur(32.f)
        .setFocusDistance(keys.front().focus);
     for (const auto& key : keys) {
         const float time = float(key.frame) / 30.f;

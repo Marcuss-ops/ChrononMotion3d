@@ -33,7 +33,6 @@ namespace chrononmotion::motion::camera {
         if (!(fps > 0.f) || !std::isfinite(fps) || !(sequence.cameraDistance > 0.f) ||
             !(sequence.baseFov > 0.f && sequence.baseFov < 180.f) ||
             !(sequence.focusFov > 0.f && sequence.focusFov <= sequence.baseFov) ||
-            !(sequence.legacyDefocusStrength > 0.f && sequence.legacyDefocusStrength <= 1.f) ||
             !(sequence.fStop > 0.f) || !(sequence.maxBlur >= 0.f) ||
             !(sequence.highlightGain >= 0.f) || sequence.focusTravelFrames < 2) {
             throw std::invalid_argument("applyFocusSequence: invalid timing or lens values");
@@ -52,7 +51,6 @@ namespace chrononmotion::motion::camera {
         rig.setPosition(positionFor(first, sequence))
             .setTarget(targetFor(first, sequence))
             .setFov(sequence.baseFov)
-            .setLegacyDefocusStrength(sequence.legacyDefocusStrength)
             .setFocusDistance(axialFocusDistance(first, sequence))
             .setFStop(sequence.fStop)
             .setIrisBlades(sequence.irisBlades)
@@ -65,7 +63,7 @@ namespace chrononmotion::motion::camera {
         rig.targetTrack().add(at(firstKey.focusFrame, fps), targetFor(firstKey, sequence), ease);
         rig.fovTrack().add(at(firstKey.focusFrame, fps), sequence.focusFov, ease);
         rig.focusDistanceTrack().add(at(firstKey.focusFrame, fps), axialFocusDistance(firstKey, sequence), ease);
-        rig.legacyDefocusStrengthTrack().add(at(firstKey.focusFrame, fps), sequence.legacyDefocusStrength, ease);
+        rig.fStopTrack().add(at(firstKey.focusFrame, fps), sequence.fStop, ease);
 
         for (std::size_t index = 1; index < sequence.subjects.size(); ++index) {
             const auto& previous = sequence.subjects[index - 1];
@@ -81,8 +79,10 @@ namespace chrononmotion::motion::camera {
             rig.fovTrack().add(t0, sequence.baseFov, ease).add(t1, sequence.focusFov, ease);
             rig.focusDistanceTrack().add(t0, axialFocusDistance(previous, sequence), ease)
                 .add(t1, axialFocusDistance(current, sequence), ease);
-            rig.legacyDefocusStrengthTrack().add(t0, sequence.legacyDefocusStrength * 0.78f, ease)
-                .add(t1, sequence.legacyDefocusStrength, ease);
+            // Blur recedes while the focus plane travels (legacy 0.78 gain
+            // ramp, expressed once through the f/stop bridge) and settles back.
+            rig.fStopTrack().add(t0, fStopFromBlurGain(blurGainFromFStop(sequence.fStop) * 0.78f), ease)
+                .add(t1, sequence.fStop, ease);
         }
     }
 

@@ -157,7 +157,7 @@ int main(int argc, char** argv) try {
 
     chrononmotion::motion::CameraRig cameraRig(100, 42.f, float(W) / H, 0.1f, 100.f);
     cameraRig.setPosition({0.f, 0.f, 7.5f}).setTarget({0.f, 0.f, 0.f});
-    cameraRig.setLegacyDefocusStrength(0.06f).setMaxBlur(48.f);
+    cameraRig.setFStop(chrononmotion::motion::fStopFromBlurGain(0.06f)).setMaxBlur(48.f);
     const std::array<float, 3> focusDistances{6.f, 7.5f, 9.f};
     cameraRig.setFocusDistance(focusDistances[0]);
     cameraRig.focusDistanceTrack().add(0.f, focusDistances[0]);

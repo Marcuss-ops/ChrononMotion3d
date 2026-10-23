@@ -160,7 +160,7 @@ int main(int argc, char** argv) try {
 
     chrononmotion::motion::CameraRig cameraRig(100, 48.f, float(W) / H, 0.1f, 100.f);
     cameraRig.setPosition({0.f, 0.f, 9.5f}).setTarget({0.f, 0.f, 0.f});
-    cameraRig.setLegacyDefocusStrength(0.055f).setMaxBlur(36.f);
+    cameraRig.setFStop(chrononmotion::motion::fStopFromBlurGain(0.055f)).setMaxBlur(36.f);
     constexpr std::array<unsigned, 4> sampleFrames{0, 50, 100, 149};
     const chrononmotion::Vector3 orbitPivot(0.f, 0.f, 0.f);
     for (unsigned frame = 0; frame < FRAMES; ++frame) {

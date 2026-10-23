@@ -109,12 +109,12 @@ namespace {
         shot.withTarget(ShotAnchor::world(Vector3(0.f, 0.f, 0.f)))
             .withFraming(Framing::CloseUp)
             .withFov(50.f)
-            .withFocus(CameraFocusMode::TargetDistance, 0.f, 0.12f);
+            .withFocus(CameraFocusMode::TargetDistance, 0.f, 5.6f);
 
         CameraPose shotPose = shot.evaluatePose(&scene, 0.f);
         checkNear(shotPose.target, Vector3(0.f, 0.f, 0.f), 1e-4f, "CameraShot aims at its target anchor");
         checkNear(shotPose.fov, 50.f, 1e-4f, "CameraShot preserves authored FOV");
-        checkNear(shotPose.legacyDefocusStrength, 0.12f, 1e-4f, "CameraShot preserves normalized defocus strength");
+        checkNear(shotPose.fStop, 5.6f, 1e-4f, "CameraShot preserves the authored f-stop");
         checkNear(shotPose.position.distanceTo(shotPose.target), 5.0f, 1e-4f, "CloseUp framing sets distance to 5 units");
 
         // CameraFocusResolver
@@ -232,18 +232,18 @@ namespace {
         const ShotAnchor subjectA = ShotAnchor::world(Vector3(0.f, 0.f, 0.f));
         const ShotAnchor subjectB = ShotAnchor::world(Vector3(0.f, 0.f, -300.f));
 
-        cameraRackFocusDuo(rig, subjectA, subjectB, 0, 60, 0.16f, kFps);
+        cameraRackFocusDuo(rig, subjectA, subjectB, 0, 60, 4.2f, kFps);
 
         CameraPose p0 = rig.sample(at(0));
         CameraPose p60 = rig.sample(at(60));
 
         // Frame 0: focusDistance ≈ dist(camera, A) = 50.f
         checkNear(p0.focusDistance, 50.f, 0.1f, "Frame 0: focusDistance matches distance to subject A");
-        checkNear(p0.legacyDefocusStrength, 0.16f, 0.001f, "Frame 0: normalized defocus strength is set");
+        checkNear(p0.fStop, 4.2f, 0.001f, "Frame 0: the authored f-stop is set");
 
         // Frame 60: focusDistance ≈ dist(camera, B) = 350.f
         checkNear(p60.focusDistance, 350.f, 0.1f, "Frame 60: focusDistance matches distance to subject B");
-        checkNear(p60.legacyDefocusStrength, 0.16f, 0.001f, "Frame 60: normalized defocus strength is maintained");
+        checkNear(p60.fStop, 4.2f, 0.001f, "Frame 60: the authored f-stop is maintained");
 
         // Camera position remains unchanged
         checkNear(p0.position, p60.position, 1e-4f, "Rack focus preserves stationary camera position");
@@ -444,9 +444,9 @@ namespace {
         // 8. camera_foreground_pass_reveal
         {
             CameraRig rig(8);
-            cameraForegroundPassReveal(rig, sA, sB, 0, 40, Vector3(5.f, 0.f, -6.f), 0.14f, kFps);
+            cameraForegroundPassReveal(rig, sA, sB, 0, 40, Vector3(5.f, 0.f, -6.f), 4.8f, kFps);
             check(rig.sample(at(0)).position.z > sA.resolve().z, "ForegroundPass starts in front of A");
-            checkNear(rig.sample(at(0)).legacyDefocusStrength, 0.14f, 1e-3f, "ForegroundPass maintains normalized defocus strength");
+            checkNear(rig.sample(at(0)).fStop, 4.8f, 1e-3f, "ForegroundPass maintains the authored f-stop");
         }
 
         // 9. camera_depth_peel

@@ -24,7 +24,6 @@ namespace chrononmotion::motion::camera {
         float cameraDistance{1080.f};
         float baseFov{48.f};
         float focusFov{38.f};
-        float legacyDefocusStrength{0.18f};
         float fStop{5.6f};
         float maxBlur{10.f};
         float highlightGain{1.f};
