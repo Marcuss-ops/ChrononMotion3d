@@ -79,6 +79,9 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/Transform.cpp
         src/chrononmotion/motion/Layer.cpp
         src/chrononmotion/motion/MotionScene.cpp
+        src/chrononmotion/motion/MotionScene_layers.cpp
+        src/chrononmotion/motion/MotionScene_evaluation.cpp
+        src/chrononmotion/motion/MotionScene_validation.cpp
         src/chrononmotion/motion/SceneExport.cpp
         src/chrononmotion/motion/SceneImport.cpp
         src/chrononmotion/motion/Interaction.cpp
