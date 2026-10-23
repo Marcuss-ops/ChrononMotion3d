@@ -32,6 +32,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/math/Box2.cpp
         src/chrononmotion/math/Box3.cpp
         src/chrononmotion/math/Color.cpp
+        src/chrononmotion/math/Color_css.cpp
         src/chrononmotion/math/Euler.cpp
         src/chrononmotion/math/Interpolant.cpp
         src/chrononmotion/math/Line3.cpp
