@@ -93,15 +93,6 @@ namespace chrononmotion::motion {
         return *this;
     }
 
-    CameraRig& CameraRig::setLegacyDefocusStrength(float strength) {
-
-        if (!std::isfinite(strength) || strength < 0.f || strength > 1.f) {
-            throw std::invalid_argument("CameraRig::setLegacyDefocusStrength: strength must be finite and in [0, 1]");
-        }
-        legacyDefocusStrength_ = strength;
-        return *this;
-    }
-
     CameraRig& CameraRig::setFocusDistance(float distance) {
 
         if (!std::isfinite(distance) || distance < 0.f) {
@@ -163,7 +154,6 @@ namespace chrononmotion::motion {
         end = std::max(end, fovTrack_.endTime());
         end = std::max(end, focalTrack_.endTime());
         end = std::max(end, rollTrack_.endTime());
-        end = std::max(end, legacyDefocusStrengthTrack_.endTime());
         end = std::max(end, focusDistanceTrack_.endTime());
         end = std::max(end, maxBlurTrack_.endTime());
         end = std::max(end, fStopTrack_.endTime());
@@ -383,7 +373,6 @@ namespace chrononmotion::motion {
         pose.sensorWidth = sensorWidth_;
         pose.lensShift = lensShift_;
         pose.roll = rollTrack_.empty() ? roll_ : rollTrack_.sample(seconds);
-        pose.legacyDefocusStrength = legacyDefocusStrengthTrack_.empty() ? legacyDefocusStrength_ : legacyDefocusStrengthTrack_.sample(seconds);
         pose.focusDistance = focusDistanceTrack_.empty() ? focusDistance_ : focusDistanceTrack_.sample(seconds);
         pose.maxBlur = maxBlurTrack_.empty() ? maxBlur_ : maxBlurTrack_.sample(seconds);
         pose.fStop = fStopTrack_.empty() ? fStop_ : fStopTrack_.sample(seconds);

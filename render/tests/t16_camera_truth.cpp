@@ -186,7 +186,7 @@ chrononmotion::motion::DirectionalLight& build_scene(chrononmotion::motion::Moti
     // Open on the hero, centered in frame; the camera then sweeps left through
     // the spatially separated title and racks focus onto its extruded faces.
     camera.setTarget(Vector3(3.05f, -0.35f, 1.35f)).setFov(50.f);
-    camera.setLegacyDefocusStrength(0.06f).setMaxBlur(48.f).setFocusDistance(10.6f);
+    camera.setFStop(chrononmotion::motion::fStopFromBlurGain(0.06f)).setMaxBlur(48.f).setFocusDistance(10.6f);
     camera.positionTrack().add(0.f, Vector3(3.05f, -0.35f, 12.f));
     camera.positionTrack().add(1.f, Vector3(2.15f, -0.18f, 9.8f));
     camera.positionTrack().add(2.5f, Vector3(0.55f, 0.05f, 6.2f));

@@ -43,12 +43,8 @@ namespace chrononmotion::motion {
         /// Lens data for depth of field. Each 0 means "not authored": the motion
         /// side carries the numbers and never interprets them, so a renderer
         /// applies what is present and leaves the rest to its own optics. The
-        /// units are the RenderPlan Chronon3D consumer contract:
-        /// `legacyDefocusStrength` is normalized legacy blur gain (blur in
-        /// pixels grows as defocus_world_units · strength, clamped by `maxBlur`) and must stay
-        /// in [0, 1] for `lowerToRenderPlan`; physical lenses also author
-        /// `fStop` (f/N), which the physical model consumes instead.
-        float legacyDefocusStrength{0.f}; ///< Normalized legacy blur gain in [0, 1]; 0 = not authored.
+        /// units are the RenderPlan Chronon3D consumer contract: `fStop` (f/N)
+        /// is the single authored aperture truth and feeds the physical model.
         float focusDistance{0.f}; ///< Distance to the focal plane along the view axis, world units.
         float maxBlur{0.f};        ///< Blur clamp in pixels of the target canvas; 0 means not authored.
         float fStop{0.f};         ///< Physical aperture as f/N (0.7..32); 0 means not authored.
@@ -99,7 +95,6 @@ namespace chrononmotion::motion {
         CameraRig& setSensorWidth(float millimetres);
         CameraRig& setLensShift(const Vector2& normalizedViewportShift);
         CameraRig& setRoll(float radians);
-        CameraRig& setLegacyDefocusStrength(float strength);
         CameraRig& setFocusDistance(float distance);
         CameraRig& setMaxBlur(float pixels);
         CameraRig& setFStop(float fStop);
@@ -113,7 +108,6 @@ namespace chrononmotion::motion {
         [[nodiscard]] Vector3 target() const { return target_; }
         [[nodiscard]] float fov() const { return fov_; }
         [[nodiscard]] float roll() const { return roll_; }
-        [[nodiscard]] float legacyDefocusStrength() const { return legacyDefocusStrength_; }
         [[nodiscard]] float focusDistance() const { return focusDistance_; }
         [[nodiscard]] float maxBlur() const { return maxBlur_; }
         [[nodiscard]] float fStop() const { return fStop_; }
@@ -135,8 +129,6 @@ namespace chrononmotion::motion {
         [[nodiscard]] Track<float>& focalLengthTrack() { return focalTrack_; }
         [[nodiscard]] const Track<float>& focalLengthTrack() const { return focalTrack_; }
         [[nodiscard]] Track<float>& rollTrack() { return rollTrack_; }
-        [[nodiscard]] Track<float>& legacyDefocusStrengthTrack() { return legacyDefocusStrengthTrack_; }
-        [[nodiscard]] const Track<float>& legacyDefocusStrengthTrack() const { return legacyDefocusStrengthTrack_; }
         [[nodiscard]] Track<float>& focusDistanceTrack() { return focusDistanceTrack_; }
         [[nodiscard]] const Track<float>& focusDistanceTrack() const { return focusDistanceTrack_; }
         [[nodiscard]] Track<float>& maxBlurTrack() { return maxBlurTrack_; }
@@ -201,13 +193,11 @@ namespace chrononmotion::motion {
         Track<float> fovTrack_;
         Track<float> focalTrack_;
         Track<float> rollTrack_;
-        float legacyDefocusStrength_{0.f};
         float focusDistance_{0.f};
         float maxBlur_{0.f};
         float fStop_{0.f};
         int irisBlades_{0};
         float highlightGain_{0.f};
-        Track<float> legacyDefocusStrengthTrack_;
         Track<float> focusDistanceTrack_;
         Track<float> maxBlurTrack_;
         Track<float> fStopTrack_;
@@ -216,13 +206,34 @@ namespace chrononmotion::motion {
         float farPlane_{2000.f};
     };
 
-    /// One legacy defocus strength unit for every consumer, in one place. The
-    /// rig authors normalized blur gain (blur in canvas pixels grows as
-    /// focus_miss_world_units · strength, in [0, 1],
-    /// clamped by `maxBlur` canvas pixels) and the GL bokeh preview consumes
-    /// UV fractions of the canvas height per world unit of miss. These two
-    /// helpers are the only sanctioned px→UV bridge; a preview that sets the
-    /// BokehPass uniforms from a rig pose goes through them.
+    /// Blur-gain bridge (DOF unification). The legacy normalized blur gain
+    /// (blur in canvas pixels grows as focus_miss_world_units · gain, in
+    /// [0, 1], clamped by `maxBlur` canvas pixels) is no longer authored or
+    /// transported: the single authored aperture truth is `fStop` (f/N). The
+    /// gain survives only as the internal unit of the GL bokeh preview,
+    /// derived from f/stop through the sanctioned inverse relation
+    /// gain = 0.672 / N (aperture diameter is proportional to gain), clamped
+    /// to [0, 1]; f/stop 0 ("not authored") maps to gain 0.
+    /// `fStopFromBlurGain` is its inverse, kept for one-time authoring
+    /// migration of content that still speaks in gains.
+    [[nodiscard]] inline float blurGainFromFStop(float fStop) {
+        if (!(fStop > 0.f)) return 0.f;
+        const float gain = 0.672f / fStop;
+        return gain > 1.f ? 1.f : gain;
+    }
+
+    [[nodiscard]] inline float fStopFromBlurGain(float gain) {
+        if (!(gain > 0.f)) return 0.f;
+        const float fStop = 0.672f / gain;
+        if (fStop < 0.7f) return 0.7f;
+        return fStop > 32.f ? 32.f : fStop;
+    }
+
+    /// The GL bokeh preview keeps the linear blur model (blur in canvas
+    /// pixels grows as focus_miss_world_units · gain, clamped by `maxBlur`),
+    /// so the px→UV bridge divides the derived gain by the canvas height.
+    /// A preview that sets the BokehPass uniforms from a rig pose goes
+    /// through these helpers.
     ///
     /// `canvasHeight` is the height in pixels of the view that renders the
     /// rig — for RenderPlan-world scenes that is the plan canvas height; a
@@ -232,7 +243,7 @@ namespace chrononmotion::motion {
     /// authored lens numbers, no content tooling involved.
     [[nodiscard]] inline float bokehPreviewAperture(const CameraPose& pose,
                                                     float canvasHeight) {
-        return pose.legacyDefocusStrength / canvasHeight;
+        return blurGainFromFStop(pose.fStop) / canvasHeight;
     }
 
     /// `maxBlur` is authored in canvas pixels; the preview clamp is a UV

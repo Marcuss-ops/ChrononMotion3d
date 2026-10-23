@@ -146,7 +146,6 @@ namespace chrononmotion::motion {
         float fov{60.f};
         CameraFocusMode focusMode{CameraFocusMode::TargetDistance};
         float focusDistance{0.f};
-        float legacyDefocusStrength{0.f};
         float fStop{0.f};
         float roll{0.f};      // radians
         float azimuth{0.f};   // radians yaw around target (0 = front along +Z)
@@ -167,10 +166,9 @@ namespace chrononmotion::motion {
         CameraShot& withFraming(Framing f) { framing = f; distance = framingDistance(f); return *this; }
         CameraShot& withDistance(float d) { distance = d; return *this; }
         CameraShot& withFov(float deg) { fov = deg; return *this; }
-        CameraShot& withFocus(CameraFocusMode mode, float dist = 0.f, float defocusStrength = 0.f, float fstop = 0.f) {
+        CameraShot& withFocus(CameraFocusMode mode, float dist = 0.f, float fstop = 0.f) {
             focusMode = mode;
             focusDistance = dist;
-            legacyDefocusStrength = defocusStrength;
             fStop = fstop;
             return *this;
         }
@@ -250,20 +248,20 @@ namespace chrononmotion::motion {
 
     /// 1. camera_focus_push: Progressive push onto subject; DOF increases, target centered.
     void cameraFocusPush(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
-                         float pushDistance, float startDefocusStrength = 0.f, float endDefocusStrength = 0.12f,
+                         float pushDistance, float startFStop = 0.f, float endFStop = 5.6f,
                          float fps = 30.f, const Easing& easing = Easing::easeInOut(),
                          const MotionScene* scene = nullptr);
 
     /// 2. camera_rack_focus_duo: Pure rack focus between two visible subjects; camera stays in place.
     void cameraRackFocusDuo(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
-                            int inFrame, int duration, float legacyDefocusStrength = 0.14f, float fps = 30.f,
+                            int inFrame, int duration, float fStop = 4.8f, float fps = 30.f,
                             const Easing& easing = Easing::easeInOut(),
                             const MotionScene* scene = nullptr);
 
     /// 3. camera_dolly_focus_handoff: Dolly sideways/forward while transferring focus from A to B.
     void cameraDollyFocusHandoff(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                  int inFrame, int duration, const Vector3& dollyDelta = Vector3(2.f, 0.f, -1.f),
-                                 float legacyDefocusStrength = 0.10f, float fps = 30.f,
+                                 float fStop = 6.7f, float fps = 30.f,
                                  const Easing& easing = Easing::easeInOut(),
                                  const MotionScene* scene = nullptr);
 
@@ -296,14 +294,14 @@ namespace chrononmotion::motion {
     void cameraForegroundPassReveal(CameraRig& rig, const ShotAnchor& foregroundA, const ShotAnchor& subjectB,
                                     int inFrame, int duration,
                                     const Vector3& lateralPassOffset = Vector3(3.f, 0.f, -4.f),
-                                    float legacyDefocusStrength = 0.14f, float fps = 30.f,
+                                    float fStop = 4.8f, float fps = 30.f,
                                     const Easing& easing = Easing::easeInOut(),
                                     const MotionScene* scene = nullptr);
 
     /// 9. camera_depth_peel: Camera travels along Z through sequentially stacked subjects.
     void cameraDepthPeel(CameraRig& rig, const std::vector<ShotAnchor>& subjects,
                          int inFrame, int duration, float pushPerSubject = 4.f,
-                         float legacyDefocusStrength = 0.12f, float fps = 30.f,
+                         float fStop = 5.6f, float fps = 30.f,
                          const Easing& easing = Easing::easeInOut(),
                          const MotionScene* scene = nullptr);
 
@@ -334,7 +332,7 @@ namespace chrononmotion::motion {
     /// 14. camera_parallax_gallery: Lateral travel past cards at staggered depths with dynamic focus.
     void cameraParallaxGallery(CameraRig& rig, const std::vector<ShotAnchor>& cards,
                                int inFrame, int duration, float cameraZOffset = 8.f,
-                               float legacyDefocusStrength = 0.10f, float fps = 30.f,
+                               float fStop = 6.7f, float fps = 30.f,
                                const MotionScene* scene = nullptr);
 
     /// 15. camera_focus_orbit_settle: Frontal view with subtle orbit sweep (-10 to +15 deg) settling on subject.
@@ -355,7 +353,7 @@ namespace chrononmotion::motion {
     /// 17. cameraBulletTimeOrbitFreeze: High-speed 360-degree cylindrical orbital sweep around frozen subject in mid-air.
     void cameraBulletTimeOrbitFreeze(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
                                      float radius = 7.f, float height = 1.2f, float sweepDegrees = 360.f,
-                                     float legacyDefocusStrength = 0.16f, float fps = 30.f, const Easing& easing = Easing::easeInOut(),
+                                     float fStop = 4.2f, float fps = 30.f, const Easing& easing = Easing::easeInOut(),
                                      const MotionScene* scene = nullptr);
 
     /// 18. cameraFpvDroneDiveRoll: Dynamic FPV dive from high altitude with 45-60 deg axial banking roll and low surface recovery.
@@ -366,7 +364,7 @@ namespace chrononmotion::motion {
 
     /// 19. cameraSplitDiopterDualPlane: Emulates optical split-diopter framing with dual-plane focus handoff & lateral micro-dolly.
     void cameraSplitDiopterDualPlane(CameraRig& rig, const ShotAnchor& foregroundLeft, const ShotAnchor& backgroundRight,
-                                     int inFrame, int duration, float legacyDefocusStrength = 0.18f, float fps = 30.f,
+                                     int inFrame, int duration, float fStop = 3.7f, float fps = 30.f,
                                      const Easing& easing = Easing::easeInOut(), const MotionScene* scene = nullptr);
 
     /// 20. cameraSpiralHelixAscend: Double-helix orbital elevator; camera spirals upward around central vertical hierarchy.
@@ -428,14 +426,14 @@ namespace chrononmotion::motion {
 
     // ------------------------------------------------ Snake-case Official Aliases
 
-    inline void camera_focus_push(CameraRig& r, const ShotAnchor& s, int f, int d, float p, float startDefocusStrength = 0.f, float endDefocusStrength = 0.12f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
-        cameraFocusPush(r, s, f, d, p, startDefocusStrength, endDefocusStrength, fps, e, sc);
+    inline void camera_focus_push(CameraRig& r, const ShotAnchor& s, int f, int d, float p, float startFStop = 0.f, float endFStop = 5.6f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
+        cameraFocusPush(r, s, f, d, p, startFStop, endFStop, fps, e, sc);
     }
-    inline void camera_rack_focus_duo(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, float defocusStrength = 0.14f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
-        cameraRackFocusDuo(r, a, b, f, d, defocusStrength, fps, e, sc);
+    inline void camera_rack_focus_duo(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, float fStop = 4.8f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
+        cameraRackFocusDuo(r, a, b, f, d, fStop, fps, e, sc);
     }
-    inline void camera_dolly_focus_handoff(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, const Vector3& dd = Vector3(2.f, 0.f, -1.f), float defocusStrength = 0.10f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
-        cameraDollyFocusHandoff(r, a, b, f, d, dd, defocusStrength, fps, e, sc);
+    inline void camera_dolly_focus_handoff(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, const Vector3& dd = Vector3(2.f, 0.f, -1.f), float fStop = 6.7f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
+        cameraDollyFocusHandoff(r, a, b, f, d, dd, fStop, fps, e, sc);
     }
     inline void camera_lateral_subject_to_subject(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
         cameraLateralSubjectToSubject(r, a, b, f, d, fps, e, sc);
@@ -449,11 +447,11 @@ namespace chrononmotion::motion {
     inline void camera_detach_turn_reacquire(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
         cameraDetachTurnReacquire(r, a, b, f, d, fps, e, sc);
     }
-    inline void camera_foreground_pass_reveal(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, const Vector3& off = Vector3(3.f, 0.f, -4.f), float defocusStrength = 0.14f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
-        cameraForegroundPassReveal(r, a, b, f, d, off, defocusStrength, fps, e, sc);
+    inline void camera_foreground_pass_reveal(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, const Vector3& off = Vector3(3.f, 0.f, -4.f), float fStop = 4.8f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
+        cameraForegroundPassReveal(r, a, b, f, d, off, fStop, fps, e, sc);
     }
-    inline void camera_depth_peel(CameraRig& r, const std::vector<ShotAnchor>& s, int f, int d, float push = 4.f, float defocusStrength = 0.12f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
-        cameraDepthPeel(r, s, f, d, push, defocusStrength, fps, e, sc);
+    inline void camera_depth_peel(CameraRig& r, const std::vector<ShotAnchor>& s, int f, int d, float push = 4.f, float fStop = 5.6f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
+        cameraDepthPeel(r, s, f, d, push, fStop, fps, e, sc);
     }
     inline void camera_arc_between_subjects(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, float bow = 3.f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
         cameraArcBetweenSubjects(r, a, b, f, d, bow, fps, e, sc);
@@ -467,8 +465,8 @@ namespace chrononmotion::motion {
     inline void camera_push_through_overlay(CameraRig& r, const ShotAnchor& a, const ShotAnchor& b, int f, int d, float dist = 12.f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
         cameraPushThroughOverlay(r, a, b, f, d, dist, fps, e, sc);
     }
-    inline void camera_parallax_gallery(CameraRig& r, const std::vector<ShotAnchor>& cards, int f, int d, float zoff = 8.f, float defocusStrength = 0.10f, float fps = 30.f, const MotionScene* sc = nullptr) {
-        cameraParallaxGallery(r, cards, f, d, zoff, defocusStrength, fps, sc);
+    inline void camera_parallax_gallery(CameraRig& r, const std::vector<ShotAnchor>& cards, int f, int d, float zoff = 8.f, float fStop = 6.7f, float fps = 30.f, const MotionScene* sc = nullptr) {
+        cameraParallaxGallery(r, cards, f, d, zoff, fStop, fps, sc);
     }
     inline void camera_focus_orbit_settle(CameraRig& r, const ShotAnchor& s, int f, int d, float yaw = 15.f, float pitch = 6.f, float push = 2.f, float fps = 30.f, const MotionScene* sc = nullptr) {
         cameraFocusOrbitSettle(r, s, f, d, yaw, pitch, push, fps, sc);
@@ -478,14 +476,14 @@ namespace chrononmotion::motion {
     inline void camera_vertigo_dolly_zoom(CameraRig& r, const ShotAnchor& s, int f, int d, float sd, float ed, float sf = 45.f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
         cameraVertigoDollyZoom(r, s, f, d, sd, ed, sf, fps, e, sc);
     }
-    inline void camera_bullet_time_orbit_freeze(CameraRig& r, const ShotAnchor& s, int f, int d, float rad = 7.f, float h = 1.2f, float sw = 360.f, float defocusStrength = 0.16f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
-        cameraBulletTimeOrbitFreeze(r, s, f, d, rad, h, sw, defocusStrength, fps, e, sc);
+    inline void camera_bullet_time_orbit_freeze(CameraRig& r, const ShotAnchor& s, int f, int d, float rad = 7.f, float h = 1.2f, float sw = 360.f, float fStop = 4.2f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
+        cameraBulletTimeOrbitFreeze(r, s, f, d, rad, h, sw, fStop, fps, e, sc);
     }
     inline void camera_fpv_drone_dive_roll(CameraRig& r, const ShotAnchor& a, const ShotAnchor& t, int f, int d, float div = 10.f, float rll = 55.f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
         cameraFpvDroneDiveRoll(r, a, t, f, d, div, rll, fps, e, sc);
     }
-    inline void camera_split_diopter_dual_plane(CameraRig& r, const ShotAnchor& fl, const ShotAnchor& br, int f, int d, float defocusStrength = 0.18f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
-        cameraSplitDiopterDualPlane(r, fl, br, f, d, defocusStrength, fps, e, sc);
+    inline void camera_split_diopter_dual_plane(CameraRig& r, const ShotAnchor& fl, const ShotAnchor& br, int f, int d, float fStop = 3.7f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
+        cameraSplitDiopterDualPlane(r, fl, br, f, d, fStop, fps, e, sc);
     }
     inline void camera_spiral_helix_ascend(CameraRig& r, const ShotAnchor& cp, int f, int d, float ch = 10.f, float rad = 8.f, float turns = 1.25f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
         cameraSpiralHelixAscend(r, cp, f, d, ch, rad, turns, fps, e, sc);
