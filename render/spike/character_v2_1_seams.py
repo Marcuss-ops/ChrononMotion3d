@@ -8,7 +8,7 @@ shows the backdrop: that is the rectangular "slit" seen in V2.0.
 Commands:
   check  Sweep head rotations and count exposed pixels (must be 0).
   fix    Fill the torso alpha behind the head with an inpainted backplate.
-         The previous torso layer is kept as layer_torso_prev.png.
+         The pre-fix torso snapshot is generated locally on first use.
 
 Usage (from ChrononMotion3D/render/spike):
   python3 character_v2_1_seams.py check
