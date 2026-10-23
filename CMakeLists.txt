@@ -57,6 +57,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/core/Object3D.cpp
         # assets — dependency-free, explicit-buffer glTF input
         src/chrononmotion/assets/GltfReader.cpp
+        src/chrononmotion/assets/GltfReaderSerialization.cpp
         # geometries — the primitives a Mesh can carry
         src/chrononmotion/geometries/BoxGeometry.cpp
         src/chrononmotion/geometries/PlaneGeometry.cpp
