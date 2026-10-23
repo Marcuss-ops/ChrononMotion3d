@@ -13,6 +13,21 @@ using chrononmotion_test::section;
 
 namespace {
 
+    void cssColorStyles() {
+        section("CSS color parsing");
+
+        Color color;
+        color.setStyle("#ff0000");
+        checkNear(color.r, 1.f, 1e-6f, "hex CSS color parses red");
+        checkNear(color.g, 0.f, 1e-6f, "hex CSS color keeps green at zero");
+
+        color.setStyle("rgb(0, 255, 0)");
+        checkNear(color.g, 1.f, 1e-6f, "rgb CSS color parses green");
+
+        color.setStyle("blue");
+        checkNear(color.b, 1.f, 1e-6f, "named CSS color parses blue");
+    }
+
     void spatialPrimitives() {
         section("minimum plus one spatial primitives");
 
@@ -193,6 +208,7 @@ namespace {
 }// namespace
 
 int main() {
+    cssColorStyles();
     spatialPrimitives();
     lightsEvaluateThroughMotionScene();
     nestedCompositionsCompileWithLocalTime();

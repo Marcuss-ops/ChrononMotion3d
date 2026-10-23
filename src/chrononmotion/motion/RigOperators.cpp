@@ -1,6 +1,7 @@
 #include "chrononmotion/motion/RigOperators.hpp"
 
-#include "chrononmotion/math/Finite.hpp"#include <array>
+#include "chrononmotion/math/Finite.hpp"
+#include <array>
 #include <cmath>
 #include <stdexcept>
 

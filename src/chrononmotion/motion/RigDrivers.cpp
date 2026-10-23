@@ -1,6 +1,7 @@
 #include "chrononmotion/motion/RigDrivers.hpp"
 
-#include "chrononmotion/math/Finite.hpp"#include "chrononmotion/motion/RigOperators.hpp"
+#include "chrononmotion/math/Finite.hpp"
+#include "chrononmotion/motion/RigOperators.hpp"
 
 #include <algorithm>
 #include <cmath>

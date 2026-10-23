@@ -1,6 +1,7 @@
 #include "chrononmotion/motion/RigGraph.hpp"
 
-#include "chrononmotion/math/Finite.hpp"#include "chrononmotion/motion/MotionScene.hpp"
+#include "chrononmotion/math/Finite.hpp"
+#include "chrononmotion/motion/MotionScene.hpp"
 #include "chrononmotion/motion/OfflineBaking.hpp"
 #include "chrononmotion/motion/RigOperators.hpp"
 #include "chrononmotion/motion/TwoBoneIK.hpp"
