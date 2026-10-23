@@ -4,8 +4,194 @@
 #include <cmath>
 #include <string>
 #include <numbers>
+#include <utility>
 
 namespace chrononmotion::geospatial {
+
+MapFlyoverBuilder::MapFlyoverBuilder(MapFlyoverSpec spec) : spec_(std::move(spec)) {}
+
+float evaluateSpringBounce(float t, float duration, float frequency, float damping) noexcept {
+    if (t <= 0.0f) return 0.0f;
+    if (t >= duration) return 1.0f;
+    const float omega = frequency;
+    const float zeta = damping;
+    const float omegaD = omega * std::sqrt(1.0f - zeta * zeta);
+    const float envelope = std::exp(-zeta * omega * t);
+    return 1.0f - envelope * (std::cos(omegaD * t) +
+                               (zeta * omega / omegaD) * std::sin(omegaD * t));
+}
+
+bool MapSceneLayers::hasBasemap() const noexcept {
+    return basemap != Layer::kRoot;
+}
+
+std::size_t MapSceneLayers::count() const noexcept {
+    std::size_t total = markers.size() + doc_route_sprites.size() + territory_contour.size();
+    for (const Layer::Id id : {basemap, relief, route_overlay, ground_grid, pin, title, subtitle,
+                                area, vignette, dim, territory_fill, doc_route_head,
+                                leader_line, crosshair})
+        if (id != Layer::kRoot) ++total;
+    return total;
+}
+
+int MapFlyoverBuilder::frameCount() const noexcept {
+    const float fps = spec_.fps > 0.f ? spec_.fps : 30.f;
+    const float frames = std::max(2.f, std::round(spec_.durationSeconds * fps));
+    return static_cast<int>(frames);
+}
+
+std::vector<Vector3> MapFlyoverBuilder::routeScenePoints() const {
+    std::vector<Vector3> points;
+    points.reserve(spec_.route.size());
+    for (const auto& waypoint : spec_.route)
+        points.push_back(toSceneSpace(waypoint, spec_.origin));
+    return points;
+}
+
+Vector3 MapFlyoverBuilder::poiScenePosition() const noexcept {
+    return toSceneSpace(spec_.poi, spec_.origin);
+}
+
+Vector2 MapFlyoverBuilder::planePointToCanvas(
+    const Vector2& planePoint, float progress) const noexcept {
+    const float scale = mapScaleAt(progress);
+    const Vector2 pan = mapPanAt(progress);
+    return Vector2{spec_.canvasSize.x * 0.5f + planePoint.x * scale + pan.x,
+                   spec_.canvasSize.y * 0.5f - planePoint.y * scale + pan.y};
+}
+
+Vector2 MapFlyoverBuilder::mapPointToCanvas(
+    const GeoCoord& point, float progress) const noexcept {
+    return planePointToCanvas(spec_.window.toPlane(point), progress);
+}
+
+Vector3 MapFlyoverBuilder::authoredPosition(
+    const Vector2& canvasPoint, float z) const noexcept {
+    return Vector3{canvasPoint.x - spec_.canvasSize.x * 0.5f,
+                   spec_.cameraBackedPlate
+                       ? spec_.canvasSize.y * 0.5f - canvasPoint.y
+                       : canvasPoint.y - spec_.canvasSize.y * 0.5f,
+                   z};
+}
+
+float MapFlyoverBuilder::mapScaleAt(float progress) const noexcept {
+    const float eased = motion::Easing::easeInOut()(std::clamp(progress, 0.f, 1.f));
+    return spec_.startMapScale + (spec_.endMapScale - spec_.startMapScale) * eased;
+}
+
+Vector2 MapFlyoverBuilder::mapPanAt(float progress) const noexcept {
+    const float eased = motion::Easing::easeInOut()(std::clamp(progress, 0.f, 1.f));
+    return Vector2{spec_.startMapPan.x + (spec_.endMapPan.x - spec_.startMapPan.x) * eased,
+                   spec_.startMapPan.y + (spec_.endMapPan.y - spec_.startMapPan.y) * eased};
+}
+
+float MapFlyoverBuilder::revealFraction(
+    std::size_t index, std::size_t count, int frames) const {
+    if (count <= 1) return 0.f;
+    const float share = static_cast<float>(index) / static_cast<float>(count - 1);
+    const float span = static_cast<float>(
+        std::max(1, spec_.routeFadeEndFrame - spec_.routeFadeStartFrame));
+    return static_cast<float>(spec_.routeFadeStartFrame) +
+           share * std::min(span, static_cast<float>(frames));
+}
+
+MapFlyoverBuilder::GlowChainResult MapFlyoverBuilder::authorGlowChain(
+    MotionScene& scene, Layer::Id& nextId, const std::vector<Vector2>& points, bool closed,
+    const std::string& asset, float spriteSize, int spriteCount, float headScale,
+    int revealStart, int revealEnd, int frames) const {
+    GlowChainResult result;
+    if (asset.empty() || points.size() < 2) return result;
+
+    std::vector<Vector2> walk = points;
+    if (closed) walk.push_back(points.front());
+    std::vector<float> cumulative(walk.size(), 0.f);
+    for (std::size_t i = 1; i < walk.size(); ++i) {
+        const float dx = walk[i].x - walk[i - 1].x;
+        const float dy = walk[i].y - walk[i - 1].y;
+        cumulative[i] = cumulative[i - 1] + std::sqrt(dx * dx + dy * dy);
+    }
+    const float total = cumulative.back();
+    if (total <= 1.f) return result;
+
+    auto pointAt = [&](float target) {
+        std::size_t i = 1;
+        while (i < cumulative.size() && cumulative[i] < target) ++i;
+        if (i >= cumulative.size()) return walk.back();
+        const float segment = cumulative[i] - cumulative[i - 1];
+        const float local = segment > 0.f ? (target - cumulative[i - 1]) / segment : 0.f;
+        return Vector2{walk[i - 1].x + (walk[i].x - walk[i - 1].x) * local,
+                       walk[i - 1].y + (walk[i].y - walk[i - 1].y) * local};
+    };
+
+    const float fps = spec_.fps > 0.f ? spec_.fps : 30.f;
+    const float secondsPerFrame = 1.f / fps;
+    auto timeOf = [secondsPerFrame](int frame) {
+        return static_cast<float>(frame) * secondsPerFrame;
+    };
+    auto progressOf = [frames](int frame) {
+        return frames > 0 ? static_cast<float>(frame) / static_cast<float>(frames) : 0.f;
+    };
+
+    const int count = std::max(2, spriteCount);
+    const float span = static_cast<float>(std::max(1, revealEnd - revealStart));
+    const Vector2 box{spriteSize, spriteSize};
+    result.sprites.reserve(static_cast<std::size_t>(count));
+    for (int k = 0; k < count; ++k) {
+        const float along = static_cast<float>(k) / static_cast<float>(count - 1);
+        const Vector2 point = pointAt(total * along);
+        const Layer::Id id = nextId++;
+        result.sprites.push_back(id);
+        Layer& dot = scene.addContent(id, "map_glow_chain_" + std::to_string(k),
+                                      ContentRef::image(asset, box));
+        dot.flat();
+        const float lightAt = static_cast<float>(revealStart) + span * along;
+        for (int frame = 0; frame <= frames; ++frame) {
+            const float time = timeOf(frame);
+            dot.tracks.position.add(
+                time,
+                authoredPosition(planePointToCanvas(point, progressOf(frame)), 0.f),
+                motion::Easing::linear());
+            const float appear = std::clamp((static_cast<float>(frame) - lightAt) / 5.f,
+                                            0.f, 1.f);
+            const float flow = kGlowChainFlowFloor + (1.f - kGlowChainFlowFloor) *
+                (0.5f + 0.5f * std::cos(kGlowChainTwoPi *
+                    (time / kGlowChainFlowSeconds - along * kGlowChainFlowCycles)));
+            dot.tracks.opacity.add(time, appear * flow, motion::Easing::linear());
+        }
+    }
+
+    if (headScale > 0.f) {
+        result.head = nextId++;
+        Layer& head = scene.addContent(
+            result.head, "map_glow_chain_head",
+            ContentRef::image(asset, Vector2{box.x * headScale, box.y * headScale}));
+        head.flat();
+        for (int frame = 0; frame <= frames; ++frame) {
+            const float reveal = std::clamp(
+                (static_cast<float>(frame) - revealStart) / span, 0.f, 1.f);
+            const float eased = motion::Easing::easeInOut()(reveal);
+            const Vector2 point = pointAt(total * eased);
+            const float time = timeOf(frame);
+            head.tracks.position.add(
+                time,
+                authoredPosition(planePointToCanvas(point, progressOf(frame)), 0.f),
+                motion::Easing::linear());
+            // The head breathes while it travels: a perfect circle reads
+            // as a decal, a slowly pulsing one as a moving point of light.
+            // The pulse never reaches zero, so the scale stays invertible.
+            const float pulse = 1.f + kGlowHeadPulseDepth *
+                std::sin(kGlowChainTwoPi * time / kGlowHeadPulseSeconds);
+            head.tracks.scale.add(time, Vector3{pulse, pulse, 1.f},
+                                  motion::Easing::linear());
+            const float fadeOut = std::clamp(
+                1.f - (static_cast<float>(frame) - revealEnd) / 8.f, 0.f, 1.f);
+            head.tracks.opacity.add(time, frame < revealStart ? 0.f : fadeOut,
+                                    motion::Easing::linear());
+        }
+    }
+    return result;
+
+}
 
 MapSceneLayers MapFlyoverBuilder::buildScene(MotionScene& scene) const {
             MapSceneLayers ids;
@@ -402,7 +588,7 @@ MapSceneLayers MapFlyoverBuilder::buildScene(MotionScene& scene) const {
                 for (Layer& layer : scene.layers()) layer.is3D = true;
             }
             return ids;
-        
+
 }
 
 
@@ -449,7 +635,7 @@ void MapFlyoverBuilder::rigCamera(motion::CameraRig& rig) const {
                 const float fov = spec_.startFovDeg + (spec_.endFovDeg - spec_.startFovDeg) * eased;
                 fovTrack.add(tSec, fov);
             }
-        
+
 }
 
 void MapFlyoverBuilder::rigCameraForPlate(motion::CameraRig& rig, float startDepth,
@@ -476,7 +662,7 @@ void MapFlyoverBuilder::rigCameraForPlate(motion::CameraRig& rig, float startDep
                 fov.add(static_cast<float>(frame) / fps,
                     spec_.startFovDeg + (spec_.endFovDeg - spec_.startFovDeg) * eased);
             }
-        
+
 }
 
 void MapFlyoverBuilder::configureCameraBackedPlate(
@@ -511,7 +697,7 @@ void MapFlyoverBuilder::configureCameraBackedPlate(
                     key.value.y -= poi.y;
                 }
             }
-        
+
 }
 
 }  // namespace chrononmotion::geospatial
