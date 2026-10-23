@@ -142,10 +142,8 @@ void EventDispatcher::dispatchEvent(const std::string& type, std::any target) {
 
     Event e{type, std::move(target)};
 
-    // Snapshot only stable IDs, not Entry objects: copying the vector used to
-    // copy every std::function and its captured state on every dispatch. IDs
-    // preserve the same add/remove semantics while keeping callable ownership
-    // in the registry.
+    // Snapshot stable IDs to avoid copying callable state; the registry keeps
+    // ownership of each listener while preserving add/remove semantics.
     std::vector<std::uint64_t> snapshot;
     snapshot.reserve(it->second.size());
     for (const auto& entry : it->second) snapshot.push_back(entry.id);

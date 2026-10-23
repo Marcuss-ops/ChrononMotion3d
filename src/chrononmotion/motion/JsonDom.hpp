@@ -12,10 +12,6 @@
 // so a malformed, hostile or hand-edited document is rejected with a
 // std::invalid_argument naming the byte or field, never half-accepted.
 //
-// Extracted verbatim from the glTF reader (previously its anonymous-namespace
-// copy): a second parser is how two readers would disagree about what counts
-// as valid JSON.
-
 #ifndef CHRONONMOTION_MOTION_JSON_DOM_HPP
 #define CHRONONMOTION_MOTION_JSON_DOM_HPP
 
