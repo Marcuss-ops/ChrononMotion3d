@@ -161,6 +161,8 @@ if(CHRONON3D_INCLUDE_DIR)
     find_package(fmt CONFIG REQUIRED) # boundary-guardrail: allowed — public C3D RenderPlan headers expose fmt in this offline adapter only.
     add_library(chrononmotion_chronon3d_adapter STATIC
         src/chrononmotion/motion/RenderPlanLowering.cpp
+        src/chrononmotion/motion/RenderPlanLoweringCamera.cpp
+        src/chrononmotion/motion/RenderPlanLoweringGeometry.cpp
         src/chrononmotion/motion/RenderPlanEmission.cpp
         src/chrononmotion/motion/RenderPlanEmissionCommon.cpp
         src/chrononmotion/motion/RenderPlanEmissionMedia.cpp
