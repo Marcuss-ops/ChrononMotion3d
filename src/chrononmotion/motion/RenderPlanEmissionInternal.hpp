@@ -7,6 +7,12 @@
 #include <initializer_list>
 #include <optional>
 #include <string>
+#include <chronon3d/graphics/field2d.hpp>
+#include <chronon3d/graphics/gradient.hpp>
+#include <chronon3d/scene/model/shape/particles.hpp>
+#include <chronon3d/text/text_span_override.hpp>
+
+#include <vector>
 #include <string_view>
 
 namespace chrononmotion::motion::detail {
@@ -19,6 +25,30 @@ namespace chrononmotion::motion::detail {
 [[nodiscard]] std::string render_plan_emission_problem(const chronon3d::render_plan::RenderPlan& plan);
 [[nodiscard]] std::string emissionCameraProblem(const chronon3d::render_plan::CameraPlan& camera);
 [[nodiscard]] std::string emissionBudgetProblem(const chronon3d::render_plan::RenderPlan& plan);
+void writeTextSpans(detail::Writer& writer, const std::vector<chronon3d::TextSpanOverride>& spans);
+void writeTextSelectorTrack(detail::Writer& writer, const AnimationTrackPlan& track);
+void writeTextAnimators(detail::Writer& writer, const std::vector<chronon3d::render_plan::TextAnimatorPlan>& animators);
+void writeStyle(detail::Writer& writer, const LayerStylePlan& style);
+void writeMediaStyle(detail::Writer& writer, const LayerStylePlan& style);
+void writeEffects(detail::Writer& writer, const std::vector<LayerPlan::EffectPlan>& effects);
+void writeInlineMesh(detail::Writer& writer, const InlineMeshPlan& mesh);
+void writeMaskTrack(detail::Writer& writer, const AnimationTrackPlan& track);
+void writeEffectParameterTracks(detail::Writer& writer, const Tracks& tracks);
+void writeMask(detail::Writer& writer, const LayerPlan::PathMaskPlan& mask, bool legacyPathMask);
+void writeTrackMatte(detail::Writer& writer, const chronon3d::render_plan::TrackMattePlan& matte);
+void writeLayerMasks(detail::Writer& writer, const LayerPlan& layer);
+void writePathCommands(detail::Writer& writer, const std::vector<ShapePathCommandPlan>& commands);
+void writeStroke(detail::Writer& writer, const chronon3d::render_plan::StrokeStyle& stroke);
+void writeTrimOperator(detail::Writer& writer, const chronon3d::render_plan::PathOperatorPlan& op);
+void writeField(detail::Writer& writer, const chronon3d::graphics::Field2D& field);
+void writeGradientDefinition(detail::Writer& writer, const chronon3d::graphics::GradientDefinition& gradient);
+void writeShape(detail::Writer& writer, const ShapeContentPlan& shape);
+void writeParticleEmitter(detail::Writer& writer, const chronon3d::ParticleEmitterParams& particles, const std::string& schema);
+void writeLight(detail::Writer& writer, const chronon3d::render_plan::LightLayerPlan& light);
+void writeAnimation(detail::Writer& writer, const AnimationPlan& animation);
+void writeCamera(detail::Writer& writer, const CameraPlan& camera);
+void writeCameraSamples(detail::Writer& writer, const std::vector<CameraSamplePlan>& samples);
+void writeLayer(detail::Writer& writer, const LayerPlan& layer, const std::string& schema);
 [[nodiscard]] std::string layerOwner(const chronon3d::render_plan::LayerPlan& layer);
 [[nodiscard]] std::string styleProblem(const chronon3d::render_plan::LayerPlan& layer);
 [[nodiscard]] std::string effectProblem(const chronon3d::render_plan::LayerPlan& layer);
