@@ -164,7 +164,11 @@ if(CHRONON3D_INCLUDE_DIR)
         src/chrononmotion/motion/RenderPlanEmission.cpp
         src/chrononmotion/motion/RenderPlanEmissionCommon.cpp
         src/chrononmotion/motion/RenderPlanEmissionValidation.cpp
-        src/chrononmotion/motion/RenderPlanEmissionValidationBounds.cpp)
+        src/chrononmotion/motion/RenderPlanEmissionValidationBounds.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidateEffects.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidateLayer.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidateText.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidateTracks.cpp)
     target_link_libraries(chrononmotion_chronon3d_adapter PUBLIC chrononmotion fmt::fmt-header-only)
     target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_INCLUDE_DIR}")
     if(DEFINED CHRONON3D_DEPENDENCY_INCLUDE_DIR)
