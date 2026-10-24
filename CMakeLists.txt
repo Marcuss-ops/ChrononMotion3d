@@ -163,6 +163,9 @@ if(CHRONON3D_INCLUDE_DIR)
         src/chrononmotion/motion/RenderPlanLowering.cpp
         src/chrononmotion/motion/RenderPlanEmission.cpp
         src/chrononmotion/motion/RenderPlanEmissionCommon.cpp
+        src/chrononmotion/motion/RenderPlanEmissionMedia.cpp
+        src/chrononmotion/motion/RenderPlanEmissionShape.cpp
+        src/chrononmotion/motion/RenderPlanEmissionText.cpp
         src/chrononmotion/motion/RenderPlanEmissionValidation.cpp
         src/chrononmotion/motion/RenderPlanEmissionValidationBounds.cpp
         src/chrononmotion/motion/RenderPlanEmissionValidateEffects.cpp
