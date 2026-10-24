@@ -88,6 +88,8 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/MotionScene_evaluation.cpp
         src/chrononmotion/motion/MotionScene_validation.cpp
         src/chrononmotion/motion/SceneExport.cpp
+        src/chrononmotion/motion/SceneExportContent.cpp
+        src/chrononmotion/motion/SceneExportTracks.cpp
         src/chrononmotion/motion/SceneImport.cpp
         src/chrononmotion/motion/Interaction.cpp
         src/chrononmotion/motion/RigRetarget.cpp
