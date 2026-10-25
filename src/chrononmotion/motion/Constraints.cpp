@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/Constraints.hpp"
 #include "chrononmotion/math/Euler.hpp"
+#include "chrononmotion/math/Finite.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -11,11 +12,8 @@ namespace chrononmotion::motion {
                          const Quaternion& targetRotation,
                          const Vector3& targetScale,
                          float seconds) noexcept {
-        const auto finite = [](const Vector3& v) {
-            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
-        };
-        if (!std::isfinite(spec.amount) || !std::isfinite(seconds) || !finite(targetPosition) ||
-            !finite(targetScale) || !std::isfinite(targetRotation.lengthSq())) return false;
+        if (!std::isfinite(spec.amount) || !std::isfinite(seconds) || !math::isFinite(targetPosition) ||
+            !math::isFinite(targetScale) || !std::isfinite(targetRotation.lengthSq())) return false;
         const float amount = std::clamp(spec.amount, 0.f, 1.f);
         if (amount == 0.f) return true;
         switch (spec.kind) {
@@ -44,7 +42,7 @@ namespace chrononmotion::motion {
                 return true;
             }
             case ConstraintKind::SurfaceAttach: {
-                if (!finite(spec.surfaceNormal) || !finite(spec.surfaceOffset) ||
+                if (!math::isFinite(spec.surfaceNormal) || !math::isFinite(spec.surfaceOffset) ||
                     std::abs(spec.surfaceNormal.lengthSq() - 1.f) > 1e-4f) return false;
                 Vector3 normal = spec.surfaceNormal; normal.applyQuaternion(targetRotation);
                 Vector3 offset = spec.surfaceOffset; offset.multiply(targetScale).applyQuaternion(targetRotation);
@@ -77,7 +75,7 @@ namespace chrononmotion::motion {
             case ConstraintKind::LimitPosition:
             case ConstraintKind::LimitRotation:
             case ConstraintKind::LimitScale: {
-                if (!finite(spec.minimum) || !finite(spec.maximum)) return false;
+                if (!math::isFinite(spec.minimum) || !math::isFinite(spec.maximum)) return false;
                 for (unsigned i = 0; i < 3; ++i)
                     if (spec.minimum[i] > spec.maximum[i]) return false;
                 if (spec.kind == ConstraintKind::LimitRotation && !local.orientation.equals(Quaternion{})) {

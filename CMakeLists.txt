@@ -32,6 +32,9 @@ add_library(chrononmotion STATIC
         src/chrononmotion/math/Box2.cpp
         src/chrononmotion/math/Box3.cpp
         src/chrononmotion/math/Color.cpp
+        src/chrononmotion/math/Color_css.cpp
+        src/chrononmotion/geospatial/MapFlyover.cpp
+        src/chrononmotion/geospatial/WebMercator.cpp
         src/chrononmotion/math/Euler.cpp
         src/chrononmotion/math/Interpolant.cpp
         src/chrononmotion/math/Line3.cpp
@@ -54,6 +57,9 @@ add_library(chrononmotion STATIC
         src/chrononmotion/core/Object3D.cpp
         # assets — dependency-free, explicit-buffer glTF input
         src/chrononmotion/assets/GltfReader.cpp
+        src/chrononmotion/assets/GltfReaderInternal.hpp
+        src/chrononmotion/assets/GltfReaderScene.cpp
+        src/chrononmotion/assets/GltfReaderSerialization.cpp
         # geometries — the primitives a Mesh can carry
         src/chrononmotion/geometries/BoxGeometry.cpp
         src/chrononmotion/geometries/PlaneGeometry.cpp
@@ -78,7 +84,12 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/Transform.cpp
         src/chrononmotion/motion/Layer.cpp
         src/chrononmotion/motion/MotionScene.cpp
+        src/chrononmotion/motion/MotionScene_layers.cpp
+        src/chrononmotion/motion/MotionScene_evaluation.cpp
+        src/chrononmotion/motion/MotionScene_validation.cpp
         src/chrononmotion/motion/SceneExport.cpp
+        src/chrononmotion/motion/SceneExportContent.cpp
+        src/chrononmotion/motion/SceneExportTracks.cpp
         src/chrononmotion/motion/SceneImport.cpp
         src/chrononmotion/motion/Interaction.cpp
         src/chrononmotion/motion/RigRetarget.cpp
@@ -89,6 +100,9 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/CameraFraming.cpp
         src/chrononmotion/motion/CameraValidation.cpp
         src/chrononmotion/motion/CameraMotion.cpp
+        src/chrononmotion/motion/CameraMotionRecipes.cpp
+        src/chrononmotion/motion/CameraMotionRecipesAdvanced.cpp
+        src/chrononmotion/motion/CameraMotionRecipesExtended.cpp
         src/chrononmotion/motion/CameraRecipe.cpp
         src/chrononmotion/motion/CameraMotionRecipeRegistry.cpp
         src/chrononmotion/motion/CameraSequence.cpp
@@ -108,6 +122,10 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/RigProgram.cpp
         src/chrononmotion/motion/RigOperators.cpp
         src/chrononmotion/motion/OfflineBaking.cpp
+        src/chrononmotion/motion/OfflineAudio.cpp
+        src/chrononmotion/motion/OfflineLayout.cpp
+        src/chrononmotion/motion/OfflinePathBaking.cpp
+        src/chrononmotion/motion/OfflineCollections.cpp
         src/chrononmotion/motion/SvgPathParser.cpp
         # presets — one translation unit per family, plus the shared vocabulary
         src/chrononmotion/motion/Presets_Common.cpp
@@ -145,9 +163,19 @@ if(CHRONON3D_INCLUDE_DIR)
     find_package(fmt CONFIG REQUIRED) # boundary-guardrail: allowed — public C3D RenderPlan headers expose fmt in this offline adapter only.
     add_library(chrononmotion_chronon3d_adapter STATIC
         src/chrononmotion/motion/RenderPlanLowering.cpp
+        src/chrononmotion/motion/RenderPlanLoweringCamera.cpp
+        src/chrononmotion/motion/RenderPlanLoweringGeometry.cpp
         src/chrononmotion/motion/RenderPlanEmission.cpp
         src/chrononmotion/motion/RenderPlanEmissionCommon.cpp
-        src/chrononmotion/motion/RenderPlanEmissionValidation.cpp)
+        src/chrononmotion/motion/RenderPlanEmissionMedia.cpp
+        src/chrononmotion/motion/RenderPlanEmissionShape.cpp
+        src/chrononmotion/motion/RenderPlanEmissionText.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidation.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidationBounds.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidateEffects.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidateLayer.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidateText.cpp
+        src/chrononmotion/motion/RenderPlanEmissionValidateTracks.cpp)
     target_link_libraries(chrononmotion_chronon3d_adapter PUBLIC chrononmotion fmt::fmt-header-only)
     target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_INCLUDE_DIR}")
     if(DEFINED CHRONON3D_DEPENDENCY_INCLUDE_DIR)
@@ -201,7 +229,7 @@ endif()
 target_include_directories(chrononmotion PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
-# Internal translation-unit headers (JsonDom, JsonWriter): shared by motion
+# Internal translation-unit headers (JsonDom, JsonWriter, OfflineBakingInternal): shared by motion
 # sources across directories, never installed, never public API.
 target_include_directories(chrononmotion PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/chrononmotion/motion)

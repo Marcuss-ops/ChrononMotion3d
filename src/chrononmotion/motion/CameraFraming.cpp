@@ -1,4 +1,5 @@
 #include "chrononmotion/motion/CameraFraming.hpp"
+#include "chrononmotion/math/Finite.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
 
 #include "chrononmotion/math/Matrix4.hpp"
@@ -83,15 +84,13 @@ CameraFramingResult CameraFramingSolver::solve(const CameraFramingRequest& req,
         req.viewport.x <= 0.f || req.viewport.y <= 0.f ||
         !std::isfinite(base.fov) || base.fov <= 0.f || base.fov >= 180.f ||
         !std::isfinite(req.minDistance) || !std::isfinite(req.maxDistance) ||
-        !std::isfinite(req.targetVelocity.x) || !std::isfinite(req.targetVelocity.y) ||
-        !std::isfinite(req.targetVelocity.z) || !std::isfinite(req.lookAheadSeconds) ||
+        !math::isFinite(req.targetVelocity) || !std::isfinite(req.lookAheadSeconds) ||
         req.lookAheadSeconds < 0.f || req.minDistance <= 0.f || req.maxDistance < req.minDistance) {
         result.ok = false;
         return result;
     }
     for (const auto& bounds : req.targets) {
-        if (!std::isfinite(bounds.min.x) || !std::isfinite(bounds.min.y) || !std::isfinite(bounds.min.z) ||
-            !std::isfinite(bounds.max.x) || !std::isfinite(bounds.max.y) || !std::isfinite(bounds.max.z) ||
+        if (!math::isFinite(bounds.min) || !math::isFinite(bounds.max) ||
             !std::isfinite(bounds.weight) || bounds.min.x > bounds.max.x ||
             bounds.min.y > bounds.max.y || bounds.min.z > bounds.max.z) {
             result.ok = false;
