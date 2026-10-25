@@ -93,6 +93,14 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                             !std::isfinite(effect.bloom_intensity) || effect.bloom_intensity < 0.f || effect.bloom_intensity > 4.f)
                             return owner + " carries bloom values outside supported ranges";
                         break;
+                    case LayerPlan::EffectKindPlan::RoughenEdges:
+                        // Ranges mirror the plan decoder (roughen_edges): the
+                        // emitter writes what the decoder accepts, nothing more.
+                        if (!std::isfinite(effect.amount) || effect.amount < 0.f || effect.amount > 64.f ||
+                            !std::isfinite(effect.roughen_scale) || effect.roughen_scale <= 0.f || effect.roughen_scale > 1024.f ||
+                            effect.roughen_complexity < 1 || effect.roughen_complexity > 4)
+                            return owner + " carries roughen-edge values outside supported ranges";
+                        break;
                     default:
                         return owner + " carries an effect type this emitter does not write";
                 }
