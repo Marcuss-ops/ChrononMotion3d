@@ -1,5 +1,6 @@
 #include "chrononmotion/motion/CameraTrajectory.hpp"
 
+#include "chrononmotion/math/Finite.hpp"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -8,10 +9,6 @@ namespace chrononmotion::motion::camera {
 namespace {
 
 constexpr unsigned kArcSamples = 64;
-
-bool finite(const Vector3& p) {
-    return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
-}
 
 Vector3 catmull(const Vector3& p0, const Vector3& p1,
                 const Vector3& p2, const Vector3& p3, float t) {
@@ -181,8 +178,8 @@ CameraTrajectoryBuilder& CameraTrajectoryBuilder::arcLengthParameterized(bool en
 std::shared_ptr<CameraTrajectory> CameraTrajectoryBuilder::build() {
     if (points_.empty()) throw std::invalid_argument("CameraTrajectoryBuilder: at least one point is required");
     for (const auto& point : points_)
-        if (!finite(point.position) || !finite(point.handleIn) || !finite(point.handleOut) ||
-            (point.target && !finite(*point.target)) || !std::isfinite(point.rollDegrees))
+        if (!math::isFinite(point.position) || !math::isFinite(point.handleIn) || !math::isFinite(point.handleOut) ||
+            (point.target && !math::isFinite(*point.target)) || !std::isfinite(point.rollDegrees))
             throw std::invalid_argument("CameraTrajectoryBuilder: point values must be finite");
     for (const auto& segment : segments_)
         if (!std::isfinite(segment.durationFrames) || segment.durationFrames < 0.f ||

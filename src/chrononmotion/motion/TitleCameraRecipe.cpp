@@ -1,4 +1,5 @@
 #include "chrononmotion/motion/TitleCameraRecipe.hpp"
+#include "chrononmotion/math/Finite.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
@@ -118,8 +119,7 @@ std::string_view titleMoveId(TitleMove move) noexcept {
     void applyTitleCameraRequest(CameraRig& rig, const TitleCameraRequest& request) {
         if (request.duration < 12 || request.inFrame < 0 || !(request.fps > 0.f) ||
             !std::isfinite(request.fps) || !(request.viewport.x > 0.f) || !(request.viewport.y > 0.f) ||
-            !std::isfinite(request.anchor.x) || !std::isfinite(request.anchor.y) ||
-            !std::isfinite(request.anchor.z))
+            !math::isFinite(request.anchor))
             throw std::invalid_argument("applyTitleCameraRequest: invalid timing, viewport or anchor");
 
         const TitleCameraPlan plan = resolveTitleCameraPlan(request.move, request.shot);

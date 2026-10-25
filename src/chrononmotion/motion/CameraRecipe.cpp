@@ -1,6 +1,7 @@
 #include "chrononmotion/motion/CameraRecipe.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
+#include "chrononmotion/math/Finite.hpp"
 #include "chrononmotion/motion/CameraFraming.hpp"
 
 #include <algorithm>
@@ -15,12 +16,8 @@ namespace chrononmotion::motion::camera {
         float at(int frame, float fps) { return static_cast<float>(frame) / fps; }
         bool hasMid(float value) { return value > kNoMid * 0.5f; }
         bool finiteSubject(const RecipeSubject& s) {
-            return std::isfinite(s.center.x) && std::isfinite(s.center.y) &&
-                   std::isfinite(s.center.z) && std::isfinite(s.halfWidth) &&
+            return math::isFinite(s.center) && std::isfinite(s.halfWidth) &&
                    std::isfinite(s.halfHeight);
-        }
-        bool finiteVector(const Vector3& v) {
-            return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
         }
 
         struct LegPose { float dist{1.f}, x{0.f}, y{0.f}, yaw{0.f}, pitch{0.f}, roll{0.f}, focus{-1.f}; };
@@ -192,7 +189,7 @@ namespace chrononmotion::motion::camera {
         CameraPose last{};
         for (const auto& waypoint : ordered) {
             if (waypoint.frame < 0 || waypoint.frame <= previousFrame ||
-                !finiteVector(waypoint.position) || !finiteVector(waypoint.target))
+                !math::isFinite(waypoint.position) || !math::isFinite(waypoint.target))
                 throw std::invalid_argument("applyCameraTrack: invalid or unordered waypoint");
             const float time = at(waypoint.frame, fps);
             rig.positionTrack().add(time, waypoint.position, waypoint.easing);
@@ -230,7 +227,7 @@ namespace chrononmotion::motion::camera {
             for (const auto& waypoint : recipe.waypoints) {
                 if (!std::isfinite(waypoint.progress) || waypoint.progress <= previousProgress ||
                     waypoint.progress < 0.f || waypoint.progress > 1.f ||
-                    !finiteVector(waypoint.positionOffset) || !finiteVector(waypoint.targetOffset) ||
+                    !math::isFinite(waypoint.positionOffset) || !math::isFinite(waypoint.targetOffset) ||
                     !std::isfinite(waypoint.fov) || waypoint.fov <= 0.f || waypoint.fov >= 180.f ||
                     waypoint.easing == nullptr)
                     throw std::invalid_argument("applyRecipe: invalid tracked camera waypoint");
