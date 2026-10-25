@@ -158,6 +158,16 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                         writer.key("radius"); writer.number(effect.radius);
                         writer.key("intensity"); writer.number(effect.bloom_intensity);
                         break;
+                    case LayerPlan::EffectKindPlan::RoughenEdges:
+                        // Field names mirror the plan decoder's roughen_edges row.
+                        writer.key("type"); writer.token("roughen_edges");
+                        writer.key("amount"); writer.number(effect.amount);
+                        writer.key("scale"); writer.number(effect.roughen_scale);
+                        writer.key("complexity"); writer.unsignedInteger(effect.roughen_complexity);
+                        if (effect.roughen_seed != 0) {
+                            writer.key("seed"); writer.unsignedInteger(effect.roughen_seed);
+                        }
+                        break;
                     default:
                         throw std::invalid_argument("writeEffects: effect was not validated");
                 }
