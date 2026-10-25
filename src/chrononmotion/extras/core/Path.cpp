@@ -32,7 +32,7 @@ Path& Path::setFromPoints(const std::vector<Vector2>& points) {
 
 Path& Path::moveTo(float x, float y) {
 
-    this->currentPoint.set(x, y);// TODO consider referencing vectors instead of copying?
+    this->currentPoint.set(x, y);// TODO(#59): consider referencing vectors instead of copying?
 
     return *this;
 }
