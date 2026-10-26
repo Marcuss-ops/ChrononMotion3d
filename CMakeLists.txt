@@ -57,6 +57,8 @@ add_library(chrononmotion STATIC
         src/chrononmotion/core/Object3D.cpp
         # assets — dependency-free, explicit-buffer glTF input
         src/chrononmotion/assets/GltfReader.cpp
+        src/chrononmotion/assets/GltfReaderMotionScene.cpp
+        src/chrononmotion/assets/GltfReaderMotionAnimations.cpp
         src/chrononmotion/assets/GltfReaderInternal.hpp
         src/chrononmotion/assets/GltfReaderScene.cpp
         src/chrononmotion/assets/GltfReaderSerialization.cpp
@@ -88,6 +90,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/MotionScene_evaluation.cpp
         src/chrononmotion/motion/MotionScene_validation.cpp
         src/chrononmotion/motion/SceneExport.cpp
+        src/chrononmotion/motion/SceneExportLights.cpp
         src/chrononmotion/motion/SceneExportContent.cpp
         src/chrononmotion/motion/SceneExportTracks.cpp
         src/chrononmotion/motion/SceneImport.cpp
@@ -309,7 +312,11 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_link_libraries(chrononmotion_view PRIVATE chrononmotion)
     add_test(NAME chrononmotion_view COMMAND chrononmotion_view)
 
-    add_executable(chrononmotion_presets tests/motion_presets.cpp)
+    add_executable(chrononmotion_presets
+        tests/motion_presets.cpp
+        tests/motion_presets_camera.cpp
+        tests/motion_presets_scene.cpp
+        tests/motion_presets_transform.cpp)
     target_link_libraries(chrononmotion_presets PRIVATE chrononmotion)
     add_test(NAME chrononmotion_presets COMMAND chrononmotion_presets)
 
@@ -347,7 +354,11 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_link_libraries(chrononmotion_eye_trace PRIVATE chrononmotion)
     add_test(NAME chrononmotion_eye_trace COMMAND chrononmotion_eye_trace)
 
-    add_executable(chrononmotion_export_camera_v1 tools/export_camera_trajectories.cpp)
+    add_executable(chrononmotion_export_camera_v1
+        tools/export_camera_trajectories.cpp
+        tools/export_camera_trajectories_scenes_01to10.cpp
+        tools/export_camera_trajectories_scenes_11to20.cpp
+        tools/export_camera_trajectories_scenes_21to31.cpp)
     target_link_libraries(chrononmotion_export_camera_v1 PRIVATE chrononmotion)
 
     # The innovation animations: eye-trace handoff/director, multi-aspect
@@ -377,7 +388,11 @@ if(CHRONONMOTION_BUILD_TESTS)
     # The motion-authoring gaps that were open against After Effects: the track
     # modifier chain (loop/posterize/delay/link), the keyframed time remap, lens
     # data on the camera rig, mesh layers and the scene JSON export.
-    add_executable(chrononmotion_authoring tests/motion_authoring.cpp)
+    add_executable(chrononmotion_authoring
+        tests/motion_authoring.cpp
+        tests/motion_authoring_authoring.cpp
+        tests/motion_authoring_renderplan.cpp
+        tests/motion_authoring_simulation.cpp)
     target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion)
     if(CHRONON3D_INCLUDE_DIR)
         target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion_chronon3d_adapter)
@@ -399,7 +414,12 @@ if(CHRONONMOTION_BUILD_TESTS)
     endif()
     add_test(NAME chrononmotion_procedural_certification COMMAND chrononmotion_procedural_certification)
 
-    add_executable(chrononmotion_geospatial tests/motion_geospatial.cpp)
+    add_executable(chrononmotion_geospatial
+        tests/motion_geospatial.cpp
+        tests/motion_geospatial_bridge.cpp
+        tests/motion_geospatial_camera.cpp
+        tests/motion_geospatial_coordinates.cpp
+        tests/motion_geospatial_flyover.cpp)
     target_link_libraries(chrononmotion_geospatial PRIVATE chrononmotion)
     if(CHRONON3D_INCLUDE_DIR)
         target_link_libraries(chrononmotion_geospatial PRIVATE chrononmotion_chronon3d_adapter)
@@ -418,7 +438,13 @@ if(CHRONONMOTION_BUILD_TESTS)
 
     # Showcase acceptance is independently selectable at the case id/number and
     # emits deterministic motion/plan signatures; no pixel renderer is required.
-    add_executable(chrononmotion-showcase tests/motion_showcase.cpp)
+    add_executable(chrononmotion-showcase
+        tests/motion_showcase.cpp
+        tests/motion_showcase_camera.cpp
+        tests/motion_showcase_kinematics.cpp
+        tests/motion_showcase_runtime.cpp
+        tests/motion_showcase_shapes.cpp
+        tests/motion_showcase_transform.cpp)
     target_link_libraries(chrononmotion-showcase PRIVATE chrononmotion)
     target_compile_features(chrononmotion-showcase PRIVATE cxx_std_20)
     target_compile_options(chrononmotion-showcase PRIVATE -Wall -Wextra)
