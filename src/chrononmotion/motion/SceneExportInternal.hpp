@@ -19,6 +19,7 @@ namespace chrononmotion::motion {
         void writeMesh(Writer& writer, const MeshAttachment& mesh);
         void writeConstraint(Writer& writer, const ConstraintSpec& constraint);
         void writeDriver(Writer& writer, const DriverSpec& driver);
+        void writeLight(Writer& writer, const Light& light);
         inline void writeVector3(Writer& writer, const Vector3& value) {
             writer.beginArray();
             writer.item();

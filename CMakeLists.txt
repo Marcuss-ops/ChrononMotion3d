@@ -57,6 +57,8 @@ add_library(chrononmotion STATIC
         src/chrononmotion/core/Object3D.cpp
         # assets — dependency-free, explicit-buffer glTF input
         src/chrononmotion/assets/GltfReader.cpp
+        src/chrononmotion/assets/GltfReaderMotionScene.cpp
+        src/chrononmotion/assets/GltfReaderMotionAnimations.cpp
         src/chrononmotion/assets/GltfReaderInternal.hpp
         src/chrononmotion/assets/GltfReaderScene.cpp
         src/chrononmotion/assets/GltfReaderSerialization.cpp
@@ -88,6 +90,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/MotionScene_evaluation.cpp
         src/chrononmotion/motion/MotionScene_validation.cpp
         src/chrononmotion/motion/SceneExport.cpp
+        src/chrononmotion/motion/SceneExportLights.cpp
         src/chrononmotion/motion/SceneExportContent.cpp
         src/chrononmotion/motion/SceneExportTracks.cpp
         src/chrononmotion/motion/SceneImport.cpp

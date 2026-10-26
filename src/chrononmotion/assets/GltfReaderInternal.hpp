@@ -138,6 +138,8 @@ public:
 
     GltfAsset load();
     GltfMotionAsset loadMotion();
+    void loadMotionAnimations(GltfMotionAsset& result,
+                              const std::vector<std::vector<std::size_t>>& nodeGeometry);
     void setExternalResolver(const GltfExternalBufferResolver* resolver) { externalResolver_ = resolver; }
 
 private:
