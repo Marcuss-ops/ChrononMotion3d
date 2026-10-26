@@ -21,6 +21,38 @@
 #include <vector>
 
 namespace chrononmotion::motion::detail {
+
+namespace {
+
+struct ScalarRangeRule {
+    std::string_view field;
+    float minimum;
+    float maximum;
+    bool integral;
+    std::string_view message;
+};
+
+constexpr ScalarRangeRule kScalarRangeRules[] = {
+    {"opacity", 0.f, 1.f, false, " has a property value outside the RenderPlan v3 bounds"},
+    {"baseline_shift", -1000.f, 1000.f, false, " has a property value outside the RenderPlan v3 bounds"},
+    {"skew", -80.f, 80.f, false, " has a property value outside the RenderPlan v3 bounds"},
+    {"skew_axis", -1'000'000.f, 1'000'000.f, false, " has a property value outside the RenderPlan v3 bounds"},
+    {"background_padding_em", 0.f, 128.f, false, " has a property value outside the RenderPlan v3 bounds"},
+    {"background_radius_em", 0.f, 128.f, false, " has a property value outside the RenderPlan v3 bounds"},
+    {"stroke_width", 0.f, 256.f, false, " has a property value outside the RenderPlan v3 bounds"},
+    {"character_offset", -10'000.f, 10'000.f, true, " has a property value outside the RenderPlan v3 bounds"},
+    {"blur", 0.f, std::numeric_limits<float>::infinity(), false, " has a property value outside the RenderPlan v3 bounds"},
+    {"tracking", 0.f, std::numeric_limits<float>::infinity(), false, " has a property value outside the RenderPlan v3 bounds"},
+};
+
+const ScalarRangeRule* scalarRangeRule(std::string_view field) {
+    const auto it = std::find_if(std::begin(kScalarRangeRules), std::end(kScalarRangeRules),
+        [field](const ScalarRangeRule& rule) { return rule.field == field; });
+    return it == std::end(kScalarRangeRules) ? nullptr : it;
+}
+
+} // namespace
+
 using chronon3d::render_plan::AnimationKeyframePlan;
 using chronon3d::render_plan::AnimationPlan;
 using chronon3d::render_plan::AnimationTrackPlan;
@@ -93,19 +125,13 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 return " must use exactly one static character_offset keyframe at frame 0";
             const bool colorProperty = property == "fill_color" || property == "background_color" ||
                                        property == "stroke_color";
+            const ScalarRangeRule* rangeRule = scalarRangeRule(property);
             for (const auto& key : track.keyframes) {
                 if (key.value.size() == 1) {
                     const float value = key.value.front();
-                    if ((property == "opacity" && (value < 0.f || value > 1.f)) ||
-                        (property == "baseline_shift" && (value < -1000.f || value > 1000.f)) ||
-                        (property == "skew" && (value < -80.f || value > 80.f)) ||
-                        (property == "skew_axis" && (value < -1'000'000.f || value > 1'000'000.f)) ||
-                        ((property == "background_padding_em" || property == "background_radius_em") &&
-                         (value < 0.f || value > 128.f)) ||
-                        (property == "stroke_width" && (value < 0.f || value > 256.f)) ||
-                        (property == "character_offset" &&
-                         (value < -10'000.f || value > 10'000.f || std::floor(value) != value)))
-                        return " has a property value outside the RenderPlan v3 bounds";
+                    if (rangeRule && (value < rangeRule->minimum || value > rangeRule->maximum ||
+                        (rangeRule->integral && std::floor(value) != value)))
+                        return std::string(rangeRule->message);
                 }
                 if (colorProperty &&
                     std::any_of(key.value.begin(), key.value.end(),
