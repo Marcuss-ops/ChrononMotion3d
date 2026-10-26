@@ -49,13 +49,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install GLM (Chronon3D header dependency)
-        run: sudo apt-get update && sudo apt-get install -y libglm-dev
+        run: sudo apt-get update && sudo apt-get install -y libglm-dev libfmt-dev
 
       - name: Check out sibling Chronon3D (best effort)
         id: sibling
         run: |
           if git clone --depth 1 https://github.com/Marcuss-ops/Chronon3d.git "$GITHUB_WORKSPACE/../Chronon3d"; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
+            if test -f "$GITHUB_WORKSPACE/../Chronon3d/include/chronon3d/render_plan/camera_sample_provider.hpp" && \
+               test -f "$GITHUB_WORKSPACE/../Chronon3d/include/chronon3d/graphics/field2d.hpp"; then
+              echo "present=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "present=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Sibling Chronon3D does not expose the adapter headers; interop lane skipped."
+            fi
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Sibling Chronon3D unavailable; interop lane skipped."
@@ -72,3 +78,4 @@ jobs:
       - name: Test (adapter parity gates included)
         if: steps.sibling.outputs.present == 'true'
         run: ctest --preset dev --output-on-failure -R 'authoring|parity|canary|renderplan|bridge|geospatial|rig_pipeline'
+
