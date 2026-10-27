@@ -4,6 +4,8 @@
 #include "chrononmotion/math/MathUtils.hpp"
 #include "chrononmotion/math/Matrix4.hpp"
 #include "chrononmotion/math/Vector3.hpp"
+#include "chrononmotion/motion/Layer.hpp"
+#include "chrononmotion/motion/RenderPlanLowering.hpp"
 
 #include <algorithm>
 #include <array>
@@ -19,6 +21,12 @@
 
 namespace chrononmotion::motion::lowering_detail {
 using chronon3d::render_plan::CameraPlan;
+struct ResolvedPose {
+    Vector3 position{};
+    Vector3 scale{1.f, 1.f, 1.f};
+    Vector3 rotation{};
+    float opacity{1.f};
+};
 inline constexpr std::size_t kMaximumBakedTransformSamples = 65'536;
 
 inline void ensureFinite(float value, const char* name) {
@@ -66,6 +74,11 @@ inline chronon3d::render_plan::AnimationKeyframePlan makePlanKeyframe(chronon3d:
     kf.value = std::move(value);
     return kf;
 }
+
+[[nodiscard]] chronon3d::render_plan::RenderPlan lowerSamplesToRenderPlan(
+    float fps, std::size_t frameCount, const RenderPlanLoweringOptions& options,
+    const std::vector<Layer>& metadata,
+    const std::vector<std::vector<ResolvedPose>>& samples);
 
 
 } // namespace chrononmotion::motion::lowering_detail

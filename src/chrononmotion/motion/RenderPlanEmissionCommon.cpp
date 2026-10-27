@@ -75,6 +75,9 @@ const char* fieldGeneratorName(chronon3d::graphics::Field2DGenerator generator) 
                 case ShapeContentTypePlan::Grid: return "grid";
                 case ShapeContentTypePlan::DotGrid: return "dot_grid";
                 case ShapeContentTypePlan::DeviceFrame: return "device_frame";
+                case ShapeContentTypePlan::RingSegment: return "ring_segment";
+                case ShapeContentTypePlan::MonotoneLine: return "monotone_line";
+                case ShapeContentTypePlan::MonotoneChart: return "monotone_chart";
             }
             return "unknown";
         }

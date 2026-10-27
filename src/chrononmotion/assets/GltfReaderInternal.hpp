@@ -162,6 +162,9 @@ private:
     std::vector<float> floatAttribute(const Accessor& accessor, std::size_t expectedComponents,
                                       std::string_view semantic) const;
     void parseMeshes();
+    void parseMotionAnimations(const std::vector<JsonValue>& nodes,
+                               const std::vector<std::vector<std::size_t>>& nodeGeometry,
+                               GltfMotionAsset& result);
     static Vector3 vector3(const JsonValue& value, std::string_view where) {
         const auto& values = value.array(where);
         if (values.size() != 3) invalid(std::string(where) + " must contain three values");

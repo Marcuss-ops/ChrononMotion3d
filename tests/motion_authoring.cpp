@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 25930)
+Total output lines: 1699
+
 #include "chrononmotion/chrononmotion.hpp"
 #include "chrononmotion/motion/OfflineBaking.hpp"
 #include "motion_check.hpp"
@@ -5,7 +8,6 @@
 #include "chrononmotion/motion/RenderPlanEmission.hpp"
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
 #include "chrononmotion/motion/RigBaking.hpp"
-#include <chronon3d/render_plan/effect_presets.hpp>
 #include <chronon3d/render_plan/render_plan.hpp>
 
 using chronon3d::render_plan::TrackMattePlan;
@@ -662,407 +664,7 @@ void testTypedChronon3dLowering() {
     video.lifetime = FrameRange::between(0, 3);
     video.timeRemap.stretch = 2.f;
     RenderPlanLoweringOptions videoOptions;
-    videoOptions.width = 640;
-    videoOptions.height = 360;
-    videoOptions.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
-    chronon3d::render_plan::LayerPlan videoPlan;
-    videoPlan.type = chronon3d::render_plan::LayerType::Video;
-    videoPlan.source = "source-video";
-    videoOptions.contentLayers.emplace("31", videoPlan);
-    const auto slowedVideo = lowerToRenderPlan(videoScene, videoOptions);
-    check(slowedVideo.layers[0].time_remap && slowedVideo.layers[0].time_remap->speed == 0.5f,
-          "static Motion stretch lowers to the equivalent positive RenderPlan playback speed");
-    const std::string slowedJson = renderPlanToJson(slowedVideo);
-    const auto parsedSlowedJson = nlohmann::json::parse(slowedJson);
-    check(parsedSlowedJson.at("layers").at(0).at("time_remap").at("speed") == 0.5f,
-          "V3 emitter writes static video time-remap speed");
-
-    auto inlineMeshPlan = slowedVideo;
-    auto& meshLayer = inlineMeshPlan.layers[0];
-    meshLayer.id = "procedural-triangle";
-    meshLayer.type = chronon3d::render_plan::LayerType::Mesh;
-    meshLayer.source.clear();
-    meshLayer.time_remap.reset();
-    meshLayer.animation.reset();
-    chronon3d::render_plan::InlineMeshPlan triangle;
-    triangle.vertices = {
-        {{{-1.f, -1.f, 0.f}}, {{0.f, 0.f, 1.f}}, {{0.f, 0.f}}},
-        {{{ 1.f, -1.f, 0.f}}, {{0.f, 0.f, 1.f}}, {{1.f, 0.f}}},
-        {{{ 0.f,  1.f, 0.f}}, {{0.f, 0.f, 1.f}}, {{0.5f, 1.f}}},
-    };
-    triangle.indices = {0, 1, 2};
-    triangle.material = chronon3d::render_plan::InlineMeshMaterialPlan{};
-    triangle.material->base_color = std::array<float, 4>{0.1f, 0.6f, 0.3f, 1.f};
-    meshLayer.inline_mesh = triangle;
-    check(renderPlanEmissionProblem(inlineMeshPlan).empty(),
-          "the producer accepts bounded indexed inline mesh geometry with a typed material");
-    const std::string inlineMeshJson = renderPlanToJson(inlineMeshPlan);
-    const auto parsedInlineMesh = nlohmann::json::parse(inlineMeshJson);
-    check(parsedInlineMesh.at("layers").at(0).at("inline_mesh").at("vertices").size() == 3 &&
-          parsedInlineMesh.at("layers").at(0).at("inline_mesh").at("indices") == nlohmann::json{0, 1, 2},
-          "the emitter preserves procedural mesh vertices and triangle indices");
-    const auto& emittedBaseColor = parsedInlineMesh.at("layers").at(0).at("inline_mesh").at("material").at("base_color");
-    check(emittedBaseColor.size() == 4,
-          "the emitter preserves all four inline mesh base color components");
-    if (emittedBaseColor.size() == 4) {
-        checkNear(emittedBaseColor.at(0).get<float>(), 0.1f, 1e-6f,
-                  "the emitter preserves inline mesh base color red");
-        checkNear(emittedBaseColor.at(1).get<float>(), 0.6f, 1e-6f,
-                  "the emitter preserves inline mesh base color green");
-        checkNear(emittedBaseColor.at(2).get<float>(), 0.3f, 1e-6f,
-                  "the emitter preserves inline mesh base color blue");
-        checkNear(emittedBaseColor.at(3).get<float>(), 1.f, 1e-6f,
-                  "the emitter preserves inline mesh base color alpha");
-    }
-    check(renderPlanToJson(inlineMeshPlan) == inlineMeshJson,
-          "inline mesh emission is byte deterministic");
-    auto invalidMeshPlan = inlineMeshPlan;
-    invalidMeshPlan.layers[0].inline_mesh->indices[2] = 3;
-    check(!renderPlanEmissionProblem(invalidMeshPlan).empty() &&
-          throwsInvalid([&] { (void)renderPlanToJson(invalidMeshPlan); }),
-          "out-of-range inline mesh indices fail closed before emission");
-
-    MotionScene proceduralMeshScene("procedural mesh canary", 30.f);
-    auto proceduralTriangle = BufferGeometry::create();
-    proceduralTriangle->setAttribute("position", FloatBufferAttribute::create(
-        {-1.f, -1.f, 0.f, 1.f, -1.f, 0.f, 0.f, 1.f, 0.f}, 3));
-    proceduralTriangle->setAttribute("normal", FloatBufferAttribute::create(
-        {0.f, 0.f, 1.f, 0.f, 0.f, 1.f, 0.f, 0.f, 1.f}, 3));
-    proceduralTriangle->setAttribute("uv", FloatBufferAttribute::create(
-        {0.f, 0.f, 1.f, 0.f, 0.5f, 1.f}, 2));
-    proceduralTriangle->setIndex(std::vector<unsigned int>{0, 1, 2});
-    const MaterialDescriptor proceduralMaterial = MaterialDescriptor::lambert(9, Color(0x336699));
-    proceduralMeshScene.addMesh(71, "triangle", MeshAttachment{
-        .geometry = proceduralTriangle, .material = proceduralMaterial})
-        .alive(0, 1);
-    RenderPlanLoweringOptions proceduralMeshOptions;
-    proceduralMeshOptions.width = 64;
-    proceduralMeshOptions.height = 64;
-    proceduralMeshOptions.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
-    chronon3d::render_plan::LayerPlan proceduralMeshContent;
-    proceduralMeshContent.type = chronon3d::render_plan::LayerType::Mesh;
-    proceduralMeshOptions.contentLayers.emplace("71", proceduralMeshContent);
-    const auto loweredProceduralMesh = lowerToRenderPlan(proceduralMeshScene, proceduralMeshOptions);
-    check(loweredProceduralMesh.layers.size() == 1 && loweredProceduralMesh.layers[0].inline_mesh &&
-          loweredProceduralMesh.layers[0].inline_mesh->vertices.size() == 3 &&
-          loweredProceduralMesh.layers[0].inline_mesh->material.has_value(),
-          "MotionScene geometry and Lambert material lower into a native RenderPlan inline mesh");
-    Color expectedPlanMaterialColor = proceduralMaterial.baseColor;
-    expectedPlanMaterialColor.convertLinearToSRGB();
-    checkNear(loweredProceduralMesh.layers[0].inline_mesh->material->base_color->at(0),
-              expectedPlanMaterialColor.r, 1e-6f,
-              "mesh lowering converts the native material color to the RenderPlan sRGB contract");
-    checkNear(loweredProceduralMesh.layers[0].inline_mesh->material->base_color->at(3),
-              proceduralMaterial.opacity, 1e-6f,
-              "mesh lowering preserves the native material opacity");
-    const auto emittedProceduralMesh = nlohmann::json::parse(renderPlanToJson(loweredProceduralMesh));
-    check(emittedProceduralMesh.at("layers").at(0).at("inline_mesh").at("indices") ==
-              nlohmann::json{0, 1, 2},
-          "procedural MotionScene geometry reaches the emitted RenderPlan without a second adapter");
-    MotionScene pbrMeshScene("procedural pbr mesh contract", 30.f);
-    const MaterialDescriptor pbrDescriptor = MaterialDescriptor::pbr(10, Color(0x8090a0), 0.25f, 0.8f);
-    pbrMeshScene.addMesh(73, "pbr triangle", MeshAttachment{
-        .geometry = proceduralTriangle, .material = pbrDescriptor}).alive(0, 1);
-    proceduralMeshOptions.contentLayers.clear();
-    proceduralMeshOptions.contentLayers.emplace("73", proceduralMeshContent);
-    const auto loweredPbrMesh = lowerToRenderPlan(pbrMeshScene, proceduralMeshOptions);
-    check(loweredPbrMesh.layers.size() == 1 && loweredPbrMesh.layers[0].inline_mesh &&
-          loweredPbrMesh.layers[0].inline_mesh->material.has_value(),
-          "PBR MotionScene meshes remain expressible in the compact RenderPlan material contract");
-    if (loweredPbrMesh.layers.size() == 1 && loweredPbrMesh.layers[0].inline_mesh &&
-        loweredPbrMesh.layers[0].inline_mesh->material) {
-        checkNear(loweredPbrMesh.layers[0].inline_mesh->material->specular,
-                  pbrDescriptor.metalness, 1e-6f,
-                  "PBR lowering maps metalness into RenderPlan specular strength");
-        checkNear(loweredPbrMesh.layers[0].inline_mesh->material->shininess,
-                  1.f + (1.f - pbrDescriptor.roughness) * 1023.f, 1e-3f,
-                  "PBR lowering maps roughness into RenderPlan shininess approximation");
-    }
-    MotionScene animatedMeshScene("animated mesh contract", 30.f);
-    Layer& animatedMesh = animatedMeshScene.addMesh(
-        72, "animated triangle", MeshAttachment{.geometry = proceduralTriangle});
-    animatedMesh.alive(0, 1);
-    animatedMesh.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
-    animatedMesh.tracks.position.add(1.f / 30.f, Vector3(1.f, 0.f, 0.f));
-    proceduralMeshOptions.jobId = "animated_mesh_contract";
-    proceduralMeshOptions.contentLayers.clear();
-    proceduralMeshOptions.contentLayers.emplace("72", proceduralMeshContent);
-    check(throwsInvalid([&] { (void)lowerToRenderPlan(animatedMeshScene, proceduralMeshOptions); }),
-          "animated inline mesh transforms fail closed instead of emitting decoder-invalid tracks");
-
-    auto chalkPathPlan = slowedVideo;
-    auto& chalkLayer = chalkPathPlan.layers[0];
-    chalkLayer.id = "chalk-stroke";
-    chalkLayer.type = chronon3d::render_plan::LayerType::Shape;
-    chalkLayer.source.clear();
-    chalkLayer.time_remap.reset();
-    chalkLayer.animation.reset();
-    chalkLayer.size = {640.f, 360.f};
-    chalkLayer.size_dimensions = 2;
-    chronon3d::render_plan::ShapeContentPlan chalkPath;
-    chalkPath.type = chronon3d::render_plan::ShapeContentTypePlan::Path;
-    chalkPath.path = {
-        {chronon3d::render_plan::ShapePathCommandTypePlan::MoveTo, {20.f, 30.f}},
-        {chronon3d::render_plan::ShapePathCommandTypePlan::CubicTo, {120.f, 80.f},
-            {40.f, 5.f}, {90.f, 110.f}},
-    };
-    chronon3d::render_plan::StrokeStyle chalk;
-    chalk.color = "#F6F1D5";
-    chalk.width = 8.f;
-    chalk.cap = "round";
-    chalk.join = "round";
-    chalkPath.stroke = chalk;
-    chronon3d::render_plan::PathOperatorPlan trim;
-    trim.kind = chronon3d::render_plan::PathOperatorKindPlan::Trim;
-    trim.trim_animation = chronon3d::render_plan::AnimationTrackPlan{};
-    trim.trim_animation->property = "trim";
-    trim.trim_animation->keyframes = {
-        {chronon3d::Frame{0}, {0.f}}, {chronon3d::Frame{12}, {1.f}}};
-    chalkPath.operators.push_back(trim);
-    chalkLayer.shape = chalkPath;
-    check(renderPlanEmissionProblem(chalkPathPlan).empty(),
-          "a cubic chalk path with animated trim is accepted by the shared RenderPlan boundary");
-    const std::string chalkJson = renderPlanToJson(chalkPathPlan);
-    const auto emittedChalk = nlohmann::json::parse(chalkJson);
-    check(emittedChalk.at("layers").at(0).at("shape").at("path").at(1).at("type") == "cubic_to" &&
-          emittedChalk.at("layers").at(0).at("shape").at("path").at(1).at("control2") ==
-              nlohmann::json{90.f, 110.f},
-          "the shape writer preserves cubic endpoints and both Bézier controls");
-    check(emittedChalk.at("layers").at(0).at("shape").at("stroke").at("width") == 8.f &&
-          emittedChalk.at("layers").at(0).at("shape").at("operators").at(0).at("params")
-              .at("animation").at("keyframes").size() == 2,
-          "the shape writer preserves chalk stroke style and the trim reveal track");
-    auto unsupportedShapePlan = chalkPathPlan;
-    unsupportedShapePlan.layers[0].shape->operators[0].kind =
-        chronon3d::render_plan::PathOperatorKindPlan::Repeater;
-    check(!renderPlanEmissionProblem(unsupportedShapePlan).empty(),
-          "unsupported path operators are refused instead of silently discarded");
-    const auto checkProceduralShapeEmission = [&](chronon3d::render_plan::ShapeContentPlan shape,
-                                                   const char* expectedType) {
-        auto plan = chalkPathPlan;
-        plan.layers[0].shape = std::move(shape);
-        const std::string problem = renderPlanEmissionProblem(plan);
-        check(problem.empty(), problem.empty() ? "procedural shape is accepted" : problem.c_str());
-        if (problem.empty()) {
-            const auto json = nlohmann::json::parse(renderPlanToJson(plan));
-            check(json.at("layers").at(0).at("shape").at("type") == expectedType,
-                  "procedural shape kind survives typed-plan JSON emission");
-        }
-    };
-    chronon3d::render_plan::ShapeContentPlan proceduralShape;
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::Line;
-    proceduralShape.path = chalkPath.path;
-    proceduralShape.stroke = chalk;
-    checkProceduralShapeEmission(proceduralShape, "line");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::Rect;
-    proceduralShape.fill_color = std::array<float, 4>{0.1f, 0.2f, 0.3f, 1.f};
-    checkProceduralShapeEmission(proceduralShape, "rect");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::RoundedRect;
-    proceduralShape.corner_radius = std::array<float, 4>{8.f, 12.f, 8.f, 12.f};
-    proceduralShape.fill_color = std::array<float, 4>{0.1f, 0.2f, 0.3f, 1.f};
-    checkProceduralShapeEmission(proceduralShape, "rounded_rect");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::Ellipse;
-    checkProceduralShapeEmission(proceduralShape, "ellipse");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::Star;
-    proceduralShape.points = 7;
-    checkProceduralShapeEmission(proceduralShape, "star");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::Polygon;
-    proceduralShape.points = 6;
-    checkProceduralShapeEmission(proceduralShape, "polygon");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::Arrow;
-    checkProceduralShapeEmission(proceduralShape, "arrow");
-    proceduralShape.arrow_direction = "left";
-    auto unrepresentableArrow = chalkPathPlan;
-    unrepresentableArrow.layers[0].shape = proceduralShape;
-    check(!renderPlanEmissionProblem(unrepresentableArrow).empty(),
-          "arrow direction is refused because the consumer schema has no matching field");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::Arc;
-    proceduralShape.stroke = chalk;
-    checkProceduralShapeEmission(proceduralShape, "arc");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::Grid;
-    proceduralShape.stroke = chalk;
-    checkProceduralShapeEmission(proceduralShape, "grid");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::DotGrid;
-    proceduralShape.fill_color = std::array<float, 4>{1.f, 1.f, 1.f, 1.f};
-    checkProceduralShapeEmission(proceduralShape, "dot_grid");
-    proceduralShape = {};
-    proceduralShape.type = chronon3d::render_plan::ShapeContentTypePlan::DeviceFrame;
-    proceduralShape.fill_color = std::array<float, 4>{0.08f, 0.09f, 0.1f, 1.f};
-    proceduralShape.device_frame_kind = chronon3d::render_plan::DeviceFrameKindPlan::Browser;
-    checkProceduralShapeEmission(proceduralShape, "device_frame");
-
-    using FieldPlan = chronon3d::render_plan::ShapeContentPlan;
-    using FieldType = chronon3d::render_plan::ShapeContentTypePlan;
-    chronon3d::render_plan::ShapeContentPlan fieldShape;
-    fieldShape.type = FieldType::Rect;
-    fieldShape.field = chronon3d::graphics::Field2D{
-        .generator = chronon3d::graphics::Field2DGenerator::Fractal,
-        .seed = 73, .frequency = 4.f, .octaves = 5};
-    fieldShape.field_ramp = chronon3d::graphics::GradientDefinition::linear(
-        {0.f, 0.5f}, {1.f, 0.5f}, {{0.f, {0.1f, 0.05f, 0.2f, 0.2f}},
-                                  {0.5f, {0.6f, 0.2f, 0.8f, 0.8f}},
-                                  {1.f, {0.9f, 0.8f, 1.f, 1.f}}});
-    fieldShape.field_render_scale = 2;
-    fieldShape.field_drift = glm::vec2{0.02f, -0.01f};
-    auto fieldPlan = chalkPathPlan;
-    fieldPlan.layers[0].shape = fieldShape;
-    const std::string fieldProblem = renderPlanEmissionProblem(fieldPlan);
-    check(fieldProblem.empty(), fieldProblem.empty() ? "native Field2D fill is accepted" : fieldProblem.c_str());
-    if (fieldProblem.empty()) {
-        const auto json = nlohmann::json::parse(renderPlanToJson(fieldPlan));
-        const auto& fill = json.at("layers").at(0).at("shape").at("fill");
-        check(fill.at("type") == "field", "Field2D type stays inside the closed fill payload");
-        check(fill.at("field").at("seed") == 73, "Field2D source seed stays inside the closed fill payload");
-        check(fill.at("field_ramp").at("color_stops").size() == 3, "Field2D ramp stays inside the closed fill payload");
-        check(fill.at("field_render_scale") == 2, "Field2D render scale stays inside the closed fill payload");
-        const auto& drift = fill.at("field_drift");
-        check(drift.is_array() && drift.size() == 2 &&
-              std::abs(drift.at(0).get<float>() - 0.02f) < 1e-6f &&
-              std::abs(drift.at(1).get<float>() + 0.01f) < 1e-6f,
-              "Field2D drift stays inside the closed fill payload");
-    }
-    chronon3d::render_plan::ShapeContentPlan meshShape;
-    meshShape.type = FieldType::Rect;
-    meshShape.gradient_mesh = chronon3d::graphics::GradientMesh::four_corner(
-        {0.1f, 0.1f, 0.2f, 1.f}, {0.8f, 0.1f, 0.3f, 1.f},
-        {0.1f, 0.7f, 0.8f, 1.f}, {0.9f, 0.8f, 1.f, 1.f});
-    auto meshFillPlan = chalkPathPlan;
-    meshFillPlan.layers[0].shape = meshShape;
-    const std::string meshProblem = renderPlanEmissionProblem(meshFillPlan);
-    check(meshProblem.empty(), meshProblem.empty() ? "native GradientMesh fill is accepted" : meshProblem.c_str());
-    if (meshProblem.empty()) {
-        const auto json = nlohmann::json::parse(renderPlanToJson(meshFillPlan));
-        check(json.at("layers").at(0).at("shape").at("fill").at("mesh").at("nodes").size() == 4,
-              "GradientMesh nodes are preserved in the renderer's nested fill envelope");
-    }
-
-    auto chalkDustPlan = chalkPathPlan;
-    chalkDustPlan.canvas.duration = chronon3d::Frame{13};
-    chalkDustPlan.layers[0].duration_frames = chronon3d::Frame{13};
-    auto dustLayer = slowedVideo.layers[0];
-    dustLayer.id = "chalk-dust";
-    dustLayer.type = chronon3d::render_plan::LayerType::Particles;
-    dustLayer.source.clear();
-    dustLayer.asset.clear();
-    dustLayer.time_remap.reset();
-    dustLayer.animation.reset();
-    dustLayer.duration_frames = chronon3d::Frame{13};
-    chronon3d::ParticleEmitterParams dust;
-    dust.count = 48;
-    dust.seed = 0xC4A1U;
-    dust.emitter_size = {12.f, 4.f};
-    dust.velocity_min = {-2.f, -15.f};
-    dust.velocity_max = {2.f, -4.f};
-    dust.lifetime_min = 0.2f;
-    dust.lifetime_max = 0.8f;
-    dust.size_min = 0.5f;
-    dust.size_max = 2.5f;
-    dust.gravity = 8.f;
-    dust.turbulence = 0.15f;
-    dust.shape = chronon3d::EmitterShape::Path;
-    dust.path_id = "chalk-stroke";
-    dust.path_points = {{0.f, 0.f}, {24.f, 6.f}, {48.f, 0.f}};
-    dust.sprite_asset = "assets/chalk_dust.png";
-    dust.sprite_scale_min = 0.8f;
-    dust.sprite_scale_max = 1.2f;
-    dust.rotation_min = -0.5f;
-    dust.rotation_max = 0.5f;
-    dust.angular_velocity_min = -1.f;
-    dust.angular_velocity_max = 1.f;
-    dust.blend_mode = chronon3d::BlendMode::Add;
-    dust.color_ramp = chronon3d::graphics::GradientDefinition::linear(
-        {0.f, 0.f}, {1.f, 0.f}, {{0.f, {1.f, 0.95f, 0.75f, 0.85f}},
-                                {1.f, {0.8f, 0.75f, 0.6f, 0.f}}});
-    dustLayer.particle_emitter = dust;
-    chalkDustPlan.layers.push_back(dustLayer);
-    check(renderPlanEmissionProblem(chalkDustPlan).empty(),
-          "the deterministic chalk-particle payload is accepted by RenderPlan v3");
-    const std::string dustJson = renderPlanToJson(chalkDustPlan);
-    if (const char* canaryPath = std::getenv("CHRONONMOTION_RENDER_PLAN_CANARY")) {
-        auto canaryPlan = chalkDustPlan;
-        canaryPlan.layers[1].particle_emitter->sprite_asset.clear();
-        std::ofstream canaryFile(canaryPath, std::ios::binary);
-        if (!canaryFile || !(canaryFile << renderPlanToJson(canaryPlan)))
-            throw std::runtime_error("cannot write requested RenderPlan consumer canary");
-    }
-    const auto emittedDust = nlohmann::json::parse(dustJson).at("layers").at(1).at("particle_emitter");
-    check(emittedDust.at("count") == 48 && emittedDust.at("seed") == 0xC4A1U &&
-          emittedDust.at("shape") == "path" && emittedDust.at("path_id") == "chalk-stroke" &&
-          emittedDust.at("path_points").size() == 3,
-          "particle count, seed, path and resolved points reach the renderer payload");
-    check(emittedDust.at("color_ramp").size() == 2 &&
-          emittedDust.at("sprite_asset") == "assets/chalk_dust.png" &&
-          emittedDust.at("angular_velocity") == nlohmann::json{-1.f, 1.f},
-          "particle color, sprite and rotation ranges survive emission");
-    check(renderPlanToJson(chalkDustPlan) == dustJson,
-          "seeded particle emission is byte deterministic");
-    auto legacyDustPlan = slowedVideo;
-    legacyDustPlan.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
-    legacyDustPlan.layers[0].type = chronon3d::render_plan::LayerType::Particles;
-    legacyDustPlan.layers[0].source.clear();
-    legacyDustPlan.layers[0].time_remap.reset();
-    legacyDustPlan.layers[0].animation.reset();
-    legacyDustPlan.layers[0].particle_emitter = dust;
-    check(!renderPlanEmissionProblem(legacyDustPlan).empty(),
-          "V3-only particle path and sprite fields are rejected under the V2 schema");
-
-    auto lightPlan = slowedVideo;
-    lightPlan.layers[0].id = "chalk-light";
-    lightPlan.layers[0].type = chronon3d::render_plan::LayerType::Light;
-    lightPlan.layers[0].source.clear();
-    lightPlan.layers[0].time_remap.reset();
-    lightPlan.layers[0].animation.reset();
-    lightPlan.layers[0].light = chronon3d::render_plan::LightLayerPlan{};
-    check(renderPlanEmissionProblem(lightPlan).empty(),
-          "a typed scene light is accepted by the common RenderPlan emitter");
-    const auto emittedLight = nlohmann::json::parse(renderPlanToJson(lightPlan))
-                                  .at("layers").at(0).at("light");
-    check(emittedLight.at("radius") == 256.f && emittedLight.at("intensity") == 1.f &&
-          emittedLight.at("color") == "#FFFFFF",
-          "light radius, intensity and RGB color are preserved in the consumer's hex contract");
-    auto invalidLightPlan = lightPlan;
-    invalidLightPlan.layers[0].light->color[0] = 0.123f;
-    check(!renderPlanEmissionProblem(invalidLightPlan).empty(),
-          "light colors that the hexadecimal consumer contract would quantize are refused");
-
-    auto safeAreaPlan = slowedVideo;
-    safeAreaPlan.layers[0].safe_insets = std::array<float, 4>{80.f, 60.f, 220.f, 60.f};
-    check(renderPlanEmissionProblem(safeAreaPlan).empty(),
-          "V3 safe-area insets are a supported typed adapter field");
-    const auto safeAreaJson = nlohmann::json::parse(renderPlanToJson(safeAreaPlan));
-    check(safeAreaJson.at("layers").at(0).at("safe_insets") ==
-              nlohmann::json{{"top", 80.f}, {"right", 60.f}, {"bottom", 220.f}, {"left", 60.f}},
-          "V3 emitter preserves all four safe-area insets by name");
-    auto invalidSafeAreaPlan = safeAreaPlan;
-    invalidSafeAreaPlan.layers[0].safe_insets->at(0) = -1.f;
-    check(!renderPlanEmissionProblem(invalidSafeAreaPlan).empty(),
-          "negative safe-area insets fail closed at the emission boundary");
-    auto legacySafeAreaPlan = safeAreaPlan;
-    legacySafeAreaPlan.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
-    check(!renderPlanEmissionProblem(legacySafeAreaPlan).empty(),
-          "safe-area insets fail closed when attached to the V2 schema");
-
-    chronon3d::render_plan::LayerPlan semanticText;
-    semanticText.id = "semantic";
-    semanticText.type = chronon3d::render_plan::LayerType::Text;
-    semanticText.text = "Hi future";
-    semanticText.style = chronon3d::render_plan::LayerStylePlan{};
-    semanticText.style->font = "fonts/roboto"; // content identity only; no extension to load
-    semanticText.style->font_size = 32.f;
-    semanticText.style->fill = "#FFFFFF";
-    chronon3d::render_plan::TextSelectorPlan selector;
-    selector.unit = "word";
-    selector.shape = "square";
-    selector.amount.keyframes = {{chronon3d::Frame{0}, {0.f}},
+    video…5930 tokens truncated…t.keyframes = {{chronon3d::Frame{0}, {0.f}},
                                  {chronon3d::Frame{8}, {100.f}}};
     chronon3d::render_plan::TextAnimatorPlan animator;
     animator.id = "word-highlight";
@@ -1384,14 +986,22 @@ void testTypedChronon3dLowering() {
           static_cast<float>(styledImageJson["layers"][0]["crop"]["origin"][0].get<double>()) == 0.1f &&
           static_cast<float>(styledImageJson["layers"][0]["crop"]["origin"][1].get<double>()) == 0.05f,
           "RenderPlan emission preserves image frame, grade, crop mirror, seeded grain, and vignette");
-    auto leakProfile = chronon3d::render_plan::effect_presets::light_leak::LightLeakProfile{};
-    leakProfile.shape = chronon3d::render_plan::effect_presets::light_leak::LightLeakShape::Edge;
-    leakProfile.edge = chronon3d::render_plan::effect_presets::light_leak::LightLeakEdge::Top;
-    leakProfile.softness = 0.f;
-    const auto leakLayer = chronon3d::render_plan::effect_presets::light_leak::LightLeakResolver::resolve(
-        leakProfile, {1920.f, 1080.f}, "motion-authoring-light-leak");
     auto leakPlan = styledImagePlan;
-    leakPlan.layers = {leakLayer};
+    chronon3d::render_plan::LayerPlan leakLayer;
+    leakLayer.id = "motion-authoring-light-leak";
+    leakLayer.type = chronon3d::render_plan::LayerType::Shape;
+    leakLayer.size = {1920.f, 1080.f};
+    leakLayer.size_dimensions = 2;
+    chronon3d::render_plan::ShapeContentPlan radialFill;
+    radialFill.type = chronon3d::render_plan::ShapeContentTypePlan::Ellipse;
+    chronon3d::graphics::GradientDefinition leakGradient;
+    leakGradient.type = chronon3d::graphics::GradientType::Radial;
+    leakGradient.color_stops = {
+        {0.f, chronon3d::Color{1.f, 0.82f, 0.55f, 1.f}},
+        {1.f, chronon3d::Color{0.f, 0.18f, 0.42f, 0.f}}};
+    radialFill.gradient = std::move(leakGradient);
+    leakLayer.shape = std::move(radialFill);
+    leakPlan.layers = {std::move(leakLayer)};
     leakPlan.canvas.duration = chronon3d::Frame{2};
     leakPlan.layers.front().duration_frames = chronon3d::Frame{2};
     leakPlan.layers.front().animation = chronon3d::render_plan::AnimationPlan{};
@@ -1631,7 +1241,7 @@ void testTypedChronon3dLowering() {
           "RenderPlan JSON emits complete camera samples without legacy property tracks");
     CameraRig dofHandoffRig(27, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     dofHandoffRig.setPosition({0.f, 0.f, -8.f}).setFocusDistance(480.f);
-    dofHandoffRig.fStopTrack().add(0.f, 0.f).add(1.f, 11.2f);
+    dofHandoffRig.fStopTrack().add(0.f, 0.7f).add(1.f, 11.2f);
     auto dofHandoffOptions = animatedDofOptions;
     dofHandoffOptions.cameraRig = &dofHandoffRig;
     const auto dofHandoffPlan = lowerToRenderPlan(cameraOnlyScene, dofHandoffOptions);
