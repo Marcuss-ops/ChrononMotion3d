@@ -6,15 +6,19 @@ endif()
 
 set(_schema_path "${CHRONON3D_ROOT}/schemas/json/chronon.render-plan.v2.schema.json")
 set(_plan_header "${CHRONON3D_ROOT}/include/chronon3d/render_plan/render_plan.hpp")
+set(_plan_layer_types "${CHRONON3D_ROOT}/include/chronon3d/render_plan/render_plan_layer_types.hpp")
 set(_decoder "${CHRONON3D_ROOT}/src/render_plan/render_plan_decoder_support.cpp")
 set(_fingerprint "${CHRONON3D_ROOT}/src/render_plan/fingerprint_values.cpp")
 set(_motion_emitter "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanEmission.cpp")
 set(_motion_lowering "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLowering.cpp")
+set(_motion_lowering_camera "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLoweringCamera.cpp")
+set(_motion_lowering_samples "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLoweringSamples.cpp")
 set(_chronon_compiler "${CHRONON3D_ROOT}/src/render_plan/render_plan_compiler_animation_utils.cpp")
 
 foreach(_path IN ITEMS
-        "${_schema_path}" "${_plan_header}" "${_decoder}" "${_fingerprint}"
-        "${_motion_emitter}" "${_motion_lowering}" "${_chronon_compiler}")
+        "${_schema_path}" "${_plan_header}" "${_plan_layer_types}" "${_decoder}" "${_fingerprint}"
+        "${_motion_emitter}" "${_motion_lowering}" "${_motion_lowering_camera}"
+        "${_motion_lowering_samples}" "${_chronon_compiler}")
     if(NOT EXISTS "${_path}")
         message(FATAL_ERROR "RenderPlan camera parity input does not exist: ${_path}")
     endif()
@@ -22,10 +26,15 @@ endforeach()
 
 file(READ "${_schema_path}" _schema)
 file(READ "${_plan_header}" _plan)
+file(READ "${_plan_layer_types}" _plan_layer_text)
+string(APPEND _plan "\n${_plan_layer_text}")
 file(READ "${_decoder}" _decoder_text)
 file(READ "${_fingerprint}" _fingerprint_text)
 file(READ "${_motion_emitter}" _emitter_text)
 file(READ "${_motion_lowering}" _lowering_text)
+file(READ "${_motion_lowering_camera}" _lowering_camera_text)
+file(READ "${_motion_lowering_samples}" _lowering_samples_text)
+string(APPEND _lowering_text "\n${_lowering_camera_text}\n${_lowering_samples_text}")
 file(READ "${_chronon_compiler}" _compiler_text)
 
 string(JSON _dof_properties ERROR_VARIABLE _json_error
