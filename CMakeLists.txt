@@ -92,6 +92,9 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/SceneExportContent.cpp
         src/chrononmotion/motion/SceneExportTracks.cpp
         src/chrononmotion/motion/SceneImport.cpp
+        src/chrononmotion/motion/SceneImportLayers.cpp
+        src/chrononmotion/motion/SceneImportLights.cpp
+        src/chrononmotion/motion/SceneImportInternal.hpp
         src/chrononmotion/motion/Interaction.cpp
         src/chrononmotion/motion/RigRetarget.cpp
         src/chrononmotion/motion/MotionPath.cpp
@@ -382,6 +385,7 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_authoring tests/motion_authoring.cpp)
     target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion)
     if(CHRONON3D_INCLUDE_DIR)
+        target_sources(chrononmotion_authoring PRIVATE tests/motion_authoring_renderplan.cpp)
         target_link_libraries(chrononmotion_authoring PRIVATE chrononmotion_chronon3d_adapter)
     endif()
     add_test(NAME chrononmotion_authoring COMMAND chrononmotion_authoring)

@@ -6,6 +6,7 @@
 
 #include "chrononmotion/chrononmotion.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -128,8 +129,26 @@ namespace {
 
 int main(int argc, char** argv) {
     std::string outPath = "camera_motion_trajectories.json";
-    if (argc > 1) {
-        outPath = argv[1];
+    std::string selectedScene;
+    bool listScenes = false;
+    for (int i = 1; i < argc; ++i) {
+        const std::string argument = argv[i];
+        if (argument == "--list") {
+            listScenes = true;
+        } else if (argument == "--all") {
+            selectedScene.clear();
+        } else if (argument == "--scene" && i + 1 < argc) {
+            selectedScene = argv[++i];
+        } else if (!argument.starts_with("--") && outPath == "camera_motion_trajectories.json") {
+            outPath = argument;
+        } else {
+            std::cerr << "usage: chrononmotion_export_camera_v1 [--all | --scene ID | --list] [output.json]\n";
+            return 2;
+        }
+    }
+    if (listScenes && !selectedScene.empty()) {
+        std::cerr << "--list cannot be combined with --scene\n";
+        return 2;
     }
 
     std::vector<SceneExport> suite;
@@ -945,6 +964,21 @@ int main(int argc, char** argv) {
         suite.push_back(s);
     }
 
+    if (listScenes) {
+        for (const auto& scene : suite) std::cout << scene.id << "\t" << scene.title << '\n';
+        return 0;
+    }
+    if (!selectedScene.empty()) {
+        const auto selected = std::find_if(suite.begin(), suite.end(), [&](const SceneExport& scene) {
+            return scene.id == selectedScene;
+        });
+        if (selected == suite.end()) {
+            std::cerr << "unknown scene id: " << selectedScene << "\n";
+            return 2;
+        }
+        SceneExport scene = std::move(*selected);
+        suite = {std::move(scene)};
+    }
     writeJson(outPath, suite);
     return 0;
 }
