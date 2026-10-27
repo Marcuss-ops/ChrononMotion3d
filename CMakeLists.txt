@@ -352,7 +352,13 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_link_libraries(chrononmotion_eye_trace PRIVATE chrononmotion)
     add_test(NAME chrononmotion_eye_trace COMMAND chrononmotion_eye_trace)
 
-    add_executable(chrononmotion_export_camera_v1 tools/export_camera_trajectories.cpp)
+    add_executable(chrononmotion_export_camera_v1
+            tools/export_camera_trajectories.cpp
+            tools/CameraTrajectoryExportScenes1.cpp
+            tools/CameraTrajectoryExportScenes2.cpp
+            tools/CameraTrajectoryExportScenes3.cpp
+            tools/CameraTrajectoryExportScenes4.cpp
+            tools/CameraTrajectoryExportInternal.hpp)
     target_link_libraries(chrononmotion_export_camera_v1 PRIVATE chrononmotion)
 
     # The innovation animations: eye-trace handoff/director, multi-aspect
