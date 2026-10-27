@@ -1,4 +1,5 @@
 #include "RenderPlanLoweringInternal.hpp"
+#include "chrononmotion/motion/RenderPlanLowering.hpp"
 #include "chrononmotion/math/Finite.hpp"
 #include "chrononmotion/motion/CompiledScene.hpp"
 #include "chrononmotion/motion/Layer.hpp"
@@ -131,7 +132,8 @@ void applyRigGeometryBake(chronon3d::render_plan::LayerPlan& layer,
     layer = std::move(candidate);
 }
 
-std::vector<ShapePathCommandPlan> lowerBakedPath(const BakedPath& path) {
+std::vector<chronon3d::render_plan::ShapePathCommandPlan> lowerBakedPath(const BakedPath& path) {
+    using namespace chronon3d::render_plan;
     if (path.empty() || path.size() > 65536 || path.front().type != BakedPathCommandType::MoveTo)
         throw std::invalid_argument("lowerBakedPath: path must begin with moveto and contain 1..65536 commands");
     for (std::size_t index = 0; index < path.size(); ++index) {

@@ -1,3 +1,4 @@
+#include "RenderPlanLoweringInternal.hpp"
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
 #include "chrononmotion/math/Finite.hpp"
 
@@ -21,9 +22,16 @@
 #include <utility>
 
 namespace chrononmotion::motion {
-namespace chrononmotion::motion {
+using namespace lowering_detail;
 namespace {
 using namespace chronon3d::render_plan;
+struct ResolvedPose {
+    Vector3 position{};
+    Vector3 scale{1.f, 1.f, 1.f};
+    Vector3 rotation{};
+    float opacity{1.f};
+};
+
 bool samePose(const ResolvedPose& a, const ResolvedPose& b) {
     return a.position.x == b.position.x && a.position.y == b.position.y && a.position.z == b.position.z &&
            a.scale.x == b.scale.x && a.scale.y == b.scale.y && a.scale.z == b.scale.z &&

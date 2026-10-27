@@ -53,42 +53,6 @@ namespace chrononmotion::motion {
         using chronon3d::render_plan::ShapePathCommandTypePlan;
 
 
-        void writeFloats(detail::Writer& writer, const float* values, std::size_t count) {
-
-            writer.beginArray();
-            for (std::size_t i = 0; i < count; ++i) {
-                writer.item();
-                writer.number(values[i]);
-            }
-            writer.endArray();
-        }
-
-        template<std::size_t N>
-        void writeFloats(detail::Writer& writer, const std::array<float, N>& values, std::size_t count) {
-
-            writeFloats(writer, values.data(), count);
-        }
-
-        void writeKeyframes(detail::Writer& writer, const std::vector<AnimationKeyframePlan>& keyframes,
-                            bool scalar) {
-
-            writer.beginArray();
-            for (const AnimationKeyframePlan& key : keyframes) {
-                writer.item();
-                writer.beginObject();
-                writer.key("frame");
-                writer.integer(key.frame.integral());
-                writer.key("value");
-                if (scalar) {
-                    // A camera channel is one number; a layer channel is the
-                    // property's own arity. An empty value is the channel's zero,
-                    // which is what the decoder would have produced for it.
-                    writer.number(key.value.empty() ? 0.f : key.value.front());
-                } else {
-                    writeFloats(writer, key.value.data(), key.value.size());
-                }
-                writer.endObject();
-
         void writeAnimation(detail::Writer& writer, const AnimationPlan& animation) {
             writer.beginObject();
             writer.key("tracks");

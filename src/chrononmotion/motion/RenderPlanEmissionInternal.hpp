@@ -1,9 +1,12 @@
 #pragma once
 
+#include "JsonWriter.hpp"
+
 #include <chronon3d/render_plan/render_plan.hpp>
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <initializer_list>
 #include <optional>
 #include <string>
@@ -15,12 +18,30 @@
 #include <vector>
 #include <string_view>
 
+namespace chrononmotion::motion {
+// Shared bindings for the emission split TUs (the pre-split translation unit
+// kept these in its anonymous namespace). Tracks is the internal shorthand for
+// the layer effect-parameter track list.
+using chronon3d::render_plan::AnimationPlan;
+using chronon3d::render_plan::AnimationTrackPlan;
+using chronon3d::render_plan::CameraPlan;
+using chronon3d::render_plan::CameraSamplePlan;
+using chronon3d::render_plan::InlineMeshPlan;
+using chronon3d::render_plan::LayerPlan;
+using chronon3d::render_plan::LayerStylePlan;
+using chronon3d::render_plan::ShapeContentPlan;
+using chronon3d::render_plan::ShapePathCommandPlan;
+using Tracks = std::vector<chronon3d::render_plan::EffectParamTrackPlan>;
+} // namespace chrononmotion::motion
+
 namespace chrononmotion::motion::detail {
 [[nodiscard]] const char* layerTypeName(chronon3d::render_plan::LayerType type);
 [[nodiscard]] const char* shapeTypeName(chronon3d::render_plan::ShapeContentTypePlan type);
 [[nodiscard]] const char* blendModeName(chronon3d::BlendMode mode);
 [[nodiscard]] const char* fitName(chronon3d::render_plan::FitMode fit);
 [[nodiscard]] const char* outputFormatName(chronon3d::render_plan::OutputFormat format);
+[[nodiscard]] const char* pathCommandTypeName(chronon3d::render_plan::ShapePathCommandTypePlan type);
+[[nodiscard]] const char* fieldGeneratorName(chronon3d::graphics::Field2DGenerator generator);
 [[nodiscard]] std::optional<std::string> textSpanColorHex(const chronon3d::Color& color);
 [[nodiscard]] std::string render_plan_emission_problem(const chronon3d::render_plan::RenderPlan& plan);
 [[nodiscard]] std::string emissionCameraProblem(const chronon3d::render_plan::CameraPlan& camera);
@@ -45,10 +66,39 @@ void writeGradientDefinition(detail::Writer& writer, const chronon3d::graphics::
 void writeShape(detail::Writer& writer, const ShapeContentPlan& shape);
 void writeParticleEmitter(detail::Writer& writer, const chronon3d::ParticleEmitterParams& particles, const std::string& schema);
 void writeLight(detail::Writer& writer, const chronon3d::render_plan::LightLayerPlan& light);
-void writeAnimation(detail::Writer& writer, const AnimationPlan& animation);
-void writeCamera(detail::Writer& writer, const CameraPlan& camera);
-void writeCameraSamples(detail::Writer& writer, const std::vector<CameraSamplePlan>& samples);
-void writeLayer(detail::Writer& writer, const LayerPlan& layer, const std::string& schema);
+
+inline void writeFloats(detail::Writer& writer, const float* values, std::size_t count) {
+    writer.beginArray();
+    for (std::size_t i = 0; i < count; ++i) {
+        writer.item();
+        writer.number(values[i]);
+    }
+    writer.endArray();
+}
+
+template<std::size_t N>
+inline void writeFloats(detail::Writer& writer, const std::array<float, N>& values,
+                        std::size_t count) {
+    writeFloats(writer, values.data(), count);
+}
+
+inline void writeKeyframes(
+    detail::Writer& writer,
+    const std::vector<chronon3d::render_plan::AnimationKeyframePlan>& keyframes,
+    bool scalar) {
+    writer.beginArray();
+    for (const auto& key : keyframes) {
+        writer.item();
+        writer.beginObject();
+        writer.key("frame");
+        writer.integer(key.frame.integral());
+        writer.key("value");
+        if (scalar) writer.number(key.value.empty() ? 0.f : key.value.front());
+        else writeFloats(writer, key.value.data(), key.value.size());
+        writer.endObject();
+    }
+    writer.endArray();
+}
 [[nodiscard]] std::string layerOwner(const chronon3d::render_plan::LayerPlan& layer);
 [[nodiscard]] std::string styleProblem(const chronon3d::render_plan::LayerPlan& layer);
 [[nodiscard]] std::string effectProblem(const chronon3d::render_plan::LayerPlan& layer);

@@ -1,4 +1,5 @@
 #include "RenderPlanLoweringInternal.hpp"
+#include <chronon3d/render_plan/camera_sample_provider.hpp>
 #include "chrononmotion/math/Finite.hpp"
 #include "chrononmotion/motion/CompiledScene.hpp"
 #include "chrononmotion/motion/Layer.hpp"
@@ -16,6 +17,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 using namespace chrononmotion::motion::lowering_detail;
 
