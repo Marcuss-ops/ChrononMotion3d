@@ -1,6 +1,7 @@
 // Per-layer write contract of the emitter.
 
 #include "RenderPlanEmissionInternal.hpp"
+#include "chrononmotion/math/Finite.hpp"
 
 #include <chronon3d/render_plan/color_utils.hpp>
 #include <chronon3d/effects/effect_param_animation.hpp>
@@ -782,7 +783,7 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 if (!animation.empty()) return animation;
             }
             return {};
-        }}
+        }
 
 
 } // namespace chrononmotion::motion::detail

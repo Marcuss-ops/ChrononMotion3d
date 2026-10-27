@@ -34,7 +34,8 @@
 #include <tuple>
 #include <vector>
 
-    namespace {
+namespace chrononmotion::motion {
+namespace {
 
         using chronon3d::render_plan::AnimationKeyframePlan;
         using chronon3d::render_plan::AnimationPlan;
@@ -118,7 +119,7 @@
 
             std::uint64_t inlineMeshBytes = 0;
             for (const LayerPlan& layer : plan.layers) {
-                const std::string problem = layerProblem(layer, plan.schema);
+                const std::string problem = detail::layerProblem(layer, plan.schema);
                 if (!problem.empty()) return problem;
                 if (layer.inline_mesh) {
                     constexpr std::uint64_t vertexBytes = sizeof(chronon3d::render_plan::InlineMeshVertex);
@@ -143,7 +144,7 @@
 
 
 
-    } // namespace
+} // namespace
 
     namespace detail {
     std::string render_plan_emission_problem(const chronon3d::render_plan::RenderPlan& plan) {

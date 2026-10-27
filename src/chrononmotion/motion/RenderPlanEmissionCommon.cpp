@@ -11,6 +11,40 @@ using chronon3d::render_plan::FitMode;
 using chronon3d::render_plan::LayerType;
 using chronon3d::render_plan::OutputFormat;
 using chronon3d::render_plan::ShapeContentTypePlan;
+
+const char* pathCommandTypeName(chronon3d::render_plan::ShapePathCommandTypePlan type) {
+    using Type = chronon3d::render_plan::ShapePathCommandTypePlan;
+    switch (type) {
+        case Type::MoveTo: return "move_to";
+        case Type::LineTo: return "line_to";
+        case Type::QuadraticTo: return "quadratic_to";
+        case Type::CubicTo: return "cubic_to";
+        case Type::Close: return "close";
+    }
+    return "unsupported";
+}
+
+const char* fieldGeneratorName(chronon3d::graphics::Field2DGenerator generator) {
+    using Generator = chronon3d::graphics::Field2DGenerator;
+    switch (generator) {
+        case Generator::Perlin: return "perlin";
+        case Generator::Simplex: return "simplex";
+        case Generator::Fractal: return "fractal";
+        case Generator::Cellular: return "cellular";
+        case Generator::Grid: return "grid";
+        case Generator::Checker: return "checker";
+        case Generator::Dots: return "dots";
+        case Generator::Stripes: return "stripes";
+        case Generator::Rings: return "rings";
+        case Generator::Linear: return "linear";
+        case Generator::Radial: return "radial";
+        case Generator::Conic: return "conic";
+        case Generator::Burst: return "burst";
+        case Generator::Value:
+        case Generator::Ridged: return "unsupported";
+    }
+    return "unsupported";
+}
         [[nodiscard]] const char* layerTypeName(LayerType type) {
 
             switch (type) {

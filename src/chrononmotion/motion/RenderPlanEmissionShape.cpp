@@ -17,7 +17,7 @@
 #include <vector>
 
 namespace chrononmotion::motion {
-namespace {
+namespace detail {
 using chronon3d::render_plan::AnimationKeyframePlan;
 using chronon3d::render_plan::AnimationPlan;
 using chronon3d::render_plan::AnimationTrackPlan;
