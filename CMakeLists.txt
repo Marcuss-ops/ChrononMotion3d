@@ -314,7 +314,13 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_link_libraries(chrononmotion_view PRIVATE chrononmotion)
     add_test(NAME chrononmotion_view COMMAND chrononmotion_view)
 
-    add_executable(chrononmotion_presets tests/motion_presets.cpp)
+    add_executable(chrononmotion_presets
+            tests/motion_presets.cpp
+            tests/motion_presets_inout.cpp
+            tests/motion_presets_group.cpp
+            tests/motion_presets_camera.cpp
+            tests/motion_presets_named.cpp
+            tests/motion_presets_internal.hpp)
     target_link_libraries(chrononmotion_presets PRIVATE chrononmotion)
     add_test(NAME chrononmotion_presets COMMAND chrononmotion_presets)
 
@@ -414,6 +420,9 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_geospatial tests/motion_geospatial.cpp)
     target_link_libraries(chrononmotion_geospatial PRIVATE chrononmotion)
     if(CHRONON3D_INCLUDE_DIR)
+        target_sources(chrononmotion_geospatial PRIVATE
+                tests/motion_geospatial_plan.cpp
+                tests/motion_geospatial_internal.hpp)
         target_link_libraries(chrononmotion_geospatial PRIVATE chrononmotion_chronon3d_adapter)
     endif()
     add_test(NAME chrononmotion_geospatial COMMAND chrononmotion_geospatial)
@@ -430,7 +439,10 @@ if(CHRONONMOTION_BUILD_TESTS)
 
     # Showcase acceptance is independently selectable at the case id/number and
     # emits deterministic motion/plan signatures; no pixel renderer is required.
-    add_executable(chrononmotion-showcase tests/motion_showcase.cpp)
+    add_executable(chrononmotion-showcase
+            tests/motion_showcase.cpp
+            tests/motion_showcase_cases.cpp
+            tests/motion_showcase_internal.hpp)
     target_link_libraries(chrononmotion-showcase PRIVATE chrononmotion)
     target_compile_features(chrononmotion-showcase PRIVATE cxx_std_20)
     target_compile_options(chrononmotion-showcase PRIVATE -Wall -Wextra)
