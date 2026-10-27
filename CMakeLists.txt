@@ -57,6 +57,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/core/Object3D.cpp
         # assets — dependency-free, explicit-buffer glTF input
         src/chrononmotion/assets/GltfReader.cpp
+        src/chrononmotion/assets/GltfReaderAnimations.cpp
         src/chrononmotion/assets/GltfReaderInternal.hpp
         src/chrononmotion/assets/GltfReaderScene.cpp
         src/chrononmotion/assets/GltfReaderSerialization.cpp
@@ -165,6 +166,7 @@ if(CHRONON3D_INCLUDE_DIR)
         src/chrononmotion/motion/RenderPlanLowering.cpp
         src/chrononmotion/motion/RenderPlanLoweringCamera.cpp
         src/chrononmotion/motion/RenderPlanLoweringGeometry.cpp
+        src/chrononmotion/motion/RenderPlanLoweringSamples.cpp
         src/chrononmotion/motion/RenderPlanEmission.cpp
         src/chrononmotion/motion/RenderPlanEmissionCommon.cpp
         src/chrononmotion/motion/RenderPlanEmissionMedia.cpp
