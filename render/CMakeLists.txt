@@ -393,6 +393,14 @@ target_include_directories(chrononmotion_render_dof_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
 target_link_libraries(chrononmotion_render_dof_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
 
+add_executable(chrononmotion_render_depth_focus_showcase spike/depth_focus_showcase.cpp)
+target_include_directories(chrononmotion_render_depth_focus_showcase PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_compile_definitions(chrononmotion_render_depth_focus_showcase PRIVATE
+        CHRONONMOTION_DEPTH_FOCUS_ASSETS="${CMAKE_CURRENT_SOURCE_DIR}/spike/assets/depth_focus")
+target_link_libraries(chrononmotion_render_depth_focus_showcase PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
+
 add_executable(chrononmotion_render_t17_product_orbit spike/t17_product_orbit.cpp)
 target_include_directories(chrononmotion_render_t17_product_orbit PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
