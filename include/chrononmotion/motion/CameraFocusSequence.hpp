@@ -26,7 +26,13 @@ namespace chrononmotion::motion::camera {
         float focusFov{38.f};
         float fStop{5.6f};
         float maxBlur{10.f};
-        float highlightGain{1.f};
+        /// 0 = plain circular bokeh (what every DOF kernel in Chronon3d
+        /// implements). Any nonzero gain (or a nonzero `irisBlades`) implies
+        /// shaped bokeh, which no consumer kernel supports yet: the render
+        /// boundary rejects it fail-closed (reject_unsupported_dof_shape), so
+        /// the sequence default must stay "not authored" instead of silently
+        /// arming a lens the renderer cannot realize.
+        float highlightGain{0.f};
         int focusTravelFrames{24};
         int irisBlades{0};
     };

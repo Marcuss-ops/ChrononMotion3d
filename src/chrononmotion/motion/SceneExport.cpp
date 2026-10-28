@@ -257,6 +257,18 @@ namespace chrononmotion::motion {
             }
             writer.endArray();
 
+            // Only when the scene authored one: the default record is "no
+            // opinion", and writing it would lower a shutter nobody asked for.
+            if (scene.hasShutter()) {
+                writer.key("temporal_motion_blur");
+                writer.beginObject();
+                writer.key("shutter_angle");
+                writer.number(scene.shutter()->shutterAngleDegrees);
+                writer.key("samples");
+                writer.unsignedInteger(scene.shutter()->samples);
+                writer.endObject();
+            }
+
             writer.endObject();
         }
 

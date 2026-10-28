@@ -267,8 +267,18 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         if (!animation.tracks.empty()) layer.animation = std::move(animation);
         plan.layers.push_back(std::move(layer));
     }
-    if (options.temporalMotionBlur) {
-        const auto& blur = *options.temporalMotionBlur;
+    // Full-scene shutter (docs/BOUNDARY_C3D.md C6): the scene authoring is the
+    // single unit and the caller-supplied option is the programmatic override.
+    // Authoring both is ambiguous and fails closed.
+    if (options.temporalMotionBlur && scene.hasShutter())
+        throw std::invalid_argument(
+                "lowerToRenderPlan: temporal motion blur is authored both in the scene and in the lowering options");
+    if (options.temporalMotionBlur || scene.hasShutter()) {
+        const chronon3d::render_plan::MotionBlurPlan blur =
+                options.temporalMotionBlur
+                        ? *options.temporalMotionBlur
+                        : chronon3d::render_plan::MotionBlurPlan{scene.shutter()->shutterAngleDegrees,
+                                                                 scene.shutter()->samples};
         if (plan.schema != kRenderPlanSchemaV3)
             throw std::invalid_argument("lowerToRenderPlan: temporal motion blur requires RenderPlan V3");
         if (!std::isfinite(blur.shutter_angle) || blur.shutter_angle <= 0.f || blur.shutter_angle > 360.f ||

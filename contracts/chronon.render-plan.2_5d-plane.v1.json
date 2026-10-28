@@ -1,0 +1,77 @@
+{
+  "contract_version": 2,
+  "contract": "chronon.render-plan.2_5d-plane.v1",
+  "purpose": "Convergenza delle tre firme del piano 2.5D (BOUNDARY_C3D.md F3): CM3D MotionPlane, CM3D Layer::is3D/flat() e C3D Camera2_5D + depth-plane DOF. Definisce SEMANTICA e mapping valico-per-valico; non e' una struct condivisa in codice. Nessun lato reimplementa le convenzioni dell'altro.",
+  "plane_layer_contract": {
+    "layer_flag": {
+      "cm3d_signature": "Layer::is3D / Layer::flat() (Layer.hpp)",
+      "semantics": "flat() == is3D == false marks a 2.5D plane layer: positioned in 3D, the thing it draws is a flat quad facing the camera. is3D == true is a fully 3D object and does NOT follow this contract.",
+      "mapping": "Only plane layers (flat) are projected through the projection contract below; 3D objects follow the native 3D placement path."
+    },
+    "authored_unit": {
+      "cm3d_signature": "MotionPlane (MotionPlane.hpp)",
+      "size": "Vector2, world-space size of the plane's box in motion units at scale 1; positive finite components.",
+      "anchor": "Normalized pivot inside the box: (0,0) bottom-left .. (1,1) top-right; (0.5,0.5) is the center and the default for text and image planes.",
+      "depth": "World Z of the plane in CM3D's authoring frame: a camera on +Z looking down -Z sees LARGER values as NEARER. This is an AUTHORING convention only; it is never compared directly against C3D values.",
+      "fittedWidth": "The world width a fitted plane was built at (0 when sized explicitly); aspect re-derivation uses this, not the produced size.",
+      "sourceFingerprint": "Measurement fingerprint the size/anchor were derived from; empty only for hand-built planes."
+    },
+    "bounds": {
+      "anchor_component_minimum": 0,
+      "anchor_component_maximum": 1,
+      "size_component_minimum_exclusive": 0,
+      "depth_finite": true
+    }
+  },
+  "camera_space_contract": {
+    "c3d_signature": "Camera2_5D (scene/model/camera/camera_2_5d.hpp) + camera_projection_contract.hpp",
+    "depth": "Canonical crossing unit: camera-space Z AFTER the view transform (world_to_camera_space). positive = visible; visible <=> depth > near_epsilon. This is the ONLY depth meaning that crosses the boundary: MotionPlane.depth reaches it through view_matrix_for_camera, never as a raw world Z.",
+    "near_epsilon": 0.0001,
+    "unset_semantics": "depth <= near_epsilon means behind or on the camera plane (proj.visible == false). When !visible, centered/screen fields hold safe zero defaults and MUST never be projected as scene geometry; proj.visible is the single source of truth.",
+    "camera_defaults": {
+      "position": [0, 0, -1000],
+      "position_note": "screen-space world coordinates: 1000 units in front of the z=0 plane; the view transform maps world Z into the positive camera-space depth above.",
+      "optics_mode": ["Zoom", "FieldOfView", "PhysicalLens"],
+      "zoom": 1000,
+      "fov_deg": 50,
+      "lens_shift": [0, 0]
+    },
+    "bounds": {
+      "zoom_minimum_exclusive": 0,
+      "fov_deg_range": [0, 180],
+      "lens_shift_unbounded": "may exceed half the viewport to support off-screen framing"
+    }
+  },
+  "projection_contract": {
+    "perspective_scale": "focal_y_px / depth (canonical Y reference; projected_Point::perspective_scale)",
+    "depth_equals_zoom": "in Zoom mode, at depth == zoom the perspective_scale == 1",
+    "focal_rules": {
+      "Zoom": "focal_x_px = focal_y_px = camera.zoom",
+      "FieldOfView": "focal_x_px = focal_y_px = (viewport_height / 2) / tan(fov_deg / 2)",
+      "PhysicalLens": "focal_xy derived from LensModel::focal_xy_pixels (honors pixel_aspect and anamorphic_squeeze on focal_x); degenerate lens falls back to zoom"
+    },
+    "per_axis_scaling": "For Fill/Overscan spherical lens with square pixels focal_x == focal_y. For GateFit::Stretch or anamorphic lenses focal_x != focal_y: callers MUST apply per-axis scale (scale_x = focal_x_px / depth, scale_y = focal_y_px / depth) so aspect ratio is preserved on the canvas.",
+    "single_projector_rule": "All four projection paths (project_world_point, project_layer_2_5d, make_projection_context, project_2_5d) route through focal_xy_from_camera before any scale = focal / depth math; there is exactly one projector."
+  },
+  "dof_depth_plane_contract": {
+    "c3d_signature": "kUnsetDofDepth (scene/model/camera/dof.hpp)",
+    "unit": "positive camera-space optical depth, same depth as camera_space_contract.depth",
+    "unset_sentinel": 1e18,
+    "semantics": "kUnsetDofDepth is stored in the per-pixel DOF depth plane when no visible surface contributed to a pixel. Zero is NOT a valid positive camera-space optical depth and must never be reused to mean unset.",
+    "shaped_bokeh": "iris_blades and highlight_gain remain fail-closed on every render path (BOUNDARY_C3D.md C3); this contract does not extend them."
+  },
+  "convergence_rules": [
+    "The authored unit is unique: CM3D owns plane authoring (MotionPlane, Layer::flat()); C3D owns projection and DOF depth semantics. No second model is created on the other side.",
+    "Fail-closed ranges are identical on both sides; a payload outside the declared bounds is rejected, never clamped silently.",
+    "The mapping between CM3D world Z and C3D camera-space depth exists only through the view transform of camera_projection_contract.hpp.",
+    "Any change to these conventions is made in this contract file first, in the same change that touches either side."
+  ],
+  "evidence": {
+    "cm3d_motion_plane": "ChrononMotion3D/include/chrononmotion/motion/MotionPlane.hpp",
+    "cm3d_layer_flag": "ChrononMotion3D/include/chrononmotion/motion/Layer.hpp (is3D, flat())",
+    "c3d_camera_2_5d": "Chronon3d/include/chronon3d/scene/model/camera/camera_2_5d.hpp",
+    "c3d_projection_contract": "Chronon3d/include/chronon3d/math/camera_projection_contract.hpp",
+    "c3d_projection_impl": "Chronon3d/include/chronon3d/math/camera_2_5d_projection.hpp",
+    "c3d_dof_depth": "Chronon3d/include/chronon3d/scene/model/camera/dof.hpp (kUnsetDofDepth)"
+  }
+}

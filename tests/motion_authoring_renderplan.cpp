@@ -173,6 +173,33 @@ void testTypedChronon3dLowering() {
           }),
           "temporal motion blur rejects a shutter angle above 360 degrees");
 
+    // Scene-authored shutter (docs/BOUNDARY_C3D.md C6): the scene is the
+    // single authored unit; lowering maps it 1:1 onto temporal_motion_blur.
+    scene.setShutter({180.f, 8});
+    const auto sceneShuttered = lowerToRenderPlan(scene, options);
+    check(sceneShuttered.temporal_motion_blur.has_value() &&
+              sceneShuttered.temporal_motion_blur->shutter_angle == 180.f &&
+              sceneShuttered.temporal_motion_blur->samples == 8,
+          "scene-authored shutter lowers to the V3 temporal motion blur");
+    check(throwsInvalid([&] {
+              RenderPlanLoweringOptions conflict = blurOptions;
+              (void)lowerToRenderPlan(scene, conflict);
+          }),
+          "temporal motion blur authored both in the scene and the options is rejected");
+    check(throwsInvalid([&] {
+              RenderPlanLoweringOptions v2SceneBlur = options;
+              v2SceneBlur.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
+              (void)lowerToRenderPlan(scene, v2SceneBlur);
+          }),
+          "scene-authored temporal motion blur requires RenderPlan V3");
+    check(throwsInvalid([&] { scene.setShutter({0.f, 8}); }),
+          "scene shutter rejects a zero shutter angle");
+    check(throwsInvalid([&] { scene.setShutter({180.f, 1}); }),
+          "scene shutter rejects fewer than two samples");
+    scene.clearShutter();
+    check(!lowerToRenderPlan(scene, options).temporal_motion_blur.has_value(),
+          "clearing the scene shutter removes the temporal motion blur");
+
     MotionScene videoScene("time remap", 30.f);
     auto& video = videoScene.addContent(31, "video", ContentRef::video("source-video", {640.f, 360.f}));
     video.lifetime = FrameRange::between(0, 3);
