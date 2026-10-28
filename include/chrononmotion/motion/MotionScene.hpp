@@ -17,6 +17,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <stdexcept>
 #include <memory>
@@ -24,6 +25,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <optional>
 
 namespace chrononmotion {
     struct GltfReadPolicy;
@@ -135,6 +137,15 @@ namespace chrononmotion::motion {
     ///
     /// Layers are held in a deque so a `Layer&` returned by `addLayer()` stays
     /// valid as the scene grows; re-fetch by id with `findLayer()` when in doubt.
+    /// Full-scene shutter authoring (`docs/BOUNDARY_C3D.md` C6, ex F1). This is
+    /// the single authored unit for temporal motion blur: the lowering maps it
+    /// 1:1 onto the RenderPlan V3 `temporal_motion_blur` contract and never
+    /// invents one. Per-layer analytic blur stays a separate concern.
+    struct ShutterSettings {
+        float shutterAngleDegrees{180.f};
+        std::uint32_t samples{12};
+    };
+
     class MotionScene {
     public:
         MotionScene() = default;
@@ -204,6 +215,14 @@ namespace chrononmotion::motion {
         [[nodiscard]] const std::string& name() const { return name_; }
         [[nodiscard]] float fps() const { return fps_; }
         MotionScene& setFps(float fps);
+
+        /// Full-scene shutter (single authored unit for temporal motion blur).
+        /// Fails closed on a shutter angle outside (0, 360] or samples outside
+        /// [2, 64], mirroring the RenderPlan V3 `temporal_motion_blur` contract.
+        MotionScene& setShutter(ShutterSettings settings);
+        MotionScene& clearShutter();
+        [[nodiscard]] bool hasShutter() const { return shutter_.has_value(); }
+        [[nodiscard]] const std::optional<ShutterSettings>& shutter() const { return shutter_; }
 
         // --- evaluation
         void evaluate(int frame);
@@ -303,6 +322,7 @@ namespace chrononmotion::motion {
 
         std::string name_{};
         float fps_{24.f};
+        std::optional<ShutterSettings> shutter_{};
         AuthoringPolicy policy_{};
         bool sealed_{false};
         mutable std::vector<AuthoringAuditEntry> auditLog_{};

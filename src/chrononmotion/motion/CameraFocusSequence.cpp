@@ -80,9 +80,14 @@ namespace chrononmotion::motion::camera {
             rig.focusDistanceTrack().add(t0, axialFocusDistance(previous, sequence), ease)
                 .add(t1, axialFocusDistance(current, sequence), ease);
             // Blur recedes while the focus plane travels (legacy 0.78 gain
-            // ramp, expressed once through the f/stop bridge) and settles back.
-            rig.fStopTrack().add(t0, fStopFromBlurGain(blurGainFromFStop(sequence.fStop) * 0.78f), ease)
-                .add(t1, sequence.fStop, ease);
+            // ramp) and settles back. No gains are authored: through the
+            // bridge, gain·0.78 is exactly an f/stop ramp of f/0.78 under the
+            // contract ceiling of 32 — written directly instead of round-
+            // tripping through blur gains.
+            const float rampFStop = sequence.fStop > 0.f
+                                        ? std::min(sequence.fStop / 0.78f, 32.f)
+                                        : 0.f;
+            rig.fStopTrack().add(t0, rampFStop, ease).add(t1, sequence.fStop, ease);
         }
     }
 

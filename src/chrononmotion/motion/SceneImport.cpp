@@ -9,7 +9,7 @@ using detail::indexValue;
 using detail::rejectUnknownKeys;
 using detail::required;
         MotionScene readScene(const JsonValue& value, std::string_view where, int depth) {
-            rejectUnknownKeys(value, {"format", "version", "name", "fps", "layers", "lights"}, where);
+            rejectUnknownKeys(value, {"format", "version", "name", "fps", "temporal_motion_blur", "layers", "lights"}, where);
             if (required(value, "format", where).string("scene format") != "chrononmotion.scene")
                 reject(where, "is not a chrononmotion.scene document");
             if (indexValue(required(value, "version", where), "scene version") != 1)
@@ -29,6 +29,12 @@ using detail::required;
                 const std::uint32_t id = idValue(required(item.object("scene light"), "id", where), "light id");
                 if (!seenLights.insert(id).second) reject(where, "declares a duplicate light id");
                 addLight(scene, readLightKind(item, "scene light"), item, "scene light");
+            }
+            if (const JsonValue* blur = find(value, "temporal_motion_blur")) {
+                rejectUnknownKeys(*blur, {"shutter_angle", "samples"}, "scene temporal_motion_blur");
+                scene.setShutter(
+                        {floatValue(required(*blur, "shutter_angle", "scene temporal_motion_blur"), "shutter_angle"),
+                         idValue(required(*blur, "samples", "scene temporal_motion_blur"), "samples")});
             }
             const std::vector<std::string> problems = scene.validate();
             if (!problems.empty()) reject(where, problems.front());

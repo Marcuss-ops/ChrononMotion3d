@@ -105,6 +105,25 @@ namespace chrononmotion::motion {
         return *this;
     }
 
+    MotionScene& MotionScene::setShutter(ShutterSettings settings) {
+
+        ensureMutable("set shutter");
+        if (!std::isfinite(settings.shutterAngleDegrees) || settings.shutterAngleDegrees <= 0.f ||
+            settings.shutterAngleDegrees > 360.f)
+            throw std::invalid_argument("MotionScene::setShutter: shutter angle must be finite in (0, 360]");
+        if (settings.samples < 2 || settings.samples > 64)
+            throw std::invalid_argument("MotionScene::setShutter: samples must be in [2, 64]");
+        shutter_ = settings;
+        return *this;
+    }
+
+    MotionScene& MotionScene::clearShutter() {
+
+        ensureMutable("clear shutter");
+        shutter_.reset();
+        return *this;
+    }
+
     bool MotionScene::orderStale() const {
 
         if (orderDirty_ || order_.size() != layers_.size() ||

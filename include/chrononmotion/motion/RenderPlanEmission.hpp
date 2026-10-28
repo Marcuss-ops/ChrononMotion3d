@@ -43,9 +43,13 @@
 // here), and every animation driver (wiggle, spring, oscillate, random hold,
 // posterize, data feed, audio react) plus per-key easing, because the lowering
 // bakes all of those into linear samples. Blend modes are supported and written
-// directly from the canonical decoder vocabulary. Camera depth-of-field uses
-// the V2 schema contract; physical focal-length and f-stop optics are not part
-// of RenderPlan and remain refused by `lowerCameraPose`.
+// directly from the canonical decoder vocabulary. Camera depth-of-field
+// lowers the full physical lens contract (V3): focal_length_mm, f_stop and
+// dof.{f_stop, iris_blades, highlight_gain} are emitted from the CameraRig
+// pose through `lowerCameraPose` — out-of-contract values (f/stop outside
+// [0.7, 32], iris blades outside [0, 12], a DOF aperture without a positive
+// focus distance) are refused there; the consumer-side decoder validates the
+// same ranges (render_plan_decoder_support.cpp).
 //
 // Every key written here must exist in the consumer's schema: a plan that
 // carries one unknown field is rejected wholesale by

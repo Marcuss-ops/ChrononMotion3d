@@ -167,6 +167,17 @@ namespace {
         check(imported.lightCount() == scene.lightCount(), "light count survives");
         check(imported.findLayer(2)->content.measurementState("fp1") == MeasurementState::Current,
               "content fingerprint survives");
+
+        MotionScene shuttered("shuttered", 24.f);
+        shuttered.addNull(1, "Root");
+        shuttered.setShutter({90.f, 6});
+        MotionScene shutteredImported = sceneFromJson(shuttered.toJson(0));
+        check(shutteredImported.hasShutter() &&
+                  shutteredImported.shutter()->shutterAngleDegrees == 90.f &&
+                  shutteredImported.shutter()->samples == 6,
+              "scene shutter survives the project-file round trip");
+        check(sceneToJson(shutteredImported, 0) == shuttered.toJson(0),
+              "shutter re-export is byte-identical");
     }
 
     void rejections() {
@@ -220,6 +231,16 @@ namespace {
         follow.path = std::make_shared<MotionPath>(MotionPath::line(Vector3(0.f, 0.f, 0.f), Vector3(1.f, 0.f, 0.f)));
         follower.constraints.push_back(follow);
         check(throwsInvalid(pathed.toJson(0)), "constraint path rejected");
+
+        check(throwsInvalid("{\"format\":\"chrononmotion.scene\",\"version\":1,\"name\":\"s\",\"fps\":24,"
+                            "\"layers\":[],\"lights\":[],\"temporal_motion_blur\":{\"shutter_angle\":400,\"samples\":8}}"),
+              "out-of-range scene shutter angle rejected");
+        check(throwsInvalid("{\"format\":\"chrononmotion.scene\",\"version\":1,\"name\":\"s\",\"fps\":24,"
+                            "\"layers\":[],\"lights\":[],\"temporal_motion_blur\":{\"shutter_angle\":180,\"samples\":1}}"),
+              "single-sample scene shutter rejected");
+        check(throwsInvalid("{\"format\":\"chrononmotion.scene\",\"version\":1,\"name\":\"s\",\"fps\":24,"
+                            "\"layers\":[],\"lights\":[],\"temporal_motion_blur\":{\"shutter_angle\":180,\"samples\":8,\"zzz\":1}}"),
+              "unknown scene shutter field rejected");
     }
 
 }// namespace

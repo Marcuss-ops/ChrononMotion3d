@@ -65,6 +65,21 @@ int main() try {
                   near(planeFocusRig.sample(10.f / 30.f).focusDistance, 15.f),
           "CM3D resolves a world-plane rack focus along the optical axis");
 
+    // Boundary contract (CM3D <-> Chronon3d DOF unification): the default
+    // FocusSequence must not arm shaped bokeh — every consumer DOF kernel
+    // implements plain circular bokeh only, and the render boundary rejects
+    // highlight_gain/iris-blade authoring fail-closed. The default sequence
+    // therefore lowers to highlightGain == 0 (irisBlades already defaults 0).
+    check(near(FocusSequence{}.highlightGain, 0.f) && FocusSequence{}.irisBlades == 0,
+          "default FocusSequence leaves shaped-bokeh channels unauthored (fail-closed consumer contract)");
+    CameraRig defaultSeqRig(1, 48.f, 16.f / 9.f, 0.1f, 5000.f);
+    FocusSequence defaultSequence;
+    defaultSequence.subjects = {{{620.f, 390.f, 0.f}, 12.f, 6}}; // the only required authoring
+    applyFocusSequence(defaultSeqRig, defaultSequence, 30.f);
+    const CameraPose defaultPose = defaultSeqRig.sample(6.f / 30.f);
+    check(near(defaultPose.highlightGain, 0.f) && defaultPose.irisBlades == 0,
+          "applyFocusSequence with default sequence values keeps highlight gain and iris blades unauthored");
+
     std::cout << "Camera focus sequence checks passed\n";
     return 0;
 } catch (const std::exception& error) {
