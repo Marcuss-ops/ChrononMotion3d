@@ -1,0 +1,30 @@
+[2026-10-29 09:34:42.531] [info] [plan-profile] read=0.10ms parse=0.07ms decode=59.13ms resolver=0.02ms compile_validate=2.13ms total=61.48ms
+[2026-10-29 09:34:42.531] [warning] pixel truth: the image output lane (still / PNG sequence) is not a pixel-truth surface — it does not compose the text layers and does not vary per frame or per backend (TICKET-TEXT-QUALITY-V2 P0-0b). For pre-encode truth use `--video-sink raw`, or measure the decoded frame of the encoded output.
+[2026-10-29 09:34:42.545] [info] [job] lane=software encoder=auto 640x360 @ 30/1
+[2026-10-29 09:34:42.547] [warning] [imgprof] decode=0.1ms
+[2026-10-29 09:34:42.547] [warning] [imgprof] downscale=0.1ms
+[2026-10-29 09:34:42.548] [warning] [imgprof] convert=1.7ms
+[2026-10-29 09:34:42.548] [warning] [imgprof] sha256=1.7ms
+[2026-10-29 09:34:42.549] [info] ImageCache: loaded 'textures/orm.png' (4x4) in 1.751ms
+[2026-10-29 09:34:42.549] [info] Rendering chrononmotion_baked [0 -> 3 step 1]...
+[2026-10-29 09:34:42.572] [info] [temp-lifetime] frame=0 after_level=0 live=[0,1,] retired=[]
+[2026-10-29 09:34:42.572] [info] [exec-level-diag] frame=0 level=0 nodes=2 input_ms=0.001 dispatch_ms=4.366 fb_release_ms=0.002
+[2026-10-29 09:34:42.572] [info] [graph-edge] frame=0 level=1 consumer_id=2 input_index=0 producer_id=0 producer_level=0
+[2026-10-29 09:34:42.572] [info] [graph-edge] frame=0 level=1 consumer_id=2 input_index=1 producer_id=1 producer_level=0
+[2026-10-29 09:34:42.572] [info] [temp-lifetime] frame=0 after_level=1 live=[2,] retired=[0,1,]
+[2026-10-29 09:34:42.572] [info] [exec-level-diag] frame=0 level=1 nodes=1 input_ms=0.014 dispatch_ms=0.621 fb_release_ms=0.003
+[2026-10-29 09:34:42.673] [info] Frame 0 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/hdri/frame_0000.png
+[2026-10-29 09:34:42.768] [info] Frame 1 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/hdri/frame_0001.png
+[2026-10-29 09:34:42.862] [info] Frame 2 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/hdri/frame_0002.png
+[2026-10-29 09:34:42.957] [info] Frame 3 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/hdri/frame_0003.png
+[2026-10-29 09:34:42.957] [info] Render complete.
+[2026-10-29 09:34:42.957] [info] 
+┌──── Cache Snapshot ------------------------------------------------
+│ Nodes                hits=0        miss=1        evict=0    size=1      weight=    3.8 MB  cap=      2.0 GB  hit_rate=0.0%
+│ hot-path             hash=       0.0us lock=       0.0us lru=       0.0us loader=       0.0us contention=0
+├──── Totals ------------------------------------------------
+│ 1 domains            hits=0        miss=1        evict=0    size=1      weight=    3.8 MB  cap=      2.0 GB  hit_rate=0.0%
+│ hot-path             hash=       0.0us lock=       0.0us lru=       0.0us loader=       0.0us contention=0
+└-------------------------------------------------------------------------------
+
+[2026-10-29 09:34:42.961] [info] [INFO] job-lifecycle: execute_ms=429.9 caller_tail_ms=0.0 receipt_deferred=0

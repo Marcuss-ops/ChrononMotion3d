@@ -20,18 +20,28 @@ Updated 2026-10-29 from local source and Release test evidence.
   `chrononmotion_rig_pipeline`; `chrononmotion_authoring` and
   `chrononmotion_gltf` pass. The fixed-topology positions/optional-normals V3
   contract carries static UV, texture, material, and alpha state across frames.
-  Remaining follow-up is C3D strict-native rendering and visible CLI pixel proof.
-  The 2026-10-29 focused Release run passed all six targets listed in the
-  ticket. A manual C3D software CLI render produced a black PNG, so it does not
-  satisfy the visible pixel proof and remains an actionable local issue.
+  The motion-only reader now reports unsupported JSON/root fields with the
+  public `glTF: ` diagnostic prefix and rejects disabled/unsupported imports
+  before buffer resolution; the rebuilt focused test passes 47/47 checks.
+  Remaining follow-up is C3D strict-native rendering and GPU parity. The 2026-10-29 focused Release run passed all six targets listed
+  in the ticket. A refreshed producer fixture and software raw-sink probe show
+  a textured, alpha-cutout mesh moving across 31 frames (31 distinct raw frame
+  hashes; 1,642 opaque pixels per sample). A current-source Release rebuild
+  fixed the YUV420P/NV12 host staging mismatch in H.264/NVENC: the MP4 decodes
+  to 31 distinct frames with RGB RMSE 0.7673 against the software reference
+  composited over black. Strict-native Vulkan drawing, GPU-render parity, and
+  clean-SHA CI remain unverified.
 - `TICKET-HDRI-ENV-V1`: bounded Radiance RGBE input, cubemap+mips, Lambert SH,
   deterministic `HDRIENV1` bytes, malformed/budget tests, and showcase golden
   are implemented. The byte layout is agreed in the Chronon3D IBL ticket.
   V3 RenderPlan emission, path/range validation, Chronon3D decoding, and
   focused tests are implemented. Chronon3D validates the asset, accepts the
   plan in compilation, and evaluates the diffuse SH probe in software shading.
-  Visible CLI rendering remains open; software specular cubemap sampling now
-  passes the Chronon3D renderer core test. The
+  The refreshed software raw-sink probe confirms mounted asset resolution and
+  visible diffuse-SH contribution: removing the environment changes all 20,000
+  opaque mesh pixels in the fixture control. The stale CLI's encoded output is
+  diagnostic, not accepted pixel proof. Software specular mip lookup passes
+  the Chronon3D renderer core test. The
   `attachHdriEnvironmentToRenderPlan` helper copies the decoded probe's
   reference, intensity, rotation and SH together.
 - `TICKET-PBR-MATERIALS-V1`: static `loadGltf` imports metallic-roughness

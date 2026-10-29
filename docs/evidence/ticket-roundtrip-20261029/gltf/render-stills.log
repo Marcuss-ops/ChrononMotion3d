@@ -1,0 +1,64 @@
+[2026-10-29 09:34:30.525] [info] [asset-profile] kind=0 path=textures/character-base.png bytes=335 cache=miss invalidated=0 stat=0.01ms hash=3.46ms hashed_bytes=335 total=3.55ms
+[2026-10-29 09:34:30.526] [info] [asset-digest-cache] hits=0 misses=1 invalidations=0 bytes_hashed=335 lookup_ms=0.00 write_ms=0.00 full_hash_ms=3.46
+[2026-10-29 09:34:30.526] [info] [plan-profile] read=0.18ms parse=0.23ms decode=58.35ms resolver=0.02ms compile_validate=4.35ms total=63.16ms
+[2026-10-29 09:34:30.526] [warning] pixel truth: the image output lane (still / PNG sequence) is not a pixel-truth surface — it does not compose the text layers and does not vary per frame or per backend (TICKET-TEXT-QUALITY-V2 P0-0b). For pre-encode truth use `--video-sink raw`, or measure the decoded frame of the encoded output.
+[2026-10-29 09:34:30.549] [info] [job] lane=software encoder=auto 640x360 @ 30/1
+[2026-10-29 09:34:30.550] [warning] [imgprof] decode=0.3ms
+[2026-10-29 09:34:30.551] [warning] [imgprof] downscale=0.3ms
+[2026-10-29 09:34:30.552] [warning] [imgprof] convert=2.0ms
+[2026-10-29 09:34:30.553] [warning] [imgprof] sha256=2.3ms
+[2026-10-29 09:34:30.553] [info] ImageCache: loaded 'textures/character-base.png' (64x64) in 2.364ms
+[2026-10-29 09:34:30.553] [warning] [imgprof] decode=0.1ms
+[2026-10-29 09:34:30.553] [warning] [imgprof] downscale=0.1ms
+[2026-10-29 09:34:30.553] [warning] [imgprof] convert=0.4ms
+[2026-10-29 09:34:30.553] [warning] [imgprof] sha256=0.5ms
+[2026-10-29 09:34:30.553] [info] ImageCache: loaded 'textures/orm.png' (4x4) in 0.497ms
+[2026-10-29 09:34:30.553] [info] Rendering chrononmotion_baked [0 -> 30 step 1]...
+[2026-10-29 09:34:30.585] [info] [temp-lifetime] frame=0 after_level=0 live=[0,1,] retired=[]
+[2026-10-29 09:34:30.585] [info] [exec-level-diag] frame=0 level=0 nodes=2 input_ms=0.002 dispatch_ms=4.542 fb_release_ms=0.002
+[2026-10-29 09:34:30.585] [info] [graph-edge] frame=0 level=1 consumer_id=2 input_index=0 producer_id=0 producer_level=0
+[2026-10-29 09:34:30.585] [info] [graph-edge] frame=0 level=1 consumer_id=2 input_index=1 producer_id=1 producer_level=0
+[2026-10-29 09:34:30.586] [info] [temp-lifetime] frame=0 after_level=1 live=[2,] retired=[0,1,]
+[2026-10-29 09:34:30.586] [info] [exec-level-diag] frame=0 level=1 nodes=1 input_ms=0.013 dispatch_ms=0.830 fb_release_ms=0.005
+[2026-10-29 09:34:30.693] [info] Frame 0 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0000.png
+[2026-10-29 09:34:30.810] [info] Frame 1 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0001.png
+[2026-10-29 09:34:30.907] [info] Frame 2 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0002.png
+[2026-10-29 09:34:31.004] [info] Frame 3 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0003.png
+[2026-10-29 09:34:31.107] [info] Frame 4 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0004.png
+[2026-10-29 09:34:31.210] [info] Frame 5 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0005.png
+[2026-10-29 09:34:31.306] [info] Frame 6 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0006.png
+[2026-10-29 09:34:31.422] [info] Frame 7 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0007.png
+[2026-10-29 09:34:31.518] [info] Frame 8 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0008.png
+[2026-10-29 09:34:31.616] [info] Frame 9 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0009.png
+[2026-10-29 09:34:31.714] [info] Frame 10 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0010.png
+[2026-10-29 09:34:31.811] [info] Frame 11 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0011.png
+[2026-10-29 09:34:31.908] [info] Frame 12 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0012.png
+[2026-10-29 09:34:32.011] [info] Frame 13 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0013.png
+[2026-10-29 09:34:32.112] [info] Frame 14 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0014.png
+[2026-10-29 09:34:32.210] [info] Frame 15 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0015.png
+[2026-10-29 09:34:32.310] [info] Frame 16 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0016.png
+[2026-10-29 09:34:32.407] [info] Frame 17 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0017.png
+[2026-10-29 09:34:32.503] [info] Frame 18 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0018.png
+[2026-10-29 09:34:32.601] [info] Frame 19 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0019.png
+[2026-10-29 09:34:32.698] [info] Frame 20 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0020.png
+[2026-10-29 09:34:32.798] [info] Frame 21 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0021.png
+[2026-10-29 09:34:32.897] [info] Frame 22 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0022.png
+[2026-10-29 09:34:32.994] [info] Frame 23 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0023.png
+[2026-10-29 09:34:33.092] [info] Frame 24 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0024.png
+[2026-10-29 09:34:33.190] [info] Frame 25 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0025.png
+[2026-10-29 09:34:33.290] [info] Frame 26 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0026.png
+[2026-10-29 09:34:33.386] [info] Frame 27 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0027.png
+[2026-10-29 09:34:33.482] [info] Frame 28 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0028.png
+[2026-10-29 09:34:33.577] [info] Frame 29 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0029.png
+[2026-10-29 09:34:33.680] [info] Frame 30 saved to /home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/frame_0030.png
+[2026-10-29 09:34:33.680] [info] Render complete.
+[2026-10-29 09:34:33.680] [info] 
+┌──── Cache Snapshot ------------------------------------------------
+│ Nodes                hits=0        miss=0        evict=0    size=0      weight=       0 B  cap=      2.0 GB  hit_rate=0.0%
+│ hot-path             hash=       0.0us lock=       0.0us lru=       0.0us loader=       0.0us contention=0
+├──── Totals ------------------------------------------------
+│ 1 domains            hits=0        miss=0        evict=0    size=0      weight=       0 B  cap=      2.0 GB  hit_rate=0.0%
+│ hot-path             hash=       0.0us lock=       0.0us lru=       0.0us loader=       0.0us contention=0
+└-------------------------------------------------------------------------------
+
+[2026-10-29 09:34:33.685] [info] [INFO] job-lifecycle: execute_ms=3159.2 caller_tail_ms=0.0 receipt_deferred=0

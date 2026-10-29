@@ -246,8 +246,17 @@ GltfMotionAsset loadGltfMotion(std::string_view json, const GltfExternalBufferRe
     using motion::detail::JsonParser;
     if (!policy.enabled || !policy.allowMotionGltfImport) gltf_detail::invalid("motion import is disabled by authoring policy");
     if (policy.audit) policy.audit(true, "gltf-json-motion");
-    Document document(JsonParser(json, std::min(kMaxJsonBytes, policy.maxJsonBytes)).parse(), {}, false, policy); document.setExternalResolver(&resolver);
-    return document.loadMotion();
+    try {
+        Document document(JsonParser(json, std::min(kMaxJsonBytes, policy.maxJsonBytes)).parse(),
+                          {}, false, policy);
+        document.setExternalResolver(&resolver);
+        return document.loadMotion();
+    } catch (const std::invalid_argument& error) {
+        constexpr std::string_view diagnosticPrefix{"glTF: "};
+        const std::string_view message{error.what()};
+        if (message.starts_with(diagnosticPrefix)) throw;
+        gltf_detail::invalid(std::string(message));
+    }
 }
 
 GltfAsset loadGltf(std::string_view json, const GltfExternalBufferResolver& resolveExternalBuffer,

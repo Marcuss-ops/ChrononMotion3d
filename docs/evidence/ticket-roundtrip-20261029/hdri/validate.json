@@ -1,0 +1,16 @@
+[2026-10-29 09:38:26.420] [info] [plan-profile] read=0.11ms parse=0.07ms decode=55.91ms resolver=0.03ms compile_validate=2.08ms total=58.22ms
+[2026-10-29 09:38:26.421] [info] [plan-compile-profile] assets=0.01ms fingerprint=0.05ms media_resolution=0.00ms materialize=0.02ms composition_compile=0.00ms compatibility_view=0.00ms total=0.19ms
+{
+  "content_digest": "bfed6f705dc0ce019d5dfcae129dc03e9dfca463dc7bc6a93c556e5420a318ba",
+  "duration_frames": 4,
+  "fps_den": 1,
+  "fps_num": 30,
+  "height": 360,
+  "job_id": "chrononmotion_baked",
+  "layers": 1,
+  "plan": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/hdri/hdri.plan.json",
+  "request_digest": "e3931ae30322b271ba029a8731d4af0375fb5ddce12ff11e5474efd4f593f49e",
+  "status": "PASS",
+  "valid": true,
+  "width": 640
+}

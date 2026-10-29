@@ -1,0 +1,237 @@
+{
+  "gltf_raw": {
+    "bytes": 28569600,
+    "sha256": "a8d12571e3cc657b7a847dfc05a8888c766b6d9658aecbae3a18c65c88fe2648",
+    "frames": 31,
+    "unique_frame_hashes": 31,
+    "samples": {
+      "0": {
+        "sha256": "f0284422aa3956dfe22572a8fe3f75ec83d3e152decda7e69938a76a0039181e",
+        "opaque_pixels": 1642,
+        "alpha_bbox": [
+          320,
+          118,
+          376,
+          171
+        ],
+        "dominant_opaque_rgba": [
+          [
+            [
+              124,
+              42,
+              6,
+              255
+            ],
+            971
+          ],
+          [
+            [
+              124,
+              124,
+              26,
+              255
+            ],
+            486
+          ],
+          [
+            [
+              101,
+              33,
+              4,
+              166
+            ],
+            50
+          ],
+          [
+            [
+              124,
+              110,
+              22,
+              255
+            ],
+            10
+          ],
+          [
+            [
+              110,
+              37,
+              5,
+              198
+            ],
+            9
+          ]
+        ]
+      },
+      "15": {
+        "sha256": "ee077caeaa57be29cc6f67683faf816b352b5092fafc739cbb1d89eed99cfdd7",
+        "opaque_pixels": 1642,
+        "alpha_bbox": [
+          390,
+          83,
+          446,
+          136
+        ],
+        "dominant_opaque_rgba": [
+          [
+            [
+              124,
+              42,
+              6,
+              255
+            ],
+            971
+          ],
+          [
+            [
+              124,
+              124,
+              26,
+              255
+            ],
+            486
+          ],
+          [
+            [
+              101,
+              33,
+              4,
+              166
+            ],
+            50
+          ],
+          [
+            [
+              124,
+              110,
+              22,
+              255
+            ],
+            10
+          ],
+          [
+            [
+              110,
+              37,
+              5,
+              198
+            ],
+            9
+          ]
+        ]
+      },
+      "30": {
+        "sha256": "94cf5a79928fd86bb51f04c0d67cdb744bae2efc1b336e744c0c34d10d7db8d9",
+        "opaque_pixels": 1642,
+        "alpha_bbox": [
+          460,
+          48,
+          516,
+          101
+        ],
+        "dominant_opaque_rgba": [
+          [
+            [
+              124,
+              42,
+              6,
+              255
+            ],
+            971
+          ],
+          [
+            [
+              124,
+              124,
+              26,
+              255
+            ],
+            486
+          ],
+          [
+            [
+              101,
+              33,
+              4,
+              166
+            ],
+            50
+          ],
+          [
+            [
+              124,
+              110,
+              22,
+              255
+            ],
+            10
+          ],
+          [
+            [
+              110,
+              37,
+              5,
+              198
+            ],
+            9
+          ]
+        ]
+      }
+    }
+  },
+  "hdri_raw": {
+    "bytes": 3686400,
+    "sha256": "a17f7a4221a4f538f5bf72d0ef37eefe9b9e85360c5c4053ddc60c8bf3857ef8",
+    "frames": 4,
+    "unique_frame_hashes": 1,
+    "samples": {
+      "0": {
+        "sha256": "9f77a695feaed03e90ff3191c654ea53abc9ffaaf84a8d950691d98e45c21fea",
+        "opaque_pixels": 20000,
+        "alpha_bbox": [
+          220,
+          81,
+          419,
+          279
+        ],
+        "dominant_opaque_rgba": [
+          [
+            [
+              25,
+              71,
+              32,
+              255
+            ],
+            20000
+          ]
+        ]
+      }
+    }
+  },
+  "hdri_control_without_environment": {
+    "bytes": 921600,
+    "sha256": "c11337ee1a32721b61283bd893f79fda80036fc3ae3ff655256581825a5457b2",
+    "sample_xy": [
+      319,
+      81
+    ],
+    "sample_rgba": [
+      6,
+      71,
+      32,
+      255
+    ]
+  },
+  "hdri_environment": {
+    "sample_xy": [
+      319,
+      81
+    ],
+    "sample_rgba": [
+      25,
+      71,
+      32,
+      255
+    ],
+    "pixels_changed_vs_control": 20000
+  }
+}

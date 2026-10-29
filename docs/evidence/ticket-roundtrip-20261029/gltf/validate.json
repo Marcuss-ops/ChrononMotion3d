@@ -1,0 +1,20 @@
+[2026-10-29 09:38:24.745] [info] [asset-profile] kind=0 path=textures/character-base.png bytes=335 cache=miss invalidated=0 stat=0.03ms hash=3.07ms hashed_bytes=335 total=3.29ms
+[2026-10-29 09:38:24.745] [info] [asset-digest-cache] hits=0 misses=1 invalidations=0 bytes_hashed=335 lookup_ms=0.00 write_ms=0.01 full_hash_ms=3.07
+[2026-10-29 09:38:24.745] [info] [plan-profile] read=0.16ms parse=0.22ms decode=59.99ms resolver=0.06ms compile_validate=3.79ms total=64.24ms
+[2026-10-29 09:38:24.746] [info] [asset-profile] kind=0 path=textures/character-base.png bytes=335 cache=hit invalidated=0 stat=0.01ms hash=0.00ms hashed_bytes=0 total=0.07ms
+[2026-10-29 09:38:24.746] [info] [asset-digest-cache] hits=1 misses=0 invalidations=0 bytes_hashed=0 lookup_ms=0.00 write_ms=0.00 full_hash_ms=0.00
+[2026-10-29 09:38:24.746] [info] [plan-compile-profile] assets=0.14ms fingerprint=0.07ms media_resolution=0.00ms materialize=0.04ms composition_compile=0.00ms compatibility_view=0.01ms total=0.51ms
+{
+  "content_digest": "8debc716877f797308223f5da4a538c75e90142dccdfed2c58623d2ec3183218",
+  "duration_frames": 31,
+  "fps_den": 1,
+  "fps_num": 30,
+  "height": 360,
+  "job_id": "chrononmotion_baked",
+  "layers": 1,
+  "plan": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/ticket-roundtrip-20261029/gltf/animated-gltf.plan.json",
+  "request_digest": "4eb31e468a5262db5fcdb61ae77c028f281b5e0457629a1d725a26006bba7dc8",
+  "status": "PASS",
+  "valid": true,
+  "width": 640
+}

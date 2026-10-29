@@ -3,6 +3,7 @@
 #include "chrononmotion/motion/Motion.hpp"
 #include "chrononmotion/assets/GltfReader.hpp"
 #include <stdexcept>
+#include <string_view>
 
 using namespace chrononmotion;
 using namespace chrononmotion::motion;
@@ -141,6 +142,37 @@ int main() {
     for (unsigned i = 48; i < 52; ++i) malformed.bytes[i] = std::byte{0};
     rejects([&] { (void) malformed.load(malformed.json); }, "unnormalized skin weight rejected");
     rejects([&] { (void) loadGltfMotion(f.json); }, "external buffers never implicitly read");
+    auto unsupportedExtension = f.json;
+    replace(unsupportedExtension, "\"asset\":{\"version\":\"2.0\"}",
+            "\"asset\":{\"version\":\"2.0\"},\"extensionsUsed\":[\"KHR_draco_mesh_compression\"]");
+    bool unsupportedExtensionHasDiagnostic = false;
+    int unsupportedExtensionResolverCalls = 0;
+    try {
+        (void) loadGltfMotion(unsupportedExtension, [&](std::string_view) {
+            ++unsupportedExtensionResolverCalls;
+            return f.bytes;
+        });
+    }
+    catch (const std::invalid_argument& error) {
+        unsupportedExtensionHasDiagnostic = std::string_view(error.what()).starts_with("glTF: ");
+    }
+    check(unsupportedExtensionHasDiagnostic && unsupportedExtensionResolverCalls == 0,
+          "unsupported compression extensions fail closed with glTF diagnostic before resolving buffers");
+    GltfReadPolicy motionImportDisabled;
+    motionImportDisabled.allowMotionGltfImport = false;
+    bool disabledMotionImportRejected = false;
+    int disabledPolicyResolverCalls = 0;
+    try {
+        (void) loadGltfMotion(f.json,
+            [&](std::string_view) {
+                ++disabledPolicyResolverCalls;
+                return f.bytes;
+            }, motionImportDisabled);
+    } catch (const std::invalid_argument& error) {
+        disabledMotionImportRejected = std::string_view(error.what()).starts_with("glTF: ");
+    }
+    check(disabledMotionImportRejected && disabledPolicyResolverCalls == 0,
+          "disabled motion import fails before invoking the external buffer resolver");
     section("TestExplicitInverseBind / AnimatedMorphImport");
     auto alternateBind = f;
     const auto bits = std::bit_cast<std::uint32_t>(-1.f);

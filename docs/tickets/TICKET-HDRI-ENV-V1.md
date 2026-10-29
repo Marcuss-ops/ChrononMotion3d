@@ -1,13 +1,48 @@
 # TICKET-HDRI-ENV-V1 — Lettura HDRI e ambiente light come asset (contratto HDRI_ENV_V1)
 
+<!-- protocollo-chiusura-completa:2026-10-29:v1 -->
+
+## Protocollo di chiusura completa (2026-10-29)
+
+> Autorità dedicata: sezione **55 — round-trip CLI visibile; GPU downstream** di `../../../PIANO-CHIUSURA-TICKET-APER-TI-2026-10-29.md` (fase consigliata **F2** · priorità **P2**).
+> Questo blocco rende la scheda autosufficiente: riporta qui i criteri dedicati alla chiusura e le regole valide per dichiararla `COMPLETE`.
+> Fotografia dell'audit 2026-10-29: prima di eseguire un criterio, verificane l'attualità contro il codice, i test e le evidenze già presenti in questa scheda.
+
+### Criteri dedicati da portare a verde
+
+- [ ] Eseguire round-trip CLI dell’asset HDRI: caricare input fixture, produrre/renderizzare output visibile e verificare diffuse SH + specular mip lookup contro golden.
+- [ ] Verificare digest e compatibilità binaria `HDRIENV1`/RenderPlan tra producer Motion3D e consumer Chronon3D, incluso asset resolution e rigetto payload malformed.
+- [ ] Per Vulkan strict-native/parità hardware, coordinarsi con `Chronon3d/TICKET-ENVIRONMENT-LIGHT-IBL.md`; allegare test downstream same-SHA. Se è oltre lo scope Motion3D, chiudere questa voce con dipendenza trasferita esplicitamente, non duplicare il codice GPU.
+
+### Regola di chiusura (valida per questa e ogni scheda)
+
+1. Separa sempre **implementazione locale**, **test locale**, **parità GPU o asset/riferimenti esterni**, **CI same-SHA** e **decisioni di prodotto**; una categoria non sostituisce l'altra.
+2. Registra per ogni prova: comando completo, SHA (clean o dirty), preset build, host/device, exit status, contatori (test/assert/frame/hash/digest) e percorso dell'evidenza sotto `docs/evidence/`.
+3. I gate esterni (runner, content pack, footage, host GPU, decisione di owner) non si chiudono localmente: lo Stato resta `PARTIAL`/`BLOCKED` o `WAITING EXTERNAL` con prerequisito e owner espliciti. Non trasformare mai `NOT RUN`/`FAIL` in `PASS`.
+4. Non rimuovere fallback, API o capability fail-closed prima del relativo gate di equivalenza/census; non implementare feature proposte senza la decisione di scope.
+5. Chiusura effettiva = tutti i criteri dedicati verdi (oppure formalmente ritirati con motivazione e owner) + aggiornamento di `## Stato` in questa scheda, degli indici canonici se la scheda è indicizzata, di `TODO-RIPRESA-100X-E-TICKET-APER-TI.md`, e archiviazione della scheda secondo le convenzioni del repository.
+
+### Percorso rapido (ordine di esecuzione consigliato)
+
+1. Riconfronta i criteri dedicati qui sopra con lo stato attuale della scheda: le voci già soddisfatte non si rieseguono, si ricollegano all'evidenza esistente.
+2. Frammenta l'esecuzione in micro-step: chiudi prima le azioni locali raggiungibili nel checkout corrente, poi le decisioni di contratto/scope aperte, infine prepara e richiedi i gate esterni del piano.
+3. Dopo ogni criterio, spontalo in questa sezione con il link all'evidenza; annota nella stessa sezione `NOT RUN`/`BLOCKED` dove la prova non è disponibile, senza cancellare il criterio.
+4. Quando tutti i criteri dedicati sono verdi (o ritirati in modo formale), applica la Regola di chiusura (punto 5), aggiorna gli indici canonicali e archivia la scheda.
+
+<!-- /protocollo-chiusura-completa:2026-10-29:v1 -->
+
 ## Stato
-PARTIAL (2026-10-28). The bounded in-memory Radiance RGBE reader, cubemap
+PARTIAL (updated 2026-10-29). The bounded in-memory Radiance RGBE reader, cubemap
 mips, Lambert SH probe, deterministic binary asset, regression fixture, and
 showcase golden are implemented. The payload format, V3 RenderPlan producer,
 Chronon3D decoder, and focused producer/consumer tests are aligned. CLI runtime
 consumption is now connected to Chronon3D's software diffuse SH lighting.
-Software specular mip lookup is implemented downstream in Chronon3D. Visible
-CLI rendering remains open; GPU sampling/parity is an external follow-up.
+Software specular mip lookup is implemented downstream in Chronon3D. A
+current-source software raw-sink probe shows a visible diffuse-SH change on all
+20,000 opaque mesh pixels and the producer plan/asset validate successfully.
+Quantitative specular mip golden coverage and strict-native GPU sampling/parity
+remain open. Details are in
+[`ticket-roundtrip-current-source-20261029`](../evidence/ticket-roundtrip-current-source-20261029/README.md).
 
 ## TODO — cosa manca (agg. 2026-10-28)
 
@@ -19,8 +54,10 @@ CLI rendering remains open; GPU sampling/parity is an external follow-up.
       consumer decoder, asset resolution e software diffuse SH evaluation.
 - [x] Decoder C3D del payload binario `HDRIENV1` con limiti e rifiuto dei
       payload troncati, non finiti, fuori ordine o con byte residui.
-- [ ] CLI runtime round-trip con output visibile; SH diffusa e lookup speculare
-      sono consumate dal renderer software downstream.
+- [ ] Ripetere il round-trip CLI visibile con un binario Chronon3D compilato
+      dal source corrente e confrontare SH/specular con golden; il raw probe
+      esistente è diagnostico. SH diffusa e lookup speculare sono già consumate
+      dal renderer software downstream.
 - [ ] Vulkan strict-native sampling e parità hardware (ticket downstream).
 
 ## Goal
@@ -138,3 +175,42 @@ produzione finché la CI non è verde sullo SHA esatto (`docs/stato/README.md`).
 
 - `docs/GLTF_READER.md` (pattern del boundary da replicare).
 - `docs/stato/chronon-motion3d.md` §3 (bridge RenderPlan V3).
+
+## Round-trip CLI aggiornato (2026-10-29)
+
+- L'harness producer genera un RenderPlan V3 e un asset `HDRIENV1` a partire
+  dalla fixture RGBE. Il consumer `chronon3d_cli validate` lo accetta con
+  mounted asset root; il digest contenuto del piano e SHA dell'asset sono
+  registrati in [ticket-roundtrip-20261029](../evidence/ticket-roundtrip-20261029/README.md).
+- Il software PNG route produce una faccia visibile, ma la CLI dichiara tale
+  route non pixel-truth. Il video software/NVENC produce 4/4 frame decodificabili,
+  ma il frame HDRI coincide con il controllo glTF half-black/half-green e non
+  isola il contributo della probe. Non sono stati confrontati golden SH/specular
+  né misurati MAE/p99.
+- Stato `PARTIAL`: i byte e la risoluzione asset sono verificati; restano il
+  round-trip CLI autorevole con confronto contro golden, il sampling strict
+  Vulkan downstream e la certificazione CI/hardware. Questa scheda non duplica
+  l'implementazione IBL GPU di Chronon3D.
+
+## Round-trip visibile aggiornato (2026-10-29)
+
+- Fixture CLI centrata e scalata: producer rebuild PASS, 349 checks, CTest
+  authoring 1/1 PASS. Con il raw sink, il controllo senza `environment_light`
+  ha `(6,71,32,255)` al pixel `(320,180)`; con SH rosso diventa
+  `(25,71,32,255)` e cambiano tutti i 20.000 pixel opachi della mesh.
+- Il CLI Release usato per questo probe è compilato da `67fd33f7f`, mentre la
+  source HEAD Chronon3D è `014eeb4df`; il risultato è quindi diagnostico finché
+  il probe non viene ripetuto sul binario current-source. L'export NVENC di quel
+  binario non ha pixel fedeli. Strict-native Vulkan, parità hardware e CI
+  same-SHA restano aperti. Dettagli:
+  [ticket-roundtrip-scaled-20261029](../evidence/ticket-roundtrip-scaled-20261029/README.md).
+
+## Rerun current-source (2026-10-29)
+
+- Il CLI corrente accetta piano e asset HDRI. Nel software raw sink la probe
+  SH rossa cambia tutti i 20.000 pixel opachi rispetto al piano di controllo;
+  i digest e i valori campione sono registrati nell'evidenza dedicata.
+- Questo dimostra il contributo SH diffuso, non il golden quantitativo speculare
+  né la parità Vulkan. La fedeltà dell'export encoded è un difetto downstream
+  attuale e resta aperta insieme a strict-native GPU e CI same-SHA.
+- Evidenza: [ticket-roundtrip-current-source-20261029](../evidence/ticket-roundtrip-current-source-20261029/README.md).
