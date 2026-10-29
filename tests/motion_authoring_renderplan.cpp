@@ -1210,6 +1210,51 @@ void testTypedChronon3dLowering() {
           renderPlanToJson(importedGltfPlan) == importedGltfJson,
           "glTF skin/morph V3 animation emission round-trips deterministically");
 
+    // Optional concrete producer artifacts for downstream Chronon3D CLI acceptance.
+    // They use the fixture and serializer already covered by this test.
+    if (const char* path = std::getenv("CHRONONMOTION_TICKET_GLTF_PLAN")) {
+        auto visiblePlan = importedGltfPlan;
+        auto& visibleMesh = *visiblePlan.layers[0].inline_mesh;
+        visiblePlan.layers[0].duration_frames = 31;
+        // The synthetic glTF is authored in unit-scale model coordinates,
+        // while Chronon3D's fallback 2.5D camera is 1000 units from origin.
+        // Place the mesh at the canvas center and enlarge only this CLI
+        // acceptance fixture so texture alpha and baked deformation are visible.
+        visiblePlan.layers[0].position = {320.0f, 180.0f, 0.0f};
+        visiblePlan.layers[0].scale = {70.0f, 70.0f, 70.0f};
+        visiblePlan.layers[0].asset = "textures/character-base.png";
+        visiblePlan.layers[0].input_color_space = "srgb";
+        visibleMesh.material->base_color = std::array<float, 4>{1.f, 1.f, 1.f, 1.f};
+        visibleMesh.material->alpha_cutoff = 0.5f;
+        visiblePlan.output.format = chronon3d::render_plan::OutputFormat::Mp4;
+        visiblePlan.output.path = "animated-gltf.mp4";
+        std::filesystem::create_directories(std::filesystem::path(path).parent_path());
+        std::ofstream output(path, std::ios::binary);
+        if (!output || !(output << renderPlanToJson(visiblePlan)))
+            throw std::runtime_error("cannot write requested animated glTF ticket RenderPlan");
+    }
+    if (const char* path = std::getenv("CHRONONMOTION_TICKET_HDRI_PLAN")) {
+        auto visiblePlan = inlineMeshPlan;
+        visiblePlan.canvas.duration = chronon3d::Frame{4};
+        visiblePlan.layers[0].position = {320.0f, 180.0f, 0.0f};
+        visiblePlan.layers[0].scale = {100.0f, 100.0f, 100.0f};
+        visiblePlan.output.format = chronon3d::render_plan::OutputFormat::Mp4;
+        visiblePlan.output.path = "hdri-probe.mp4";
+        auto probe = decodeHdriRadiance(chrononmotion_test::constantRadianceHdr());
+        const std::filesystem::path planPath(path);
+        const std::string assetPath = "assets/studio.hdri-env";
+        attachHdriEnvironmentToRenderPlan(visiblePlan, probe, assetPath);
+        const auto assetOutput = planPath.parent_path() / assetPath;
+        std::filesystem::create_directories(assetOutput.parent_path());
+        const auto bytes = probe.serialize();
+        std::ofstream assetFile(assetOutput, std::ios::binary);
+        assetFile.write(reinterpret_cast<const char*>(bytes.data()),
+                        static_cast<std::streamsize>(bytes.size()));
+        std::ofstream planOutput(path, std::ios::binary);
+        if (!assetFile || !planOutput || !(planOutput << renderPlanToJson(visiblePlan)))
+            throw std::runtime_error("cannot write requested HDRI ticket RenderPlan and asset");
+    }
+
     auto rejectedBake = geometryBake;
     rejectedBake.frames[1].geometry.clear();
     const auto previousSamples = animatedRigPlan.layers[0].inline_mesh->animation;

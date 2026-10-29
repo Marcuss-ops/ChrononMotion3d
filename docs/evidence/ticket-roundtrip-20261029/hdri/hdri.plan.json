@@ -1,0 +1,157 @@
+{
+  "schema": "chronon.render-plan.v3",
+  "version": 3,
+  "job_id": "chrononmotion_baked",
+  "canvas": {
+    "width": 640,
+    "height": 360,
+    "fps_num": 30,
+    "fps_den": 1,
+    "duration_frames": 4
+  },
+  "environment_light": {
+    "probe_asset": "assets/studio.hdri-env",
+    "intensity": 1,
+    "rotation_y": 0,
+    "irradiance_sh": [
+      11.428123,
+      0,
+      0,
+      3.120892e-08,
+      0,
+      0,
+      3.120892e-08,
+      0,
+      0,
+      -3.120892e-08,
+      0,
+      0,
+      -1.1703345e-08,
+      0,
+      0,
+      1.7555017e-08,
+      0,
+      0,
+      -0.09688196,
+      0,
+      0,
+      0,
+      0,
+      0,
+      -0.16780445,
+      0,
+      0
+    ]
+  },
+  "layers": [
+    {
+      "id": "procedural-triangle",
+      "type": "mesh",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "size": [
+        6.4e+02,
+        3.6e+02
+      ],
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "enable_3d": true,
+      "screen_space": false,
+      "loop": false,
+      "opacity": 1,
+      "start_frame": 0,
+      "duration_frames": 4,
+      "inline_mesh": {
+        "vertices": [
+          {
+            "position": [
+              -1,
+              -1,
+              0
+            ],
+            "normal": [
+              0,
+              0,
+              1
+            ],
+            "uv": [
+              0,
+              0
+            ]
+          },
+          {
+            "position": [
+              1,
+              -1,
+              0
+            ],
+            "normal": [
+              0,
+              0,
+              1
+            ],
+            "uv": [
+              1,
+              0
+            ]
+          },
+          {
+            "position": [
+              0,
+              1,
+              0
+            ],
+            "normal": [
+              0,
+              0,
+              1
+            ],
+            "uv": [
+              0.5,
+              1
+            ]
+          }
+        ],
+        "indices": [
+          0,
+          1,
+          2
+        ],
+        "metallic_roughness_texture": "textures/orm.png",
+        "material": {
+          "diffuse": 1,
+          "specular": 0.25,
+          "shininess": 32,
+          "rim_intensity": 1,
+          "base_color": [
+            0.1,
+            0.6,
+            0.3,
+            1
+          ]
+        }
+      }
+    }
+  ],
+  "output": {
+    "path": "hdri-probe.mp4",
+    "format": "mp4"
+  }
+}

@@ -1,0 +1,10 @@
+== offline secondary motion and 2D collisions
+== analytic two-segment IK
+== deterministic 3D FABRIK IK and pole vector
+== PCM audio feature analysis and keyframes
+== deterministic motion preset track goldens
+== row and column flow layout with measured content
+== SVG morphing and affine repeater expansion
+== typed Chronon3D v2/v3 RenderPlan lowering
+
+349 checks, 0 failures

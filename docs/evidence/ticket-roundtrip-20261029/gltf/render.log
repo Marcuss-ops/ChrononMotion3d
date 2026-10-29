@@ -1,0 +1,5 @@
+[2026-10-29 09:34:22.164] [info] [asset-profile] kind=0 path=textures/character-base.png bytes=335 cache=miss invalidated=0 stat=0.01ms hash=3.40ms hashed_bytes=335 total=3.50ms
+[2026-10-29 09:34:22.164] [info] [asset-digest-cache] hits=0 misses=1 invalidations=0 bytes_hashed=335 lookup_ms=0.00 write_ms=0.00 full_hash_ms=3.40
+[2026-10-29 09:34:22.164] [info] [plan-profile] read=0.14ms parse=0.20ms decode=55.79ms resolver=0.02ms compile_validate=3.85ms total=60.02ms
+[2026-10-29 09:34:22.164] [info] [video] Auto-selecting yuv420p pipe pixel format for 640x360 output
+[2026-10-29 09:34:22.164] [error] Render plan job failed: Video RenderJob requires the legacy compiled export view
