@@ -66,11 +66,23 @@ namespace chrononmotion::motion {
                 it->value = value;
                 it->easing = easing;
                 it->discrete = false;
+                it->cubicSpline = false;
                 return *this;
             }
 
             checkMutation(keys_.size(), keys_.size() + 1);
             keys_.insert(it, Keyframe<T>{time, value, easing, false});
+            return *this;
+        }
+
+        Track& addCubicSpline(float time, const T& value, const T& inTangent,
+                              const T& outTangent) {
+            add(time, value);
+            const auto it = std::lower_bound(keys_.begin(), keys_.end(), time,
+                [](const Keyframe<T>& key, float t) { return key.time < t; });
+            it->cubicSpline = true;
+            it->inTangent = inTangent;
+            it->outTangent = outTangent;
             return *this;
         }
 
@@ -413,6 +425,9 @@ namespace chrononmotion::motion {
             const float span = b.time - a.time;
             const float normalized = span > 0.f ? std::clamp((mappedTime - a.time) / span, 0.f, 1.f) : 1.f;
             out = blendValue(a.value, b.value, a.easing(normalized));
+            if (a.cubicSpline)
+                out = cubicSplineValue(a.value, a.outTangent, b.value, b.inTangent,
+                                       span, normalized);
             applyLinks(mappedTime, out, resolve);
         }
 
@@ -497,7 +512,10 @@ namespace chrononmotion::motion {
                 const float span = b.time - a.time;
                 if (!a.discrete && span > 0.f) {
                     const float u = std::clamp((time - a.time) / span, 0.f, 1.f);
-                    out = scaledDifference(a.value, b.value, a.easing.derivative(u) / span * rate);
+                    out = a.cubicSpline
+                        ? cubicSplineDerivative(a.value, a.outTangent, b.value, b.inTangent, span, u)
+                        : scaledDifference(a.value, b.value, a.easing.derivative(u) / span);
+                    if (rate != 1.f) out = scaleRate(out, rate);
                 }
             }
 

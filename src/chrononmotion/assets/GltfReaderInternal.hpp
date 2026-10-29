@@ -3,6 +3,7 @@
 #include "chrononmotion/assets/GltfReader.hpp"
 #include "chrononmotion/core/BufferAttribute.hpp"
 #include "chrononmotion/objects/Group.hpp"
+#include "chrononmotion/materials/PbrMaterial.hpp"
 #include "chrononmotion/motion/RigGraph.hpp"
 #include "../motion/JsonDom.hpp"
 
@@ -96,7 +97,7 @@ struct Accessor {
     bool hasMin;
     bool hasMax;
 };
-struct Primitive { std::shared_ptr<BufferGeometry> geometry; };
+struct Primitive { std::shared_ptr<BufferGeometry> geometry; std::shared_ptr<Material> material; };
 struct MeshData { std::string name; std::vector<Primitive> primitives; };
 
 inline std::size_t componentCount(std::string_view type) {
@@ -147,6 +148,9 @@ private:
     std::vector<BufferView> views_;
     std::vector<Accessor> accessors_;
     std::vector<MeshData> meshes_;
+    std::vector<std::shared_ptr<Material>> materials_;
+    std::vector<std::string> imageUris_;
+    std::vector<std::size_t> textureSources_;
     bool hasGlbBinChunk_{false};
     GltfReadPolicy policy_{};
     const GltfExternalBufferResolver* externalResolver_{nullptr};
@@ -162,6 +166,8 @@ private:
     std::vector<float> floatAttribute(const Accessor& accessor, std::size_t expectedComponents,
                                       std::string_view semantic) const;
     void parseMeshes();
+    void parseTextureTables();
+    void parseMaterials();
     void parseMotionAnimations(const std::vector<JsonValue>& nodes,
                                const std::vector<std::vector<std::size_t>>& nodeGeometry,
                                GltfMotionAsset& result);

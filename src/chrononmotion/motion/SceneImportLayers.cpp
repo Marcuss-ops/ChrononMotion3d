@@ -25,7 +25,7 @@ namespace chrononmotion::motion::scene_import_detail {
 
         MaterialDescriptor readMaterial(const JsonValue& value, std::string_view where) {
             rejectUnknownKeys(value, {"name", "kind", "baseColor", "emissiveColor", "emissiveStrength", "roughness",
-                                      "metalness", "opacity", "transparent"},
+                                      "metalness", "opacity", "transparent", "doubleSided", "alphaCutoff"},
                               where);
             MaterialDescriptor material;
             material.name = required(value, "name", where).string("material name");
@@ -42,13 +42,17 @@ namespace chrononmotion::motion::scene_import_detail {
             material.metalness = floatValue(required(value, "metalness", where), "material metalness");
             material.opacity = floatValue(required(value, "opacity", where), "material opacity");
             material.transparent = required(value, "transparent", where).boolean("material transparent");
+            if (const auto* twoSided = find(value, "doubleSided"))
+                material.doubleSided = twoSided->boolean("material doubleSided");
+            if (const auto* cutoff = find(value, "alphaCutoff"))
+                material.alphaCutoff = floatValue(*cutoff, "material alphaCutoff");
             material.validate();
             return material;
         }
 
         MeshAttachment readMesh(const JsonValue& value, std::string_view where) {
             if (std::holds_alternative<std::nullptr_t>(value.value)) return MeshAttachment{};
-            rejectUnknownKeys(value, {"assetId", "geometry", "material"}, where);
+            rejectUnknownKeys(value, {"assetId", "baseColorTextureAsset", "metallicRoughnessTextureAsset", "geometry", "material"}, where);
             // Vertex buffers are never serialized: a mesh that carried geometry
             // cannot be rebuilt from the record, so it fails instead of
             // reappearing with silently different pixels.
@@ -56,6 +60,10 @@ namespace chrononmotion::motion::scene_import_detail {
                 reject(where, "carries geometry whose buffers were never serialized");
             MeshAttachment mesh;
             mesh.assetId = required(value, "assetId", where).string("mesh asset");
+            if (const auto* texture = find(value, "baseColorTextureAsset"))
+                mesh.baseColorTextureAsset = texture->string("mesh base color texture");
+            if (const auto* texture = find(value, "metallicRoughnessTextureAsset"))
+                mesh.metallicRoughnessTextureAsset = texture->string("mesh metallic-roughness texture");
             mesh.material = readMaterial(required(value, "material", where), "mesh material");
             return mesh;
         }

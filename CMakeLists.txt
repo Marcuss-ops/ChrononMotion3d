@@ -57,6 +57,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/core/Object3D.cpp
         # assets — dependency-free, explicit-buffer glTF input
         src/chrononmotion/assets/GltfReader.cpp
+        src/chrononmotion/assets/HdriReader.cpp
         src/chrononmotion/assets/GltfReaderAnimations.cpp
         src/chrononmotion/assets/GltfReaderInternal.hpp
         src/chrononmotion/assets/GltfReaderScene.cpp
@@ -116,6 +117,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/TitleCameraRecipe.cpp
         src/chrononmotion/motion/CameraShake.cpp
         src/chrononmotion/motion/Lighting.cpp
+        src/chrononmotion/motion/LightRig.cpp
         src/chrononmotion/motion/AuthoringPolicy.cpp
         src/chrononmotion/motion/Procedural.cpp
         src/chrononmotion/motion/Constraints.cpp
@@ -166,6 +168,8 @@ if(CHRONON3D_INCLUDE_DIR)
     # them even in adapter builds that do not inherit C3D's vcpkg toolchain.
     find_package(fmt CONFIG REQUIRED) # boundary-guardrail: allowed — public C3D RenderPlan headers expose fmt in this offline adapter only.
     add_library(chrononmotion_chronon3d_adapter STATIC
+        src/chrononmotion/motion/LightRigRenderPlan.cpp
+        src/chrononmotion/motion/HdriRenderPlan.cpp
         src/chrononmotion/motion/RenderPlanLowering.cpp
         src/chrononmotion/motion/RenderPlanLoweringCamera.cpp
         src/chrononmotion/motion/RenderPlanLoweringGeometry.cpp
@@ -276,6 +280,18 @@ if(CHRONONMOTION_BUILD_TESTS)
         target_compile_options(chrononmotion_rig_pipeline PRIVATE -Werror)
     endif()
     add_test(NAME chrononmotion_rig_pipeline COMMAND chrononmotion_rig_pipeline)
+
+    add_executable(chrononmotion_hdri tests/motion_hdri.cpp)
+    target_link_libraries(chrononmotion_hdri PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_hdri PRIVATE -Wall -Wextra -Werror)
+    add_test(NAME chrononmotion_hdri COMMAND chrononmotion_hdri)
+
+    if(TARGET chrononmotion_chronon3d_adapter)
+        add_executable(chrononmotion_light_rig tests/motion_light_rig.cpp)
+        target_link_libraries(chrononmotion_light_rig PRIVATE chrononmotion_chronon3d_adapter)
+        target_compile_options(chrononmotion_light_rig PRIVATE -Wall -Wextra -Werror)
+        add_test(NAME chrononmotion_light_rig COMMAND chrononmotion_light_rig)
+    endif()
     add_executable(chrononmotion_rig_canaries tests/motion_rig_canaries.cpp)
     target_link_libraries(chrononmotion_rig_canaries PRIVATE chrononmotion)
     target_compile_options(chrononmotion_rig_canaries PRIVATE -Wall -Wextra)

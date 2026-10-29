@@ -42,14 +42,18 @@ void Document::parseMotionAnimations(const std::vector<JsonValue>& nodes,
                 const auto& sampler = at(samplers, indexValue(required(channel, "sampler", "channel"), "sampler"), "sampler");
                 rejectUnknownKeys(sampler, {"input", "output", "interpolation"}, "sampler");
                 const auto interpolation = find(sampler, "interpolation") ? find(sampler, "interpolation")->string("interpolation") : "LINEAR";
-                if (interpolation != "LINEAR" && interpolation != "STEP") invalid("only LINEAR and STEP motion interpolation supported");
+                if (interpolation != "LINEAR" && interpolation != "STEP" && interpolation != "CUBICSPLINE")
+                    invalid("unsupported motion interpolation");
                 const auto times = floats(required(sampler, "input", "sampler"), 1);
                 if (path == "weights") {
                     if (nodeGeometry[node].empty()) invalid("weight channel requires mesh node");
                     const auto morphCount = result.geometry[nodeGeometry[node].front()].morphs.size();
                     if (!morphCount) invalid("weight channel requires morph targets");
                     const auto values = floats(required(sampler, "output", "sampler"), 1);
-                    if (values.size() != times.size() * morphCount) invalid("morph animation topology mismatch");
+                    const std::size_t weightStride = interpolation == "CUBICSPLINE" ? 3 : 1;
+                    if (times.empty() || morphCount > std::numeric_limits<std::size_t>::max() / weightStride ||
+                        values.size() != times.size() * morphCount * weightStride)
+                        invalid("morph animation topology mismatch");
                     keyBudget += values.size(); if (keyBudget > 1000000) invalid("morph animation key budget exceeded");
                     for (const auto geometryIndex : nodeGeometry[node]) {
                         const auto& geometry = result.geometry[geometryIndex];
@@ -60,9 +64,17 @@ void Document::parseMotionAnimations(const std::vector<JsonValue>& nodes,
                             if (times[key] < 0.f || times[key] <= previous) invalid("morph times must increase");
                             previous = times[key]; clip.duration = std::max(clip.duration, times[key]);
                             for (std::size_t targetIndex = 0; targetIndex < morphCount; ++targetIndex) {
-                                const auto value = values[key * morphCount + targetIndex];
+                                const auto keyBase = key * morphCount * weightStride;
+                                const auto valueIndex = weightStride == 3
+                                    ? keyBase + morphCount + targetIndex
+                                    : keyBase + targetIndex;
+                                const auto value = values[valueIndex];
                                 if (value < 0.f || value > 1.f) invalid("morph animated weight outside 0..1");
                                 if (interpolation == "STEP") morph.weights[targetIndex].addDiscrete(times[key], value);
+                                else if (interpolation == "CUBICSPLINE")
+                                    morph.weights[targetIndex].addCubicSpline(times[key], value,
+                                        values[keyBase + targetIndex],
+                                        values[keyBase + 2 * morphCount + targetIndex]);
                                 else morph.weights[targetIndex].add(times[key], value);
                             }
                         }
@@ -71,20 +83,39 @@ void Document::parseMotionAnimations(const std::vector<JsonValue>& nodes,
                     continue;
                 }
                 const auto values = floats(required(sampler, "output", "sampler"), path == "rotation" ? 4 : 3);
-                keyBudget += times.size(); if (keyBudget > 1000000 || values.size() != times.size() * (path == "rotation" ? 4 : 3)) invalid("clip key budget/topology invalid");
+                const std::size_t components = path == "rotation" ? 4 : 3;
+                const std::size_t keyStride = components * (interpolation == "CUBICSPLINE" ? 3 : 1);
+                keyBudget += values.size(); if (times.empty() || keyBudget > 1000000 || values.size() != times.size() * keyStride) invalid("clip key budget/topology invalid");
                 auto it = std::find_if(clip.animation.begin(), clip.animation.end(), [node](const RigAnimatedNode& a) { return a.id == node + 1; });
                 if (it == clip.animation.end()) { clip.animation.push_back({static_cast<RigNodeId>(node + 1), {}}); it = clip.animation.end() - 1; }
                 float previous = -1.f;
                 for (std::size_t key = 0; key < times.size(); ++key) {
                     const float time = times[key]; if (time < 0.f || time <= previous) invalid("animation time must be increasing nonnegative"); previous = time;
                     if (path == "rotation") {
-                        Quaternion q(values[key * 4], values[key * 4 + 1], values[key * 4 + 2], values[key * 4 + 3]);
+                        const std::size_t base = key * keyStride + (interpolation == "CUBICSPLINE" ? components : 0);
+                        Quaternion q(values[base], values[base + 1], values[base + 2], values[base + 3]);
                         if (std::abs(q.lengthSq() - 1.f) > 1e-4f) invalid("animation quaternion must be normalized");
                         if (interpolation == "STEP") it->tracks.orientation.addDiscrete(time, q); else it->tracks.orientation.add(time, q);
                     } else {
-                        Vector3 value{values[key * 3], values[key * 3 + 1], values[key * 3 + 2]};
+                        const std::size_t base = key * keyStride + (interpolation == "CUBICSPLINE" ? components : 0);
+                        Vector3 value{values[base], values[base + 1], values[base + 2]};
                         auto& track = path == "translation" ? it->tracks.position : it->tracks.scale;
                         if (interpolation == "STEP") track.addDiscrete(time, value); else track.add(time, value);
+                    }
+                    if (interpolation == "CUBICSPLINE") {
+                        const std::size_t base = key * keyStride;
+                        if (path == "rotation") {
+                            const Quaternion in(values[base], values[base + 1], values[base + 2], values[base + 3]);
+                            const Quaternion out(values[base + 8], values[base + 9], values[base + 10], values[base + 11]);
+                            it->tracks.orientation.addCubicSpline(time,
+                                Quaternion(values[base + 4], values[base + 5], values[base + 6], values[base + 7]), in, out);
+                        } else {
+                            const Vector3 in{values[base], values[base + 1], values[base + 2]};
+                            const Vector3 out{values[base + 6], values[base + 7], values[base + 8]};
+                            const Vector3 value{values[base + 3], values[base + 4], values[base + 5]};
+                            auto& track = path == "translation" ? it->tracks.position : it->tracks.scale;
+                            track.addCubicSpline(time, value, in, out);
+                        }
                     }
                     clip.duration = std::max(clip.duration, time);
                 }

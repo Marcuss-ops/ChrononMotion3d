@@ -101,6 +101,44 @@ namespace {
                     return "lighting rig values are outside supported finite ranges";
                 }
             }
+            if (plan.environment_light) {
+                if (plan.schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                    return "HDRI environment light requires RenderPlan V3";
+                const auto& env = *plan.environment_light;
+                const auto validAsset = [](const std::string& path) {
+                    if (path.empty() || path.front() == '/' || path.find('\\') != std::string::npos ||
+                        path.find(':') != std::string::npos) return false;
+                    std::size_t start = 0;
+                    while (start <= path.size()) {
+                        const auto end = path.find('/', start);
+                        const auto part = path.substr(start, end == std::string::npos ? end : end - start);
+                        if (part.empty() || part == "." || part == "..") return false;
+                        if (end == std::string::npos) break;
+                        start = end + 1;
+                    }
+                    return true;
+                };
+                if (!validAsset(env.probe_asset)) return "HDRI environment probe_asset is not a safe logical path";
+                if (!std::isfinite(env.intensity) || env.intensity < 0.f || env.intensity > 16.f ||
+                    !std::isfinite(env.rotation_y) || std::abs(env.rotation_y) > 1000000.f ||
+                    !std::all_of(env.irradiance_sh.begin(), env.irradiance_sh.end(),
+                        [](float v) { return std::isfinite(v) && std::abs(v) <= 1000000.f; }))
+                    return "HDRI environment light values are outside supported finite ranges";
+                if (env.rotation_animation) {
+                    const auto& track = *env.rotation_animation;
+                    if (track.property != "rotation_y" || track.keyframes.empty() || track.keyframes.size() > 1000000)
+                        return "HDRI environment rotation animation requires rotation_y and 1..1000000 keyframes";
+                    double previous = -1.0;
+                    for (const auto& key : track.keyframes) {
+                        const double keyFrame = static_cast<double>(key.frame);
+                        if (!std::isfinite(keyFrame) || keyFrame <= previous || keyFrame < 0.0 ||
+                            keyFrame >= static_cast<double>(plan.canvas.duration.integral()) ||
+                            key.value.size() != 1 || !std::isfinite(key.value.front()) || std::abs(key.value.front()) > 1000000.f)
+                            return "HDRI environment rotation keyframes are invalid";
+                        previous = keyFrame;
+                    }
+                }
+            }
             if (plan.audio) return "the plan carries an audio mix";
             if (plan.prepared_overlay_package) return "the plan carries a prepared overlay package";
 

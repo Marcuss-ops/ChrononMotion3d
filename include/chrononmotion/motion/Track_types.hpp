@@ -51,6 +51,9 @@ namespace chrononmotion::motion {
         T value{};
         Easing easing{};
         bool discrete{false};
+        bool cubicSpline{false};
+        T inTangent{};
+        T outTangent{};
     };
 
     /// Every keyed channel a layer owns. A `LinkModifier` names the source

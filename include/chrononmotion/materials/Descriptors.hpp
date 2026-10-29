@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <stdexcept>
 #include <string>
 
@@ -30,10 +31,12 @@ namespace chrononmotion {
         float metalness{0.f};
         float opacity{1.f};
         bool transparent{false};
+        bool doubleSided{false};
+        float alphaCutoff{0.f};
 
         void validate() const {
-            if (!std::isfinite(emissiveStrength) || emissiveStrength < 0.f) {
-                throw std::invalid_argument("MaterialDescriptor: emissiveStrength must be finite and non-negative");
+            if (!std::isfinite(emissiveStrength) || emissiveStrength < 0.f || emissiveStrength > 10000.f) {
+                throw std::invalid_argument("MaterialDescriptor: emissiveStrength must be finite and in [0, 10000]");
             }
             if (!std::isfinite(roughness) || roughness < 0.f || roughness > 1.f) {
                 throw std::invalid_argument("MaterialDescriptor: roughness must be in [0, 1]");
@@ -43,6 +46,20 @@ namespace chrononmotion {
             }
             if (!std::isfinite(opacity) || opacity < 0.f || opacity > 1.f) {
                 throw std::invalid_argument("MaterialDescriptor: opacity must be in [0, 1]");
+            }
+            if (!std::isfinite(alphaCutoff) || alphaCutoff < 0.f || alphaCutoff > 1.f) {
+                throw std::invalid_argument("MaterialDescriptor: alphaCutoff must be in [0, 1]");
+            }
+            for (const float channel : {baseColor.r, baseColor.g, baseColor.b,
+                                        emissiveColor.r, emissiveColor.g, emissiveColor.b}) {
+                if (!std::isfinite(channel) || channel < 0.f) {
+                    throw std::invalid_argument("MaterialDescriptor: color channels must be finite and non-negative");
+                }
+            }
+            for (const float channel : {emissiveColor.r, emissiveColor.g, emissiveColor.b}) {
+                if (channel * emissiveStrength > 10000.f) {
+                    throw std::invalid_argument("MaterialDescriptor: emissive output must be in [0, 10000]");
+                }
             }
         }
 

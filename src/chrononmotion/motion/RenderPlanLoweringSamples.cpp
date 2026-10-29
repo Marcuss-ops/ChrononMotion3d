@@ -298,6 +298,7 @@ RenderPlan lowerSamplesToRenderPlan(
                     ? output.inline_mesh->material
                     : std::optional<chronon3d::render_plan::InlineMeshMaterialPlan>{};
                 chronon3d::render_plan::InlineMeshPlan inline_mesh;
+                inline_mesh.metallic_roughness_texture_asset = layer.mesh.metallicRoughnessTextureAsset;
                 inline_mesh.vertices.reserve(static_cast<std::size_t>(positions->count()));
                 for (int vertex_index = 0; vertex_index < positions->count(); ++vertex_index) {
                     chronon3d::render_plan::InlineMeshVertex vertex;
@@ -356,25 +357,42 @@ RenderPlan lowerSamplesToRenderPlan(
                     // software mesh path; preserve the authored native tint there.
                     output.color = {renderPlanColor.r, renderPlanColor.g,
                                     renderPlanColor.b, descriptor.opacity};
-                } else if (descriptor.kind == MaterialKind::Lambert || descriptor.kind == MaterialKind::PBR) {
-                    // RenderPlan has a compact Phong-like contract rather than
-                    // ChrononMotion's material zoo. PBR roughness/metalness are
-                    // approximated by shininess/specular here; the threepp bridge
-                    // remains the physically based path. Reject emissive below.
+                } else if (descriptor.kind == MaterialKind::Lambert ||
+                           descriptor.kind == MaterialKind::PBR ||
+                           descriptor.kind == MaterialKind::Emissive) {
                     chronon3d::render_plan::InlineMeshMaterialPlan material;
-                    material.diffuse = 1.f;
-                    material.specular = descriptor.metalness;
+                    material.diffuse = descriptor.kind == MaterialKind::Emissive ? 0.f : 1.f;
+                    material.specular = 1.f;
                     material.shininess = 1.f + (1.f - descriptor.roughness) * 1023.f;
                     material.rim_intensity = 0.f;
-                    material.base_color = std::array<float, 4>{renderPlanColor.r,
-                        renderPlanColor.g, renderPlanColor.b, descriptor.opacity};
+                    const bool emissive_only = descriptor.kind == MaterialKind::Emissive;
+                    material.base_color = std::array<float, 4>{
+                        emissive_only ? 0.f : renderPlanColor.r,
+                        emissive_only ? 0.f : renderPlanColor.g,
+                        emissive_only ? 0.f : renderPlanColor.b, descriptor.opacity};
+                    material.metallic = descriptor.metalness;
+                    material.roughness = descriptor.roughness;
+                    material.emissive = std::array<float, 3>{
+                        descriptor.emissiveColor.r * descriptor.emissiveStrength,
+                        descriptor.emissiveColor.g * descriptor.emissiveStrength,
+                        descriptor.emissiveColor.b * descriptor.emissiveStrength};
+                    material.double_sided = descriptor.doubleSided;
+                    if (descriptor.alphaCutoff > 0.f) material.alpha_cutoff = descriptor.alphaCutoff;
                     output.color = {1.f, 1.f, 1.f, 1.f};
                     inline_mesh.material = material;
-                } else {
-                    throw std::invalid_argument("lowerToRenderPlan: emissive mesh materials are not expressible by the inline mesh RenderPlan material contract");
                 }
                 output.inline_mesh = std::move(inline_mesh);
                 output.asset.clear();
+                if (!layer.mesh.baseColorTextureAsset.empty()) {
+                    output.asset = layer.mesh.baseColorTextureAsset;
+                    output.input_color_space = "srgb";
+                    if (!suppliedMaterial && descriptor.kind == MaterialKind::Unlit) {
+                        output.color = {renderPlanColor.r, renderPlanColor.g,
+                                        renderPlanColor.b, descriptor.opacity};
+                    }
+                }
+                if (!layer.mesh.metallicRoughnessTextureAsset.empty())
+                    output.inline_mesh->metallic_roughness_texture_asset = layer.mesh.metallicRoughnessTextureAsset;
             } else {
                 if (layer.content.id.empty())
                     throw std::invalid_argument("lowerToRenderPlan: content layer has no id");

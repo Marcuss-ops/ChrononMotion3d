@@ -116,6 +116,10 @@ namespace chrononmotion::motion {
         std::shared_ptr<BufferGeometry> geometry{};
 
         MaterialDescriptor material{MaterialDescriptor::unlit(0)};
+        /// Mounted-root-relative, sRGB base-color image used by the inline mesh.
+        std::string baseColorTextureAsset{};
+        /// Mounted-root-relative linear metallic-roughness image.
+        std::string metallicRoughnessTextureAsset{};
 
         [[nodiscard]] bool empty() const { return assetId.empty() && !geometry; }
     };

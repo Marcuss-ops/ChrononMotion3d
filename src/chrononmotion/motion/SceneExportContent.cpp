@@ -68,6 +68,10 @@ namespace chrononmotion::motion {
             writer.beginObject();
             writer.key("assetId");
             writer.text(mesh.assetId);
+            writer.key("baseColorTextureAsset");
+            writer.text(mesh.baseColorTextureAsset);
+            writer.key("metallicRoughnessTextureAsset");
+            writer.text(mesh.metallicRoughnessTextureAsset);
             // Presence only: a geometry handle is data this tree places and
             // transforms, and its buffers are never serialized here.
             writer.key("geometry");
@@ -97,6 +101,10 @@ namespace chrononmotion::motion {
             writer.number(mesh.material.opacity);
             writer.key("transparent");
             writer.boolean(mesh.material.transparent);
+            writer.key("doubleSided");
+            writer.boolean(mesh.material.doubleSided);
+            writer.key("alphaCutoff");
+            writer.number(mesh.material.alphaCutoff);
             writer.endObject();
             writer.endObject();
         }

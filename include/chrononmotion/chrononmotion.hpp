@@ -18,6 +18,9 @@
 #include "chrononmotion/core/BufferGeometry.hpp"
 #include "chrononmotion/core/Object3D.hpp"
 #include "chrononmotion/assets/GltfReader.hpp"
+#include "chrononmotion/assets/GltfMotionBridge.hpp"
+#include "chrononmotion/assets/HdriReader.hpp"
+#include "chrononmotion/motion/HdriRenderPlan.hpp"
 
 #include "chrononmotion/animation/AnimationClip.hpp"
 #include "chrononmotion/animation/AnimationUtils.hpp"
@@ -44,6 +47,7 @@
 #include "chrononmotion/geometries/geometries.hpp"
 
 #include "chrononmotion/materials/Material.hpp"
+#include "chrononmotion/materials/PbrMaterial.hpp"
 #include "chrononmotion/materials/Descriptors.hpp"
 
 #include "chrononmotion/objects/Group.hpp"

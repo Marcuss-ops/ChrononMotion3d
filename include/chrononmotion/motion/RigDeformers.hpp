@@ -51,7 +51,18 @@ namespace chrononmotion::motion {
                                                       std::span<const Vector3> source,
                                                       std::span<const RigSkinVertex> bindings,
                                                       std::span<const RigSkinMatrixBinding> inverseBinds = {});
-    struct RigMorphTarget { std::vector<Vector3> positions{}; float weight{0.f}; };
+    struct RigMorphTarget {
+        std::vector<Vector3> positions{}; // absolute target positions
+        float weight{0.f};
+        std::vector<Vector3> normals{};   // absolute target normals when present
+    };
+    [[nodiscard]] std::vector<Vector3> mixRigMorphNormals(std::span<const Vector3> base,
+                                                           std::span<const RigMorphTarget> targets);
+    [[nodiscard]] std::vector<Vector3> skinRigNormals(const RigEvaluator& rig,
+                                                       const RigEvaluation& pose,
+                                                       std::span<const Vector3> sourceNormals,
+                                                       std::span<const RigSkinVertex> bindings,
+                                                       std::span<const RigSkinMatrixBinding> inverseBinds = {});
     [[nodiscard]] std::vector<Vector3> mixRigMorphs(std::span<const Vector3> base,
                                                   std::span<const RigMorphTarget> targets);
 }

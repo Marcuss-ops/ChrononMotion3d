@@ -5,7 +5,8 @@ namespace gltf_detail {
 
 GltfAsset Document::load() {
     rejectUnknownKeys(root_, {"asset", "scene", "scenes", "nodes", "buffers", "bufferViews",
-                             "accessors", "meshes", "extensionsUsed", "extensionsRequired",
+                             "accessors", "meshes", "materials", "images", "textures", "samplers",
+                             "extensionsUsed", "extensionsRequired",
                              "extensions", "extras"}, "root");
     const auto& asset = required(root_, "asset", "root");
     rejectUnknownKeys(asset, {"version", "minVersion", "generator", "copyright", "extras"}, "asset");
@@ -14,9 +15,7 @@ GltfAsset Document::load() {
     if (find(root_, "extensions")) invalid("glTF extensions are outside the static reader contract");
     if (find(root_, "animations")) invalid("animated glTF assets are outside the static reader contract");
     if (find(root_, "skins")) invalid("skinned meshes are not supported");
-    if (find(root_, "materials") || find(root_, "textures") || find(root_, "images") ||
-        find(root_, "samplers") || find(root_, "cameras"))
-        invalid("materials, textures, images, samplers, and cameras are not supported");
+    if (find(root_, "cameras")) invalid("cameras are not supported by the static reader");
     if (find(root_, "extensionsRequired")) {
         const auto& extensions = required(root_, "extensionsRequired", "root").array("extensionsRequired");
         if (!extensions.empty()) invalid("required extensions are not supported");
@@ -27,8 +26,146 @@ GltfAsset Document::load() {
     }
     parseBuffers();
     parseViewsAndAccessors();
+    parseTextureTables();
+    parseMaterials();
     parseMeshes();
     return parseScene();
+}
+
+void Document::parseTextureTables() {
+    if (const auto* images = find(root_, "images")) {
+        const auto& entries = images->array("images");
+        if (entries.size() > 4096) invalid("image count exceeds 4096");
+        imageUris_.reserve(entries.size());
+        for (const auto& image : entries) {
+            rejectUnknownKeys(image, {"uri", "mimeType", "name", "extras"}, "image");
+            if (find(image, "mimeType")) invalid("bufferView and explicit mimeType images are outside PBR V1");
+            const std::string uri = required(image, "uri", "image").string("image.uri");
+            if (uri.empty() || uri.front() == '/' || uri.find('\\') != std::string::npos ||
+                uri.find(':') != std::string::npos || uri.find('%') != std::string::npos ||
+                uri.find('?') != std::string::npos || uri.find('#') != std::string::npos)
+                invalid("image.uri must be a plain mounted-root-relative path");
+            std::size_t start = 0;
+            while (start <= uri.size()) {
+                const auto end = uri.find('/', start);
+                const auto part = uri.substr(start, end == std::string::npos ? uri.size() - start : end - start);
+                if (part.empty() || part == "." || part == "..") invalid("image.uri contains an unsafe path component");
+                if (end == std::string::npos) break;
+                start = end + 1;
+            }
+            imageUris_.push_back(uri);
+        }
+    }
+
+    if (const auto* samplers = find(root_, "samplers")) {
+        const auto& entries = samplers->array("samplers");
+        if (entries.size() > 4096) invalid("sampler count exceeds 4096");
+        for (const auto& sampler : entries) {
+            rejectUnknownKeys(sampler, {"magFilter", "minFilter", "wrapS", "wrapT", "name", "extras"}, "sampler");
+            const auto mag = find(sampler, "magFilter") ? indexValue(*find(sampler, "magFilter"), "sampler.magFilter") : 9729;
+            const auto min = find(sampler, "minFilter") ? indexValue(*find(sampler, "minFilter"), "sampler.minFilter") : 9987;
+            const auto wrapS = find(sampler, "wrapS") ? indexValue(*find(sampler, "wrapS"), "sampler.wrapS") : 10497;
+            const auto wrapT = find(sampler, "wrapT") ? indexValue(*find(sampler, "wrapT"), "sampler.wrapT") : 10497;
+            if ((mag != 9728 && mag != 9729) || (min != 9728 && min != 9729) ||
+                wrapS != 33071 || wrapT != 33071)
+                invalid("PBR V1 textures require nearest/linear filtering and CLAMP_TO_EDGE on both axes");
+        }
+    }
+
+    if (const auto* textures = find(root_, "textures")) {
+        const auto& entries = textures->array("textures");
+        if (entries.size() > 4096) invalid("texture count exceeds 4096");
+        textureSources_.reserve(entries.size());
+        for (const auto& texture : entries) {
+            rejectUnknownKeys(texture, {"source", "sampler", "name", "extensions", "extras"}, "texture");
+            if (find(texture, "extensions")) invalid("texture extensions are outside PBR V1");
+            if (!find(texture, "sampler")) invalid("PBR V1 textures require an explicit CLAMP_TO_EDGE sampler");
+            const auto sampler = indexValue(*find(texture, "sampler"), "texture.sampler");
+            const auto* samplers = find(root_, "samplers");
+            if (!samplers || sampler >= samplers->array("samplers").size()) invalid("texture sampler index is out of range");
+            const auto source = indexValue(required(texture, "source", "texture"), "texture.source");
+            if (source >= imageUris_.size()) invalid("texture image source index is out of range");
+            textureSources_.push_back(source);
+        }
+    }
+}
+
+void Document::parseMaterials() {
+    const auto* entries = find(root_, "materials");
+    if (!entries) return;
+    const auto& rawMaterials = entries->array("materials");
+    if (rawMaterials.size() > 100'000) invalid("material count exceeds 100000");
+    materials_.reserve(rawMaterials.size());
+    for (std::size_t i = 0; i < rawMaterials.size(); ++i) {
+        const auto& raw = rawMaterials[i];
+        rejectUnknownKeys(raw, {"name", "pbrMetallicRoughness", "normalTexture", "occlusionTexture",
+                                "emissiveTexture", "emissiveFactor", "alphaMode", "alphaCutoff",
+                                "doubleSided", "extensions", "extras"}, "material");
+        if (find(raw, "normalTexture") || find(raw, "occlusionTexture") || find(raw, "emissiveTexture"))
+            invalid("normal, occlusion and emissive textures are outside the PBR V1 material-only reader");
+        if (find(raw, "extensions")) invalid("material extensions are not supported");
+        auto material = std::make_shared<PbrMaterial>();
+        if (const auto* name = find(raw, "name")) material->name = name->string("material.name");
+        if (const auto* pbr = find(raw, "pbrMetallicRoughness")) {
+            rejectUnknownKeys(*pbr, {"baseColorFactor", "metallicFactor", "roughnessFactor",
+                                     "baseColorTexture", "metallicRoughnessTexture", "extensions", "extras"},
+                              "material.pbrMetallicRoughness");
+            if (find(*pbr, "baseColorTexture")) {
+                const auto& info = *find(*pbr, "baseColorTexture");
+                rejectUnknownKeys(info, {"index", "texCoord", "extensions", "extras"}, "baseColorTexture");
+                if (find(info, "extensions")) invalid("baseColorTexture extensions are outside PBR V1");
+                const auto texCoord = find(info, "texCoord") ? indexValue(*find(info, "texCoord"), "baseColorTexture.texCoord") : 0;
+                if (texCoord != 0) invalid("only TEXCOORD_0 base-color textures are supported");
+                const auto textureIndex = indexValue(required(info, "index", "baseColorTexture"), "baseColorTexture.index");
+                if (textureIndex >= textureSources_.size()) invalid("baseColorTexture index is out of range");
+                material->baseColorTextureUri = imageUris_[textureSources_[textureIndex]];
+            }
+            if (find(*pbr, "metallicRoughnessTexture")) {
+                const auto& info = *find(*pbr, "metallicRoughnessTexture");
+                rejectUnknownKeys(info, {"index", "texCoord", "extensions", "extras"}, "metallicRoughnessTexture");
+                if (find(info, "extensions")) invalid("metallicRoughnessTexture extensions are outside PBR V1");
+                const auto texCoord = find(info, "texCoord") ? indexValue(*find(info, "texCoord"), "metallicRoughnessTexture.texCoord") : 0;
+                if (texCoord != 0) invalid("only TEXCOORD_0 metallic-roughness textures are supported");
+                const auto textureIndex = indexValue(required(info, "index", "metallicRoughnessTexture"), "metallicRoughnessTexture.index");
+                if (textureIndex >= textureSources_.size()) invalid("metallicRoughnessTexture index is out of range");
+                material->metallicRoughnessTextureUri = imageUris_[textureSources_[textureIndex]];
+            }
+            if (find(*pbr, "extensions")) invalid("PBR material extensions are not supported");
+            if (const auto* base = find(*pbr, "baseColorFactor")) {
+                const auto& values = base->array("baseColorFactor");
+                if (values.size() != 4) invalid("baseColorFactor must have four values");
+                for (std::size_t c = 0; c < 4; ++c) {
+                    const float value = floatValue(values[c], "baseColorFactor");
+                    if (value < 0.f || value > 1.f) invalid("baseColorFactor channels must be in [0,1]");
+                    if (c < 3) material->baseColor[c] = value;
+                    else material->opacity = value;
+                }
+            }
+            if (const auto* value = find(*pbr, "metallicFactor")) material->metalness = floatValue(*value, "metallicFactor");
+            if (const auto* value = find(*pbr, "roughnessFactor")) material->roughness = floatValue(*value, "roughnessFactor");
+        }
+        if (const auto* emissive = find(raw, "emissiveFactor")) {
+            const auto& values = emissive->array("emissiveFactor");
+            if (values.size() != 3) invalid("emissiveFactor must have three values");
+            for (std::size_t c = 0; c < 3; ++c) {
+                material->emissiveColor[c] = floatValue(values[c], "emissiveFactor");
+                if (material->emissiveColor[c] < 0.f || material->emissiveColor[c] > 10000.f)
+                    invalid("emissiveFactor components must be in [0,10000]");
+            }
+        }
+        const auto alphaMode = find(raw, "alphaMode") ? find(raw, "alphaMode")->string("alphaMode") : "OPAQUE";
+        if (alphaMode != "OPAQUE" && alphaMode != "MASK" && alphaMode != "BLEND") invalid("unsupported alphaMode");
+        material->transparent = alphaMode == "BLEND";
+        if (const auto* cutoff = find(raw, "alphaCutoff")) material->alphaCutoff = floatValue(*cutoff, "alphaCutoff");
+        if (material->alphaCutoff < 0.f || material->alphaCutoff > 1.f) invalid("alphaCutoff must be in [0,1]");
+        if (alphaMode == "MASK") material->alphaTest = material->alphaCutoff;
+        if (const auto* twoSided = find(raw, "doubleSided")) material->doubleSided = twoSided->boolean("doubleSided");
+        if (!std::isfinite(material->roughness) || material->roughness < 0.f || material->roughness > 1.f ||
+            !std::isfinite(material->metalness) || material->metalness < 0.f || material->metalness > 1.f)
+            invalid("metallicFactor and roughnessFactor must be in [0,1]");
+        material->side = material->doubleSided ? Side::Double : Side::Front;
+        materials_.push_back(std::move(material));
+    }
 }
 
 void Document::parseBuffers() {
@@ -243,7 +380,12 @@ void Document::parseMeshes() {
         for (std::size_t primitiveIndex = 0; primitiveIndex < primitives.size(); ++primitiveIndex) {
             const auto& primitive = primitives[primitiveIndex];
             rejectUnknownKeys(primitive, {"attributes", "indices", "mode", "material", "targets", "extras"}, "primitive");
-            if (find(primitive, "material")) invalid("primitive materials are outside the geometry-only reader contract");
+            std::shared_ptr<Material> material;
+            if (const auto* materialValue = find(primitive, "material")) {
+                const auto index = indexValue(*materialValue, "primitive.material");
+                if (index >= materials_.size()) invalid("primitive material index is out of range");
+                material = materials_[index];
+            }
             const auto mode = find(primitive, "mode") ? indexValue(*find(primitive, "mode"), "primitive.mode") : 4;
             if (mode != 4) invalid("only TRIANGLES primitive mode is supported");
             if (find(primitive, "targets")) invalid("morph targets are not supported");
@@ -255,6 +397,9 @@ void Document::parseMeshes() {
             }
             const auto positionIt = attributes.find("POSITION");
             if (positionIt == attributes.end()) invalid("primitive has no POSITION attribute");
+            if (const auto* pbr = material ? material->as<PbrMaterial>() : nullptr;
+                pbr && !pbr->baseColorTextureUri.empty() && !attributes.contains("TEXCOORD_0"))
+                invalid("baseColorTexture requires TEXCOORD_0 on the primitive");
             const std::size_t positionIndex = indexValue(positionIt->second, "POSITION accessor");
             if (positionIndex >= accessors_.size()) invalid("POSITION accessor index is out of range");
             const auto& positionAccessor = accessors_[positionIndex];
@@ -314,7 +459,7 @@ void Document::parseMeshes() {
             } else if (positionAccessor.count % 3 != 0) invalid("non-indexed triangle vertex count must be divisible by three");
             geometry->computeBoundingBox();
             geometry->computeBoundingSphere();
-            mesh.primitives.push_back({std::move(geometry)});
+            mesh.primitives.push_back({std::move(geometry), std::move(material)});
         }
         meshes_.push_back(std::move(mesh));
     }
@@ -417,7 +562,7 @@ GltfAsset Document::parseScene() {
                 invalid("selected scene mesh instance count exceeds 100000");
             sceneMeshInstances += mesh.primitives.size();
             for (std::size_t primitive = 0; primitive < mesh.primitives.size(); ++primitive) {
-                auto object = Mesh::create(mesh.primitives[primitive].geometry);
+                auto object = Mesh::create(mesh.primitives[primitive].geometry, mesh.primitives[primitive].material);
                 object->name = mesh.name + "_primitive_" + std::to_string(primitive);
                 group->add(object);
                 asset.meshes.push_back(std::move(object));

@@ -42,6 +42,7 @@
 #include "chrononmotion/motion/EyeTrace.hpp"
 #include "chrononmotion/motion/AspectReframe.hpp"
 #include "chrononmotion/motion/Lighting.hpp"
+#include "chrononmotion/motion/LightRig.hpp"
 #include "chrononmotion/motion/CompiledScene.hpp"
 #include "chrononmotion/motion/Presets.hpp"
 #include "chrononmotion/motion/Procedural.hpp"
@@ -56,6 +57,8 @@
 #include "chrononmotion/motion/OfflineBaking.hpp"
 #if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
+#include "chrononmotion/motion/LightRigRenderPlan.hpp"
+#include "chrononmotion/motion/HdriRenderPlan.hpp"
 #endif
 
 #endif//CHRONONMOTION_MOTION_HPP

@@ -326,12 +326,24 @@ std::string serializeRigProgram(const RigProgram& program) {
         const auto& g = program.geometry[i];
         out << "{\"id\":" << g.id << ",\"rigidNode\":" << g.rigidNode << ",\"source\":[";
         for (std::size_t k = 0; k < g.source.size(); ++k) { if (k) out << ','; writeRigVector(out, g.source[k]); }
-        out << "],\"morphs\":[";
+        out << ']';
+        if (!g.sourceNormals.empty()) {
+            out << ",\"sourceNormals\":[";
+            for (std::size_t k = 0; k < g.sourceNormals.size(); ++k) { if (k) out << ','; writeRigVector(out, g.sourceNormals[k]); }
+            out << ']';
+        }
+        out << ",\"morphs\":[";
         for (std::size_t k = 0; k < g.morphs.size(); ++k) {
             if (k) out << ',';
             out << "{\"weight\":" << g.morphs[k].weight << ",\"positions\":[";
             for (std::size_t v = 0; v < g.morphs[k].positions.size(); ++v) { if (v) out << ','; writeRigVector(out, g.morphs[k].positions[v]); }
-            out << "]}";
+            out << ']';
+            if (!g.morphs[k].normals.empty()) {
+                out << ",\"normals\":[";
+                for (std::size_t v = 0; v < g.morphs[k].normals.size(); ++v) { if (v) out << ','; writeRigVector(out, g.morphs[k].normals[v]); }
+                out << ']';
+            }
+            out << '}';
         }
         out << "],\"skin\":[";
         for (std::size_t k = 0; k < g.skin.size(); ++k) {
@@ -419,16 +431,20 @@ RigProgram deserializeRigProgram(std::string_view json) {
         program.poses.push_back(std::move(layer));
     }
     for (const auto& raw : required(root, "geometry", "rig program root").array("geometry")) {
-        rejectUnknownKeys(raw, {"id", "rigidNode", "source", "morphs", "skin", "indices", "deformers"}, "geometry");
+        rejectUnknownKeys(raw, {"id", "rigidNode", "source", "sourceNormals", "morphs", "skin", "indices", "deformers"}, "geometry");
         RigGeometryBinding g;
         g.id = indexValue(required(raw, "id", "geometry"), "geometry id");
         g.rigidNode = rigId(required(raw, "rigidNode", "geometry"));
         for (const auto& point : required(raw, "source", "geometry").array("source")) g.source.push_back(rigVector(point));
+        if (const auto* normals = find(raw, "sourceNormals"))
+            for (const auto& normal : normals->array("sourceNormals")) g.sourceNormals.push_back(rigVector(normal));
         for (const auto& morph : required(raw, "morphs", "geometry").array("morphs")) {
-            rejectUnknownKeys(morph, {"weight", "positions"}, "morph");
+            rejectUnknownKeys(morph, {"weight", "positions", "normals"}, "morph");
             RigMorphTarget m;
             m.weight = floatValue(required(morph, "weight", "morph"), "weight");
             for (const auto& point : required(morph, "positions", "morph").array("positions")) m.positions.push_back(rigVector(point));
+            if (const auto* normals = find(morph, "normals"))
+                for (const auto& normal : normals->array("normals")) m.normals.push_back(rigVector(normal));
             g.morphs.push_back(std::move(m));
         }
         for (const auto& vertex : required(raw, "skin", "geometry").array("skin")) {

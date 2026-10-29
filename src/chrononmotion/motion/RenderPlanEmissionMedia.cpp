@@ -200,6 +200,10 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 writer.unsignedInteger(index);
             }
             writer.endArray();
+            if (!mesh.metallic_roughness_texture_asset.empty()) {
+                writer.key("metallic_roughness_texture");
+                writer.text(mesh.metallic_roughness_texture_asset);
+            }
             if (!mesh.animation.empty()) {
                 writer.key("animation");
                 writer.beginArray();
@@ -215,6 +219,15 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                         writeFloats(writer, position, position.size());
                     }
                     writer.endArray();
+                    if (!sample.normals.empty()) {
+                        writer.key("normals");
+                        writer.beginArray();
+                        for (const auto& normal : sample.normals) {
+                            writer.item();
+                            writeFloats(writer, normal, normal.size());
+                        }
+                        writer.endArray();
+                    }
                     writer.endObject();
                 }
                 writer.endArray();
@@ -235,6 +248,14 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                     writer.key("base_color");
                     writeFloats(writer, *material.base_color, material.base_color->size());
                 }
+                if (material.metallic) { writer.key("metallic"); writer.number(*material.metallic); }
+                if (material.roughness) { writer.key("roughness"); writer.number(*material.roughness); }
+                if (material.emissive) {
+                    writer.key("emissive");
+                    writeFloats(writer, *material.emissive, material.emissive->size());
+                }
+                if (material.double_sided) { writer.key("double_sided"); writer.boolean(*material.double_sided); }
+                if (material.alpha_cutoff) { writer.key("alpha_cutoff"); writer.number(*material.alpha_cutoff); }
                 writer.endObject();
             }
             writer.endObject();

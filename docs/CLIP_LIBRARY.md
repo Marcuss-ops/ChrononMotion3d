@@ -12,6 +12,21 @@ Four tools, one pipeline, no GUI and no Blender:
 
 ## Commands
 
+## Runtime API for imported motion clips
+
+The motion-only glTF importer exposes `GltfMotionClipLibrary` as the runtime
+selection authority. Construct it from a validated `GltfMotionAsset`, list
+available clip names with `clipNames()`, inspect `duration(name)`, and sample
+an absolute frame with `sample(name, frame, fps)`. Selection is explicit;
+unknown names and inconsistent morph channel topology throw instead of
+silently choosing a clip. Sampling is independent of call order.
+
+```cpp
+const auto asset = loadGltfMotion(json, resolver);
+const GltfMotionClipLibrary library(asset);
+const auto poseAndGeometry = library.sample("Walk", frame, 30.f);
+```
+
 ```bash
 # what is inside a GLB
 build/dev-render/render/chrononmotion_render_glb --list-anims model.glb

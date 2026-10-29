@@ -6,10 +6,14 @@
 #include "chrononmotion/motion/RigBaking.hpp"
 
 #include <cstddef>
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace chrononmotion {
@@ -58,6 +62,70 @@ namespace chrononmotion {
         std::vector<motion::RigGeometryBinding> geometry{};
         std::vector<GltfMotionClip> clips{};
     };
+
+    /// Named runtime authority over imported glTF clips. It builds one strict
+    /// RigProgram evaluator per clip and exposes deterministic frame sampling;
+    /// no clip is selected implicitly and no Scene animation state is mutated.
+    class GltfMotionClipLibrary {
+    public:
+        explicit GltfMotionClipLibrary(const GltfMotionAsset& asset) {
+            entries_.reserve(asset.clips.size());
+            for (std::size_t index = 0; index < asset.clips.size(); ++index) {
+                const auto& clip = asset.clips[index];
+                std::string name = clip.name.empty() ? "clip_" + std::to_string(index) : clip.name;
+                if (findEntry(name) != entries_.end())
+                    throw std::invalid_argument("GltfMotionClipLibrary: duplicate clip name");
+                motion::RigProgram program;
+                program.graph = asset.graph;
+                program.animation = clip.animation;
+                program.geometry = asset.geometry;
+                for (const auto& channel : clip.morphs) {
+                    if (channel.geometryId == 0 || channel.geometryId > program.geometry.size())
+                        throw std::invalid_argument("GltfMotionClipLibrary: morph channel geometry id is invalid");
+                    auto& geometry = program.geometry[channel.geometryId - 1];
+                    if (geometry.id != channel.geometryId || channel.weights.size() != geometry.morphs.size())
+                        throw std::invalid_argument("GltfMotionClipLibrary: morph channel topology mismatch");
+                    geometry.morphTracks = channel.weights;
+                }
+                Entry entry;
+                entry.name = std::move(name);
+                entry.duration = clip.duration;
+                entry.evaluator = std::make_unique<motion::RigProgramEvaluator>(program);
+                entries_.push_back(std::move(entry));
+            }
+        }
+
+        [[nodiscard]] std::vector<std::string> clipNames() const {
+            std::vector<std::string> result;
+            result.reserve(entries_.size());
+            for (const auto& entry : entries_) result.push_back(entry.name);
+            return result;
+        }
+
+        [[nodiscard]] float duration(std::string_view name) const { return lookup(name).duration; }
+
+        [[nodiscard]] motion::RigProgramFrame sample(std::string_view name, int frame, float fps) const {
+            return lookup(name).evaluator->evaluate(frame, fps);
+        }
+
+    private:
+        struct Entry {
+            std::string name;
+            float duration{0.f};
+            std::unique_ptr<motion::RigProgramEvaluator> evaluator;
+        };
+        using Iterator = std::vector<Entry>::const_iterator;
+        [[nodiscard]] Iterator findEntry(std::string_view name) const {
+            return std::find_if(entries_.begin(), entries_.end(),
+                [name](const Entry& entry) { return entry.name == name; });
+        }
+        [[nodiscard]] const Entry& lookup(std::string_view name) const {
+            const auto it = findEntry(name);
+            if (it == entries_.end()) throw std::out_of_range("GltfMotionClipLibrary: unknown clip name");
+            return *it;
+        }
+        std::vector<Entry> entries_;
+    };
     namespace motion {
         // chrononmotion.rig.program.v1: strict authoring round trip for the
         // static rig program (graph, controllers/drivers, poses, geometry with
@@ -69,7 +137,7 @@ namespace chrononmotion {
     } // namespace motion
 
     // Explicit motion-only import. The original static reader remains strict.
-    // Narrow TRS hierarchy, triangle POSITION, skins and linear/step clips;
+    // Narrow TRS hierarchy, triangle POSITION, skins and linear/step/cubic clips;
     // no materials, extensions, compression, sparse or implicit I/O.
     [[nodiscard]] GltfMotionAsset loadGltfMotion(
         std::string_view json, const GltfExternalBufferResolver& resolver = {},
