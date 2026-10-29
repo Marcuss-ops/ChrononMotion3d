@@ -120,6 +120,11 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                     if (!selector.amount.keyframes.empty()) {
                         writer.key("amount"); writeTextSelectorTrack(writer, selector.amount);
                     }
+                    // RenderPlan v3 text selector ease window (mirror of
+                    // GlyphSelectorSpec semantics); omitted on defaults so the
+                    // emitted JSON stays byte-identical for unmodified selectors.
+                    if (selector.ease_low != 0.f) { writer.key("ease_low"); writer.number(selector.ease_low); }
+                    if (selector.ease_high != 100.f) { writer.key("ease_high"); writer.number(selector.ease_high); }
                     writer.key("exclude_spaces"); writer.boolean(selector.exclude_spaces);
                     writer.key("randomize_order"); writer.boolean(selector.randomize_order);
                     if (selector.random_seed != 0) { writer.key("random_seed"); writer.unsignedInteger(selector.random_seed); }

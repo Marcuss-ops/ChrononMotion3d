@@ -206,7 +206,11 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                         (selector.shape != "noise" &&
                          (selector.noise_frequency != 1.f || selector.noise_amplitude != 0.25f ||
                           selector.noise_seed != 0)) ||
-                        (selector.order == "index" && (selector.index_step == 0 || selector.index_step > 1'000'000)))
+                        (selector.order == "index" && (selector.index_step == 0 || selector.index_step > 1'000'000))) ||
+                        !std::isfinite(selector.ease_low) || selector.ease_low < 0.f ||
+                        selector.ease_low > 100.f || !std::isfinite(selector.ease_high) ||
+                        selector.ease_high < 0.f || selector.ease_high > 100.f ||
+                        selector.ease_low > selector.ease_high)
                         return owner + " has a text selector outside the RenderPlan v3 bounds";
                     if ((!selector.start.keyframes.empty() && !textTrackValueShape(selector.start, 1)) ||
                         (!selector.end.keyframes.empty() && !textTrackValueShape(selector.end, 1)) ||

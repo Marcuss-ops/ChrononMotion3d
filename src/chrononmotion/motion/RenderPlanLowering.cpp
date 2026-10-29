@@ -21,10 +21,35 @@
 #include <unordered_map>
 #include <utility>
 
+<<<<<<< Updated upstream
 namespace chrononmotion::motion {
 using namespace lowering_detail;
 namespace {
 using namespace chronon3d::render_plan;
+=======
+#include "RenderPlanLoweringInternal.hpp"
+
+namespace chrononmotion::motion {
+namespace {
+using namespace chronon3d::render_plan;
+
+constexpr std::size_t kMaximumBakedTransformSamples = 250'000;
+
+struct ResolvedPose {
+    Vector3 position{};
+    Vector3 scale{1.f, 1.f, 1.f};
+    Vector3 rotation{};
+    float opacity{1.f};
+};
+
+bool samePose(const ResolvedPose& a, const ResolvedPose& b) {
+    return a.position.x == b.position.x && a.position.y == b.position.y && a.position.z == b.position.z &&
+           a.scale.x == b.scale.x && a.scale.y == b.scale.y && a.scale.z == b.scale.z &&
+           a.rotation.x == b.rotation.x && a.rotation.y == b.rotation.y && a.rotation.z == b.rotation.z &&
+           a.opacity == b.opacity;
+}
+
+>>>>>>> Stashed changes
 ResolvedPose resolvePose(const Matrix4& matrix, float opacity, bool visible,
                          const Vector3& anchor, bool needsOriginPivot,
                          bool allowReflection) {
