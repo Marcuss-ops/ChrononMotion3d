@@ -638,6 +638,43 @@ void testTypedChronon3dLowering() {
     check(emittedEnvironment.at("probe_asset") == "assets/studio.hdri-env" &&
           emittedEnvironment.at("irradiance_sh").size() == 27,
           "HDRI asset reference and all diffuse SH coefficients survive producer emission");
+    if (const char* canaryPath = std::getenv("CHRONONMOTION_HDRI_RENDER_CANARY")) {
+        auto renderPlan = hdriPlan;
+        // Make the runtime canary visually sensitive on every RGB channel;
+        // the source fixture is intentionally red-only and can hide lighting
+        // regressions when rendered against a green mesh.
+        auto renderProbe = probe;
+        renderProbe.irradianceSH.fill(0.f);
+        for (std::size_t channel = 0; channel < 3; ++channel)
+            renderProbe.irradianceSH[channel] = 11.428123f;
+        renderPlan.environment_light->irradiance_sh = renderProbe.irradianceSH;
+        renderPlan.job_id = "motion-hdri-runtime-canary";
+        renderPlan.canvas.width = 64;
+        renderPlan.canvas.height = 64;
+        auto& layer = renderPlan.layers.at(0);
+        layer.id = "hdri-lit-triangle";
+        layer.type = chronon3d::render_plan::LayerType::Mesh;
+        layer.source.clear();
+        layer.animation.reset();
+        layer.time_remap.reset();
+        layer.enable_3d = true;
+        layer.color = std::array<float, 4>{0.8f, 0.7f, 0.6f, 1.f};
+        auto visibleTriangle = triangle;
+        visibleTriangle.metallic_roughness_texture_asset.clear();
+        layer.inline_mesh = std::move(visibleTriangle);
+        const std::filesystem::path planPath(canaryPath);
+        const auto assetRoot = planPath.parent_path() / "motion-hdri-assets";
+        std::filesystem::create_directories(assetRoot / "assets");
+        std::ofstream planFile(planPath, std::ios::binary);
+        if (!planFile || !(planFile << renderPlanToJson(renderPlan)))
+            throw std::runtime_error("cannot write requested HDRI RenderPlan canary");
+        const auto payload = renderProbe.serialize();
+        std::ofstream assetFile(assetRoot / "assets/studio.hdri-env", std::ios::binary);
+        if (!assetFile || !assetFile.write(
+                reinterpret_cast<const char*>(payload.data()),
+                static_cast<std::streamsize>(payload.size())))
+            throw std::runtime_error("cannot write requested HDRI binary asset canary");
+    }
     auto unsafeHdriPlan = hdriPlan;
     unsafeHdriPlan.environment_light->probe_asset = "../outside.hdri-env";
     check(!renderPlanEmissionProblem(unsafeHdriPlan).empty(),
