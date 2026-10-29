@@ -10,9 +10,10 @@
 
 ### Criteri dedicati da portare a verde
 
-- [ ] Integrare l’inline mesh animata in Chronon3D strict-native e produrre una prova CLI con pixel visibili per skin/morph/texture/alpha; confrontare con fixture/golden producer.
-- [ ] Eseguire CI e parity hardware su SHA pulito, registrando device, frame/hash, route e risultati. Le suite locali producer già passate non chiudono l’accettazione downstream.
-- [ ] Confermare pipeline di errore per glTF non supportato e mantenere contratto in-memory/fail-closed durante il test integrato.
+- [x] Integrare l’inline mesh animata in Chronon3D strict-native e produrre una prova CLI con pixel visibili per skin/morph/texture/alpha; 31/31 frame current-source, parità CAM-04 e hash ripetuto sono registrati nell’evidenza cross-repo.
+- [x] Eseguire parity hardware locale su RTX A4000, registrando device, frame/hash e route. La CI sullo SHA pulito resta un gate distinto.
+- [ ] Eseguire CI same-SHA su runner e registrare esiti; nessun check è stato riportato per lo SHA pubblicato.
+- [x] Confermare localmente la pipeline fail-closed della reader per glTF non supportato e mantenere il contratto in-memory.
 
 ### Regola di chiusura (valida per questa e ogni scheda)
 
@@ -40,11 +41,13 @@ is now implemented with tangent fixtures. A named `GltfMotionClipLibrary`
 provides explicit clip selection, duration lookup, and absolute-frame evaluation.
 NORMAL morph deltas now import, blend, skin, bake, and transfer as optional V3
 normal samples. The fixed-topology textured/alpha bridge is agreed and wired to
-Chronon3D. A current-source software raw-sink rerun now shows the textured,
+Chronon3D. A current-source software raw-sink rerun shows the textured,
 alpha-cutout subject moving across 31 distinct frames. The current-source
-Chronon3D software-render → NVENC route now matches that raw animation after
-fixing the host staging format. Strict-native Vulkan drawing, GPU-render
-parity, and host-GPU/CI certification remain open. Details are in
+Chronon3D software-render → NVENC route matches that raw animation after
+fixing the host staging format. The clean pushed C3D source also passes the
+31-frame strict-native Vulkan/NVENC mesh render and local software/GPU parity
+gate; only clean-SHA CI and broader production-material coverage remain open.
+Details are in
 [`ticket-roundtrip-current-source-20261029`](../evidence/ticket-roundtrip-current-source-20261029/README.md).
 
 Cross-repository native follow-up (2026-10-29): Chronon3D completes a
@@ -126,8 +129,9 @@ remains external. See Chronon3D's
 - [x] CLIP_LIBRARY authority and runtime clip selection implemented.
 - [x] NORMAL morph deltas import, skin, and bake.
 - [x] Textured/alpha V3 bridge contract agreed and carried through V3 samples.
-- [ ] Chronon3D strict-native mesh rendering and visible CLI pixel proof.
-- [ ] CI and hardware parity certified.
+- [x] Chronon3D strict-native mesh rendering and visible CLI pixel proof on the clean pushed source (31/31 frames).
+- [x] Local RTX A4000 software/GPU parity within CAM-04 (foreground RGB MAE 1.492, p99 8, max 17).
+- [ ] CI green on the exact pushed Chronon3D SHA; GitHub reports no checks for that SHA.
 
 ## Dipendenze
 

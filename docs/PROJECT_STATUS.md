@@ -23,14 +23,17 @@ Updated 2026-10-29 from local source and Release test evidence.
   The motion-only reader now reports unsupported JSON/root fields with the
   public `glTF: ` diagnostic prefix and rejects disabled/unsupported imports
   before buffer resolution; the rebuilt focused test passes 47/47 checks.
-  Remaining follow-up is C3D strict-native rendering and GPU parity. The 2026-10-29 focused Release run passed all six targets listed
+  The clean pushed C3D source now passes strict-native Vulkan/NVENC rendering
+  of the textured animated fixture (31/31 frames) and local GPU parity. The
+  2026-10-29 focused Release run passed all six targets listed
   in the ticket. A refreshed producer fixture and software raw-sink probe show
   a textured, alpha-cutout mesh moving across 31 frames (31 distinct raw frame
   hashes; 1,642 opaque pixels per sample). A current-source Release rebuild
   fixed the YUV420P/NV12 host staging mismatch in H.264/NVENC: the MP4 decodes
   to 31 distinct frames with RGB RMSE 0.7673 against the software reference
-  composited over black. Strict-native Vulkan drawing, GPU-render parity, and
-  clean-SHA CI remain unverified.
+  composited over black. The latest clean-source strict-native render matches
+  the prior 31-frame MP4 SHA and meets the CAM-04 foreground parity gate.
+  Clean-SHA CI and broader production-material coverage remain unverified.
 - `TICKET-HDRI-ENV-V1`: bounded Radiance RGBE input, cubemap+mips, Lambert SH,
   deterministic `HDRIENV1` bytes, malformed/budget tests, and showcase golden
   are implemented. The byte layout is agreed in the Chronon3D IBL ticket.
