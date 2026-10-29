@@ -89,8 +89,13 @@ remaining local feature work.
 - Release CTest mirato: `chrononmotion_rig_pipeline`, `chrononmotion_hdri`,
   `chrononmotion_light_rig`, `chrononmotion_authoring`, `chrononmotion_gltf`,
   `chrononmotion_showcase_all` — 6/6 PASS.
-- Il render-plan V3 animato è stato compilato e renderizzato tramite il CLI
-  software Chronon3D, ma il PNG risultante è nero. Questo tentativo non è
-  accettato come pixel proof; resta un difetto locale nel percorso CLI/software,
-  oltre al rendering strict-native Vulkan ancora da implementare.
+- Il raw sink software è ora selezionabile anche quando il RenderPlan dichiara
+  output PNG (fix CLI Chronon3D: la preparazione crea la vista video di
+  compatibilità in presenza di `--video-sink raw`). La compilazione del piano
+  animato riesce e vengono scritti due frame, ma entrambi sono RGBA uniformi
+  neri. L'anteprima PNG software mostra il triangolo statico, ma quella lane è
+  documentata come non pixel-truth e non prova la deformazione per frame.
+- La prova è un piano sintetico V3 inline-mesh, non un render di un GLB reale.
+  La geometria animata e i test producer/reader restano verdi; la prova visiva
+  software del mesh e il rendering strict-native Vulkan restano aperti.
 - Nessuna verifica host-GPU o CI è stata eseguita o dichiarata.
