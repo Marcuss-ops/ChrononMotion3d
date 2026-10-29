@@ -1,7 +1,7 @@
 #include "motion_check.hpp"
+#include "gltf_motion_fixture.hpp"
 #include "chrononmotion/motion/Motion.hpp"
 #include "chrononmotion/assets/GltfReader.hpp"
-#include <bit>
 #include <stdexcept>
 
 using namespace chrononmotion;
@@ -16,43 +16,7 @@ namespace {
         const auto pos = text.find(from); if (pos == std::string::npos) throw std::runtime_error("fixture replacement missing");
         text.replace(pos, from.size(), to);
     }
-    struct Fixture {
-        std::vector<std::byte> bytes;
-        std::string json;
-        Fixture() {
-            const auto scalar = [&](float v) {
-                const auto bits = std::bit_cast<std::uint32_t>(v);
-                for (unsigned i = 0; i < 4; ++i) bytes.push_back(static_cast<std::byte>((bits >> (8 * i)) & 255));
-            };
-            for (float v : {0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 1.f, 0.f}) scalar(v); // positions 0..35
-            for (unsigned i = 0; i < 12; ++i) bytes.push_back(std::byte{0}); // joints 36..47
-            for (unsigned vertex = 0; vertex < 3; ++vertex) for (float v : {1.f, 0.f, 0.f, 0.f}) scalar(v); // weights 48..95
-            for (unsigned i = 0; i < 16; ++i) scalar(i % 5 == 0 ? 1.f : 0.f); // inverse 96..159
-            scalar(0.f); scalar(1.f); // time 160..167
-            for (float v : {0.f, 0.f, 0.f, 2.f, 0.f, 0.f}) scalar(v); // translation 168..191
-            for (unsigned i = 0; i < 9; ++i) scalar(i % 3 == 1 ? 1.f : 0.f); // morph 192..227
-            json = R"({"asset":{"version":"2.0"},"buffers":[{"byteLength":228,"uri":"fixture.bin"}],
-"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":12},
-{"buffer":0,"byteOffset":48,"byteLength":48},{"buffer":0,"byteOffset":96,"byteLength":64},
-{"buffer":0,"byteOffset":160,"byteLength":8},{"buffer":0,"byteOffset":168,"byteLength":24},
-{"buffer":0,"byteOffset":192,"byteLength":36}],
-"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"},
-{"bufferView":1,"componentType":5121,"count":3,"type":"VEC4"},
-{"bufferView":2,"componentType":5126,"count":3,"type":"VEC4"},
-{"bufferView":3,"componentType":5126,"count":1,"type":"MAT4"},
-{"bufferView":4,"componentType":5126,"count":2,"type":"SCALAR"},
-{"bufferView":5,"componentType":5126,"count":2,"type":"VEC3"},
-{"bufferView":6,"componentType":5126,"count":3,"type":"VEC3"}],
-"nodes":[{"name":"joint"},{"name":"mesh","mesh":0,"skin":0}],
-"skins":[{"joints":[0],"skeleton":0,"inverseBindMatrices":3}],
-"meshes":[{"weights":[0.5],"primitives":[{"attributes":{"POSITION":0,"JOINTS_0":1,"WEIGHTS_0":2},"targets":[{"POSITION":6}]}]}],
-"animations":[{"name":"move","samplers":[{"input":4,"output":5,"interpolation":"LINEAR"}],
-"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}]}]})";
-        }
-        GltfMotionAsset load(const std::string& text) const {
-            return loadGltfMotion(text, [&](std::string_view uri) { if (uri != "fixture.bin") throw std::invalid_argument("unknown fixture URI"); return bytes; });
-        }
-    };
+
 }
 namespace {
     RigProgram makeProgram() {
@@ -105,12 +69,23 @@ int main() {
     rejects([&] { (void) deserializeRigGraph(encoded + "garbage"); }, "trailing JSON rejected");
 
     section("TestGltfMotionSkinMorphClipImport");
-    Fixture f;
+    chrononmotion_test::GltfMotionFixture f;
     const auto asset = f.load(f.json);
     check(asset.graph.nodes.size() == 2 && asset.skins.size() == 1 && asset.geometry.size() == 1 && asset.clips.size() == 1,
           "motion imports canonical graph, skin, geometry and clip");
     check(asset.skins[0].joints == std::vector<RigNodeId>{1}, "glTF node indices map to stable nonzero rig IDs");
     checkNear(asset.clips[0].duration, 1.f, 0.f, "clip duration preserved");
+    const GltfMotionClipLibrary clipLibrary(asset);
+    check(clipLibrary.clipNames() == std::vector<std::string>{"move"},
+          "imported glTF clips expose a deterministic named runtime library");
+    checkNear(clipLibrary.duration("move"), 1.f, 0.f,
+              "clip library exposes imported clip duration");
+    checkNear(clipLibrary.sample("move", 15, 30.f).pose.local[0].position.x,
+              1.f, 1e-5f, "clip library samples the selected clip through its rig evaluator");
+    bool unknownClipRejected = false;
+    try { (void) clipLibrary.sample("missing", 0, 30.f); }
+    catch (const std::out_of_range&) { unknownClipRejected = true; }
+    check(unknownClipRejected, "clip library rejects unknown clip names explicitly");
     RigProgram program; program.graph = asset.graph; program.animation = asset.clips[0].animation; program.geometry = asset.geometry;
     const RigProgramEvaluator evaluator(program);
     checkNear(evaluator.evaluate(15, 30.f).geometry[0].positions[0], {1.f, .5f, 0.f}, 1e-5f, "imported linear clip, inverse bind skin and morph compose");
@@ -119,10 +94,42 @@ int main() {
     const auto stepped = f.load(step); program.animation = stepped.clips[0].animation;
     checkNear(RigProgramEvaluator(program).evaluate(15, 30.f).geometry[0].positions[0].x, 0.f, 0.f, "STEP clip holds source value");
     auto bad = f.json; replace(bad, "LINEAR", "CUBICSPLINE");
-    rejects([&] { (void) f.load(bad); }, "unsupported clip interpolation rejected");
+    rejects([&] { (void) f.load(bad); }, "CUBICSPLINE output with invalid tangent topology rejected");
+    auto [cubicJson, cubicBytes] = f.withCubicTranslation();
+    const auto cubic = loadGltfMotion(cubicJson, [&](std::string_view) { return cubicBytes; });
+    RigProgram cubicProgram; cubicProgram.graph = cubic.graph;
+    cubicProgram.animation = cubic.clips[0].animation; cubicProgram.geometry = cubic.geometry;
+    checkNear(RigProgramEvaluator(cubicProgram).evaluate(15, 30.f).geometry[0].positions[0].x,
+              1.25f, 1e-5f, "CUBICSPLINE translation evaluates glTF Hermite tangents at runtime");
+    auto [cubicRotationJson, cubicRotationBytes] = f.withCubicRotation();
+    const auto cubicRotation = loadGltfMotion(cubicRotationJson,
+        [&](std::string_view) { return cubicRotationBytes; });
+    const auto sampledCubicRotation = cubicRotation.clips[0].animation[0].tracks.orientation.sample(.5f);
+    checkNear(sampledCubicRotation.lengthSq(), 1.f, 1e-6f,
+              "CUBICSPLINE quaternion result is normalized after component Hermite interpolation");
+    checkNear(sampledCubicRotation.z, .24253562f, 1e-5f,
+              "CUBICSPLINE quaternion preserves component tangent semantics");
+    auto [cubicMorphJson, cubicMorphBytes] = f.withCubicMorphWeights();
+    const auto cubicMorph = loadGltfMotion(cubicMorphJson,
+        [&](std::string_view) { return cubicMorphBytes; });
+    RigProgram cubicMorphProgram; cubicMorphProgram.graph = cubicMorph.graph;
+    cubicMorphProgram.animation = cubicMorph.clips[0].animation;
+    cubicMorphProgram.geometry = cubicMorph.geometry;
+    for (const auto& channel : cubicMorph.clips[0].morphs)
+        cubicMorphProgram.geometry[channel.geometryId - 1].morphTracks = channel.weights;
+    checkNear(RigProgramEvaluator(cubicMorphProgram).evaluate(15, 30.f).geometry[0].positions[1].y,
+              .75f, 1e-5f, "CUBICSPLINE morph weights evaluate per-key Hermite tangents");
+    auto [normalMorphJson, normalMorphBytes] = f.withNormalMorphTarget();
+    const auto normalMorph = loadGltfMotion(normalMorphJson,
+        [&](std::string_view) { return normalMorphBytes; });
+    RigProgram normalProgram; normalProgram.graph = normalMorph.graph;
+    normalProgram.geometry = normalMorph.geometry;
+    const auto normalFrame = RigProgramEvaluator(normalProgram).evaluate(0, 30.f);
+    checkNear(normalFrame.geometry[0].normals[0], {0.f, .70710678f, .70710678f}, 1e-5f,
+              "NORMAL morph deltas blend and skin the per-vertex normal field");
     bad = f.json; replace(bad, "\"joints\":[0]", "\"joints\":[99]");
     rejects([&] { (void) f.load(bad); }, "missing skin joint rejected");
-    bad = f.json; replace(bad, "\"byteLength\":228", "\"byteLength\":227");
+    bad = f.json; replace(bad, "\"byteLength\":234", "\"byteLength\":233");
     rejects([&] { (void) f.load(bad); }, "truncated buffer contract rejected");
     bad = f.json; replace(bad, "\"type\":\"MAT4\"", "\"type\":\"VEC4\"");
     rejects([&] { (void) f.load(bad); }, "invalid inverse bind shape rejected");

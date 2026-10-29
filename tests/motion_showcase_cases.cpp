@@ -1,4 +1,6 @@
 #include "motion_showcase_internal.hpp"
+#include "gltf_motion_fixture.hpp"
+#include "hdri_fixture.hpp"
 #if defined(CHRONONMOTION_SHOWCASE_HAS_ADAPTER)
 #include "chrononmotion/motion/RenderPlanEmission.hpp"
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
@@ -7,7 +9,7 @@
 namespace motion_showcase_detail {
 std::vector<ShowcaseCase> makeCases() {
     std::vector<ShowcaseCase> cases;
-    cases.reserve(60);
+    cases.reserve(63);
     const auto add = [&](unsigned number, const char* id, const char* description,
                          std::function<void(Checks&, Snapshot&)> run) {
         cases.push_back({number, id, description, {}, std::move(run)});
@@ -1281,7 +1283,81 @@ std::vector<ShowcaseCase> makeCases() {
             capture(scene, s, {0.f, .5f, 1.f, 1.5f, 2.f});
         });
 
-    if (cases.size() != 60) throw std::logic_error("acceptance catalog must contain exactly sixty cases");
+    add(61, "gltf_skinned_morph", "glTF skin and animated morph bake deterministically",
+        [](Checks& c, Snapshot& s) {
+            chrononmotion_test::GltfMotionFixture fixture;
+            const auto asset = fixture.load(fixture.withAnimatedMorphChannel());
+            c.that(asset.skins.size() == 1 && asset.geometry.size() == 1 &&
+                   asset.clips.size() == 1 && asset.clips[0].morphs.size() == 1,
+                   "glTF fixture imports skin, geometry, clip and morph channel");
+            RigProgram program;
+            program.graph = asset.graph;
+            program.animation = asset.clips[0].animation;
+            program.geometry = asset.geometry;
+            for (const auto& morph : asset.clips[0].morphs)
+                program.geometry.at(morph.geometryId - 1).morphTracks = morph.weights;
+            const RigProgramEvaluator evaluator(program);
+            const auto first = evaluator.bake(0, 30, kFps);
+            const auto repeated = evaluator.bake(0, 30, kFps);
+            c.that(first.signature == repeated.signature,
+                   "skin and morph samples have a repeatable bake signature");
+            c.near(first.frames[0].geometry[0].positions[0], Vector3{0.f, 0.f, 0.f},
+                   1e-6f, "skinned geometry starts at its bind pose");
+            c.near(first.frames[15].geometry[0].positions[1], Vector3{2.f, .5f, 0.f},
+                   1e-5f, "midpoint combines joint translation and half morph weight");
+            c.near(first.frames[30].geometry[0].positions[1], Vector3{3.f, 1.f, 0.f},
+                   1e-5f, "final sample combines full joint translation and morph weight");
+            s.text("glTF skin + animated morph");
+            s.text(std::to_string(first.signature));
+            for (const int frame : {0, 15, 30}) {
+                s.integer(frame);
+                s.vector(first.frames[frame].geometry[0].positions[0]);
+                s.vector(first.frames[frame].geometry[0].positions[1]);
+                s.vector(first.frames[frame].geometry[0].positions[2]);
+            }
+        });
+
+    add(62, "editorial_light_rig", "three editorial multi-light rigs rotate and lower deterministically",
+        [](Checks& c, Snapshot& s) {
+            const auto ids = lightRigPresets::catalog();
+            c.that(ids.size() == 3, "catalog exposes three stable editorial rigs");
+            for (const auto id : ids) {
+                auto rig = lightRigPresets::make(id);
+                lightRigPresets::animateRotation(rig, 0.f, 1.f, {}, {0.f, .4f, .2f});
+                const auto start = rig.sample(0.f);
+                const auto end = rig.sample(1.f);
+                c.that(start.size() == rig.sources.size() && end.size() == start.size(),
+                       "rig samples preserve deterministic source order");
+                s.text(std::string(id));
+                s.text(rig.serialize());
+                for (std::size_t index = 0; index < start.size(); ++index) {
+                    c.that(start[index].id == end[index].id,
+                           "rotation keeps source identity stable");
+                    s.integer(start[index].id);
+                    s.vector(start[index].local.position);
+                    s.vector(end[index].local.position);
+                }
+            }
+        });
+
+    add(63, "hdri_constant_probe", "Radiance HDRI projects to stable cubemap, mip and SH data",
+        [](Checks& c, Snapshot& s) {
+            const auto encoded = chrononmotion_test::constantRadianceHdr();
+            const auto environment = decodeHdriRadiance(encoded);
+            const auto payload = environment.serialize();
+            c.that(environment.mips.size() == 2 && environment.mips[0].size == 2 &&
+                   environment.mips[1].size == 1, "HDRI produces a complete bounded mip chain");
+            c.that(environment.irradianceSH[0] > 10.f && environment.irradianceSH[0] < 12.f,
+                   "HDRI probe carries integrated Lambert irradiance");
+            c.that(payload == decodeHdriRadiance(encoded).serialize(),
+                   "HDRI cubemap and SH payload are deterministic");
+            s.integer(environment.sourceWidth);
+            s.integer(environment.sourceHeight);
+            s.integer(environment.faceSize);
+            s.text(std::string_view(reinterpret_cast<const char*>(payload.data()), payload.size()));
+        });
+
+    if (cases.size() != 63) throw std::logic_error("acceptance catalog must contain exactly sixty-three cases");
     return cases;
 }
 } // namespace motion_showcase_detail

@@ -21,6 +21,8 @@ int main() try {
 
     CameraRig rig(1, 48.f, 16.f / 9.f, 0.1f, 5000.f);
     FocusSequence sequence;
+    check(near(sequence.highlightGain, 0.f) && sequence.irisBlades == 0,
+          "default focus sequence does not request unsupported shaped bokeh");
     sequence.subjects = {
             {{620.f, 390.f, 0.f}, 12.f, 6},
             {{1310.f, 645.f, 0.f}, 80.f, 48},

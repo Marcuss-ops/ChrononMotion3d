@@ -1,6 +1,7 @@
 #include "chrononmotion/motion/RigDeformers.hpp"
 
 #include "chrononmotion/math/Finite.hpp"
+#include "chrononmotion/math/Matrix3.hpp"
 #include "chrononmotion/motion/RigOperators.hpp"
 #include <algorithm>
 #include <cmath>
@@ -218,6 +219,83 @@ namespace chrononmotion::motion {
         for (const auto& target : targets) {
             if (target.weight == 0.f) continue;
             for (std::size_t i = 0; i < base.size(); ++i) result[i].addScaledVector(target.positions[i] - base[i], target.weight);
+        }
+        validatePoints(result);
+        return result;
+    }
+
+    std::vector<Vector3> mixRigMorphNormals(std::span<const Vector3> base,
+                                             std::span<const RigMorphTarget> targets) {
+        validatePoints(base);
+        if (base.empty()) {
+            for (const auto& target : targets)
+                if (!target.normals.empty()) throw std::invalid_argument("RigMorph: normal target has no base normals");
+            return {};
+        }
+        std::vector<Vector3> result(base.begin(), base.end());
+        for (const auto& target : targets) {
+            if (target.normals.empty()) continue;
+            if (target.normals.size() != base.size() || !std::isfinite(target.weight) ||
+                target.weight < 0.f || target.weight > 1.f)
+                throw std::invalid_argument("RigMorph: normal topology or weight invalid");
+            validatePoints(target.normals);
+            if (target.weight == 0.f) continue;
+            for (std::size_t i = 0; i < base.size(); ++i)
+                result[i].addScaledVector(target.normals[i] - base[i], target.weight);
+        }
+        for (auto& normal : result) {
+            if (normal.lengthSq() > 1e-12f) normal.normalize();
+            else throw std::invalid_argument("RigMorph: blended normal is degenerate");
+        }
+        return result;
+    }
+
+    std::vector<Vector3> skinRigNormals(const RigEvaluator& rig, const RigEvaluation& pose,
+                                         std::span<const Vector3> sourceNormals,
+                                         std::span<const RigSkinVertex> bindings,
+                                         std::span<const RigSkinMatrixBinding> inverseBinds) {
+        validatePoints(sourceNormals);
+        const auto bind = rig.bindPose();
+        if (bindings.size() != sourceNormals.size() || pose.ids != bind.ids || pose.world.size() != bind.world.size())
+            throw std::invalid_argument("RigSkin: normal topology mismatch");
+        if (inverseBinds.size() > bind.ids.size()) throw std::invalid_argument("RigSkin: inverse bind budget exceeded");
+        std::vector<bool> overridden(bind.ids.size(), false);
+        for (const auto& entry : inverseBinds) {
+            const auto index = bind.index(entry.joint);
+            if (overridden[index]) throw std::invalid_argument("RigSkin: duplicate inverse bind");
+            overridden[index] = true;
+        }
+        std::vector<Matrix3> matrices;
+        matrices.reserve(bind.world.size());
+        for (std::size_t i = 0; i < bind.world.size(); ++i) {
+            Matrix4 inverse = bind.world[i];
+            if (inverse.determinant() == 0.f) throw std::invalid_argument("RigSkin: singular bind pose");
+            inverse.invert();
+            for (const auto& entry : inverseBinds) if (entry.joint == bind.ids[i]) inverse = entry.inverseBind;
+            Matrix4 matrix = pose.world[i]; matrix.multiply(inverse);
+            Matrix3 normalMatrix; normalMatrix.getNormalMatrix(matrix);
+            matrices.push_back(normalMatrix);
+        }
+        std::vector<Vector3> result;
+        result.reserve(sourceNormals.size());
+        for (std::size_t vertex = 0; vertex < sourceNormals.size(); ++vertex) {
+            const auto& binding = bindings[vertex];
+            float total = 0.f;
+            Vector3 normal{};
+            for (unsigned influence = 0; influence < 4; ++influence) {
+                const float weight = binding.weights[influence];
+                if (!std::isfinite(weight) || weight < 0.f || weight > 1.f)
+                    throw std::invalid_argument("RigSkin: invalid normal weight");
+                if (weight == 0.f) continue;
+                Vector3 transformed = sourceNormals[vertex];
+                transformed.applyMatrix3(matrices[pose.index(binding.joints[influence])]);
+                normal.addScaledVector(transformed, weight);
+                total += weight;
+            }
+            if (std::abs(total - 1.f) > 1e-5f || normal.lengthSq() <= 1e-12f)
+                throw std::invalid_argument("RigSkin: normal weights or result invalid");
+            normal.normalize();
+            result.push_back(normal);
         }
         validatePoints(result);
         return result;

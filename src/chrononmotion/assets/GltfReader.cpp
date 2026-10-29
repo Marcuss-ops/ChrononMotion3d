@@ -118,7 +118,7 @@ GltfMotionAsset Document::loadMotion() {
             rejectUnknownKeys(primitive, {"attributes", "indices", "mode", "targets"}, "motion primitive");
             if (find(primitive, "mode") && indexValue(*find(primitive, "mode"), "mode") != 4) invalid("motion supports triangles only");
             const auto& attrs = required(primitive, "attributes", "primitive");
-            rejectUnknownKeys(attrs, {"POSITION", "JOINTS_0", "WEIGHTS_0"}, "motion attributes");
+            rejectUnknownKeys(attrs, {"POSITION", "NORMAL", "JOINTS_0", "WEIGHTS_0"}, "motion attributes");
             const auto data = floats(required(attrs, "POSITION", "attributes"), 3);
             const auto count = data.size() / 3;
             if (count > 1000000 - vertexBudget || result.geometry.size() >= 10000) invalid("motion geometry budget exceeded");
@@ -126,6 +126,13 @@ GltfMotionAsset Document::loadMotion() {
             RigGeometryBinding geometry; geometry.id = static_cast<std::uint32_t>(result.geometry.size() + 1);
             geometry.rigidNode = static_cast<RigNodeId>(node + 1);
             for (std::size_t i = 0; i < count; ++i) geometry.source.push_back({data[i * 3], data[i * 3 + 1], data[i * 3 + 2]});
+            if (const auto* normalAccessor = find(attrs, "NORMAL")) {
+                const auto normals = floats(*normalAccessor, 3);
+                if (normals.size() != data.size()) invalid("motion NORMAL topology mismatch");
+                geometry.sourceNormals.reserve(count);
+                for (std::size_t i = 0; i < count; ++i)
+                    geometry.sourceNormals.push_back({normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]});
+            }
             if (const auto* indices = find(primitive, "indices")) {
                 const auto index = indexValue(*indices, "indices"); if (index >= accessors_.size()) invalid("index accessor out of range");
                 const auto& a = accessors_[index];
@@ -141,13 +148,27 @@ GltfMotionAsset Document::loadMotion() {
             if (const auto* targets = find(primitive, "targets")) {
                 if (targets->array("targets").size() > 256) invalid("morph budget exceeded");
                 for (const auto& target : targets->array("targets")) {
-                    rejectUnknownKeys(target, {"POSITION"}, "morph target");
+                    rejectUnknownKeys(target, {"POSITION", "NORMAL"}, "morph target");
+                    if (!find(target, "POSITION") && !find(target, "NORMAL"))
+                        invalid("morph target has no supported POSITION or NORMAL attribute");
                     if (count > 1000000 - morphVertexBudget) invalid("morph vertex budget exceeded");
                     morphVertexBudget += count;
-                    const auto delta = floats(required(target, "POSITION", "target"), 3);
-                    if (delta.size() != data.size()) invalid("morph topology mismatch");
                     RigMorphTarget morph; morph.positions = geometry.source;
-                    for (std::size_t i = 0; i < count; ++i) morph.positions[i].add({delta[i * 3], delta[i * 3 + 1], delta[i * 3 + 2]});
+                    if (const auto* positionTarget = find(target, "POSITION")) {
+                        const auto delta = floats(*positionTarget, 3);
+                        if (delta.size() != data.size()) invalid("morph POSITION topology mismatch");
+                        for (std::size_t i = 0; i < count; ++i)
+                            morph.positions[i].add({delta[i * 3], delta[i * 3 + 1], delta[i * 3 + 2]});
+                    }
+                    if (const auto* normalTarget = find(target, "NORMAL")) {
+                        if (geometry.sourceNormals.size() != count)
+                            invalid("NORMAL morph target requires base NORMAL attributes");
+                        const auto delta = floats(*normalTarget, 3);
+                        if (delta.size() != data.size()) invalid("morph NORMAL topology mismatch");
+                        morph.normals = geometry.sourceNormals;
+                        for (std::size_t i = 0; i < count; ++i)
+                            morph.normals[i].add({delta[i * 3], delta[i * 3 + 1], delta[i * 3 + 2]});
+                    }
                     geometry.morphs.push_back(std::move(morph));
                 }
             }
@@ -190,6 +211,7 @@ GltfMotionAsset Document::loadMotion() {
                 (void) skinRigGeometry(rig, bind, geometry.source, geometry.skin, geometry.inverseBinds);
             } else if (find(attrs, "JOINTS_0") || find(attrs, "WEIGHTS_0")) invalid("joint attributes require node skin");
             (void) mixRigMorphs(geometry.source, geometry.morphs);
+            (void) mixRigMorphNormals(geometry.sourceNormals, geometry.morphs);
             nodeGeometry[node].push_back(result.geometry.size());
             result.geometry.push_back(std::move(geometry));
         }

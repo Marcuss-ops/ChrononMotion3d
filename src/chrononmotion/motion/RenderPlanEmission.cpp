@@ -431,6 +431,30 @@ namespace chrononmotion::motion {
             writer.endObject();
         }
 
+        if (plan.environment_light) {
+            writer.key("environment_light");
+            writer.beginObject();
+            writer.key("probe_asset");
+            writer.text(plan.environment_light->probe_asset);
+            writer.key("intensity");
+            writer.number(plan.environment_light->intensity);
+            writer.key("rotation_y");
+            writer.number(plan.environment_light->rotation_y);
+            writer.key("irradiance_sh");
+            writeFloats(writer, plan.environment_light->irradiance_sh.data(),
+                        plan.environment_light->irradiance_sh.size());
+            if (plan.environment_light->rotation_animation) {
+                const AnimationTrackPlan& track = *plan.environment_light->rotation_animation;
+                writer.key("rotation_animation");
+                writer.beginObject();
+                writer.key("property"); writer.text(track.property);
+                writer.key("easing"); writer.text(track.easing);
+                writer.key("keyframes"); writeKeyframes(writer, track.keyframes, false);
+                writer.endObject();
+            }
+            writer.endObject();
+        }
+
         writer.key("layers");
         writer.beginArray();
         for (const LayerPlan& layer : plan.layers) {

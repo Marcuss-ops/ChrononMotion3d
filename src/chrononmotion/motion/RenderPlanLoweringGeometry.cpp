@@ -87,9 +87,14 @@ void appendRigGeometrySample(chronon3d::render_plan::LayerPlan& layer,
     auto& mesh = *layer.inline_mesh;
     if (!mesh.animation.empty() && frame <= mesh.animation.back().frame)
         throw std::invalid_argument("appendRigGeometrySample: frames must be strictly increasing");
-    if (geometry.positions.size() != mesh.vertices.size() || indices.size() != mesh.indices.size() ||
+    if (geometry.positions.size() != mesh.vertices.size() ||
+        (!geometry.normals.empty() && geometry.normals.size() != mesh.vertices.size()) ||
+        indices.size() != mesh.indices.size() ||
         !std::equal(indices.begin(), indices.end(), mesh.indices.begin()))
         throw std::invalid_argument("appendRigGeometrySample: baked geometry topology does not match inline mesh");
+    if (!mesh.animation.empty() &&
+        geometry.normals.empty() != mesh.animation.front().normals.empty())
+        throw std::invalid_argument("appendRigGeometrySample: normal samples must be present consistently");
     if (mesh.animation.size() >= kInlineMeshMaxAnimationSamples)
         throw std::invalid_argument("appendRigGeometrySample: sample count exceeds 4096");
     InlineMeshFrameSamplePlan sample;
@@ -100,6 +105,13 @@ void appendRigGeometrySample(chronon3d::render_plan::LayerPlan& layer,
             if (!std::isfinite(component) || std::abs(component) > 1'000'000.f)
                 throw std::invalid_argument("appendRigGeometrySample: position exceeds finite mesh bounds");
         sample.positions.push_back({position.x, position.y, position.z});
+    }
+    sample.normals.reserve(geometry.normals.size());
+    for (const auto& normal : geometry.normals) {
+        for (const float component : {normal.x, normal.y, normal.z})
+            if (!std::isfinite(component) || std::abs(component) > 1.f)
+                throw std::invalid_argument("appendRigGeometrySample: normal exceeds [-1, 1]");
+        sample.normals.push_back({normal.x, normal.y, normal.z});
     }
     mesh.animation.push_back(std::move(sample));
 }

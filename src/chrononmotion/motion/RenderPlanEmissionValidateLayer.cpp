@@ -519,6 +519,21 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 if (layer.type != LayerType::Mesh)
                     return owner + " carries inline mesh geometry but is not a mesh layer";
                 const auto& mesh = *layer.inline_mesh;
+                if (!mesh.metallic_roughness_texture_asset.empty()) {
+                    const auto& path = mesh.metallic_roughness_texture_asset;
+                    if (path.size() > 4096 || path.front() == '/' || path.find('\\') != std::string::npos ||
+                        path.find(':') != std::string::npos)
+                        return owner + " has an unsafe metallic-roughness texture path";
+                    std::size_t start = 0;
+                    while (start <= path.size()) {
+                        const auto end = path.find('/', start);
+                        const auto part = path.substr(start, end == std::string::npos ? end : end - start);
+                        if (part.empty() || part == "." || part == "..")
+                            return owner + " has an unsafe metallic-roughness texture path";
+                        if (end == std::string::npos) break;
+                        start = end + 1;
+                    }
+                }
                 if (mesh.vertices.size() < 3 || mesh.vertices.size() > chronon3d::render_plan::kInlineMeshMaxVertices)
                     return owner + " has an inline mesh vertex count outside [3, 250000]";
                 if (mesh.indices.size() < 3 || mesh.indices.size() > chronon3d::render_plan::kInlineMeshMaxIndices ||
@@ -547,8 +562,11 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                     std::uint64_t animationBytes = 0;
                     for (const auto& sample : mesh.animation) {
                         if (sample.frame < 0 || sample.frame > 1'000'000 ||
-                            sample.frame <= previousFrame || sample.positions.size() != mesh.vertices.size())
+                            sample.frame <= previousFrame || sample.positions.size() != mesh.vertices.size() ||
+                            (!sample.normals.empty() && sample.normals.size() != mesh.vertices.size()))
                             return owner + " has a mesh sample outside the timeline, unsorted, or with mismatched topology";
+                        if (sample.normals.empty() != mesh.animation.front().normals.empty())
+                            return owner + " has inconsistent animated normal arrays";
                         previousFrame = sample.frame;
                         constexpr std::uint64_t bytesPerPosition = sizeof(std::array<float, 3>);
                         if (sample.positions.size() >
@@ -557,10 +575,20 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                                 sample.positions.size() * bytesPerPosition)
                             return owner + " exceeds the inline mesh animation byte budget";
                         animationBytes += sample.positions.size() * bytesPerPosition;
+                        if (sample.normals.size() >
+                                chronon3d::render_plan::kInlineMeshMaxAggregateBytes / bytesPerPosition ||
+                            animationBytes > chronon3d::render_plan::kInlineMeshMaxAggregateBytes -
+                                sample.normals.size() * bytesPerPosition)
+                            return owner + " exceeds the inline mesh animation byte budget";
+                        animationBytes += sample.normals.size() * bytesPerPosition;
                         for (const auto& position : sample.positions)
                             for (const float component : position)
                                 if (!std::isfinite(component) || std::abs(component) > 1'000'000.f)
                                     return owner + " has animated mesh positions outside the finite contract range";
+                        for (const auto& normal : sample.normals)
+                            for (const float component : normal)
+                                if (!std::isfinite(component) || std::abs(component) > 1.f)
+                                    return owner + " has animated mesh normals outside [-1, 1]";
                     }
                 }
                 if (mesh.material) {
@@ -574,6 +602,15 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                         for (const float component : *material.base_color)
                             if (!std::isfinite(component) || component < 0.f || component > 1.f)
                                 return owner + " has an inline mesh base color outside [0, 1]";
+                    if ((material.metallic && (!std::isfinite(*material.metallic) || *material.metallic < 0.f || *material.metallic > 1.f)) ||
+                        (material.roughness && (!std::isfinite(*material.roughness) || *material.roughness < 0.f || *material.roughness > 1.f)))
+                        return owner + " has inline mesh PBR values outside [0, 1]";
+                    if (material.emissive)
+                        for (const float component : *material.emissive)
+                            if (!std::isfinite(component) || component < 0.f || component > 10000.f)
+                                return owner + " has inline mesh emissive values outside [0, 10000]";
+                    if (material.alpha_cutoff && (!std::isfinite(*material.alpha_cutoff) || *material.alpha_cutoff < 0.f || *material.alpha_cutoff > 1.f))
+                        return owner + " has an inline mesh alpha cutoff outside [0, 1]";
                 }
             } else if (layer.type == LayerType::Mesh) {
                 return owner + " is a mesh layer with no inline geometry";

@@ -1,4 +1,5 @@
 #include "chrononmotion/motion/RigBaking.hpp"
+#include "chrononmotion/math/Matrix3.hpp"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -67,6 +68,13 @@ namespace chrononmotion::motion {
                     if constexpr (std::is_same_v<T, float>) number(key.value);
                     else if constexpr (std::is_same_v<T, Vector3>) vector(key.value);
                     else quaternion(key.value);
+                    integer(key.discrete ? 1 : 0);
+                    integer(key.cubicSpline ? 1 : 0);
+                    if (key.cubicSpline) {
+                        if constexpr (std::is_same_v<T, float>) { number(key.inTangent); number(key.outTangent); }
+                        else if constexpr (std::is_same_v<T, Vector3>) { vector(key.inTangent); vector(key.outTangent); }
+                        else { quaternion(key.inTangent); quaternion(key.outTangent); }
+                    }
                 }
             }
         };
@@ -84,6 +92,8 @@ namespace chrononmotion::motion {
         for (const auto& geometry : frame.geometry) {
             hash.integer(geometry.id); hash.integer(geometry.positions.size());
             for (const auto& position : geometry.positions) hash.vector(position);
+            hash.integer(geometry.normals.size());
+            for (const auto& normal : geometry.normals) hash.vector(normal);
         }
         return hash.value;
     }
@@ -265,7 +275,19 @@ namespace chrononmotion::motion {
             positions = binding.deformers.evaluate(positions);
             if (!binding.skin.empty()) positions = skinRigGeometry(raw_, output.pose, positions, binding.skin, binding.inverseBinds);
             else if (binding.rigidNode) for (auto& point : positions) point = output.pose.localToWorld(binding.rigidNode, point);
-            output.geometry.push_back({binding.id, std::move(positions)});
+            auto normals = mixRigMorphNormals(binding.sourceNormals, binding.morphs);
+            if (!normals.empty()) {
+                if (!binding.deformers.operators.empty())
+                    throw std::invalid_argument("RigProgram: normal attributes with nonlinear deformers are unsupported");
+                if (!binding.skin.empty()) {
+                    normals = skinRigNormals(raw_, output.pose, normals, binding.skin, binding.inverseBinds);
+                } else if (binding.rigidNode) {
+                    Matrix3 normalMatrix;
+                    normalMatrix.getNormalMatrix(output.pose.world[output.pose.index(binding.rigidNode)]);
+                    for (auto& normal : normals) normal.applyMatrix3(normalMatrix).normalize();
+                }
+            }
+            output.geometry.push_back({binding.id, std::move(positions), std::move(normals)});
         }
         (void) rigFrameSignature(output); // Finite final pose/geometry gate.
         return output;

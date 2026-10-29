@@ -1,4 +1,6 @@
 #include "chrononmotion/assets/GltfReader.hpp"
+#include "chrononmotion/materials/PbrMaterial.hpp"
+#include "chrononmotion/assets/GltfMotionBridge.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
 #include "chrononmotion/motion/AuthoringPolicy.hpp"
 
@@ -129,6 +131,58 @@ void validJsonImport() {
           "repeated parse yields stable primitive order and values");
 }
 
+void pbrMaterialImport() {
+    auto replaceOnce = [](std::string source, const std::string& from, const std::string& to) {
+        const auto position = source.find(from);
+        if (position != std::string::npos) source.replace(position, from.size(), to);
+        return source;
+    };
+    auto json = dataUriDocument(triangleBytes());
+    json = replaceOnce(std::move(json), "\"asset\":{\"version\":\"2.0\"}",
+        "\"asset\":{\"version\":\"2.0\"},\"materials\":[{\"name\":\"paint\",\"pbrMetallicRoughness\":{\"baseColorFactor\":[0.2,0.4,0.6,0.5],\"metallicFactor\":0.7,\"roughnessFactor\":0.3},\"emissiveFactor\":[0.1,0.2,0.3],\"alphaMode\":\"MASK\",\"alphaCutoff\":0.25,\"doubleSided\":true}]");
+    json = replaceOnce(std::move(json), "\"indices\":3", "\"indices\":3,\"material\":0");
+    const auto asset = loadGltf(json);
+    const auto material = asset.meshes.front()->material();
+    check(material && material->is<PbrMaterial>(), "glTF metallic-roughness material imports as PbrMaterial");
+    if (material) {
+        const auto* pbr = material->as<PbrMaterial>();
+        check(pbr && pbr->baseColor.r == 0.2f && pbr->baseColor.g == 0.4f &&
+              pbr->baseColor.b == 0.6f && pbr->roughness == 0.3f && pbr->metalness == 0.7f,
+              "glTF PBR factors retain base color, roughness, and metalness");
+        check(pbr && pbr->opacity == 0.5f && pbr->alphaTest == 0.25f && pbr->doubleSided &&
+              pbr->side == Side::Double && pbr->emissiveColor.b == 0.3f,
+              "glTF alpha, emissive, and double-sided properties are imported");
+    }
+    auto attachment = motion::meshAttachmentFromGltf(*asset.meshes.front(), 47);
+    check(attachment.geometry == asset.meshes.front()->geometry() &&
+          attachment.material.kind == MaterialKind::PBR &&
+          attachment.material.metalness == 0.7f && attachment.material.roughness == 0.3f &&
+          attachment.material.alphaCutoff == 0.25f && attachment.material.doubleSided,
+          "explicit glTF-to-MotionScene bridge preserves PBR, alpha cutoff, and geometry");
+    auto invalid = replaceOnce(json, "\"metallicFactor\":0.7", "\"metallicFactor\":1.2");
+    bool rejected = false;
+    try { (void)loadGltf(invalid); } catch (const std::invalid_argument&) { rejected = true; }
+    check(rejected, "out-of-range glTF metallic factor fails closed");
+    auto textured = replaceOnce(json, "\"roughnessFactor\":0.3", "\"roughnessFactor\":0.3,\"baseColorTexture\":{\"index\":0},\"metallicRoughnessTexture\":{\"index\":0}");
+    textured = replaceOnce(std::move(textured), "\"materials\":[",
+        "\"images\":[{\"uri\":\"textures/albedo.png\"}],\"samplers\":[{\"magFilter\":9729,\"minFilter\":9729,\"wrapS\":33071,\"wrapT\":33071}],\"textures\":[{\"source\":0,\"sampler\":0}],\"materials\":[");
+    const auto texturedAsset = loadGltf(textured);
+    const auto* texturedMaterial = texturedAsset.meshes.front()->material()->as<PbrMaterial>();
+    check(texturedMaterial && texturedMaterial->baseColorTextureUri == "textures/albedo.png",
+          "glTF base-color texture retains its mounted-root-relative image identity");
+    check(texturedMaterial && texturedMaterial->metallicRoughnessTextureUri == "textures/albedo.png",
+          "glTF metallic-roughness texture retains its mounted-root-relative image identity");
+    auto texturedAttachment = motion::meshAttachmentFromGltf(*texturedAsset.meshes.front(), 48);
+    check(texturedAttachment.baseColorTextureAsset == "textures/albedo.png",
+          "glTF texture identity crosses the explicit MotionScene bridge");
+    check(texturedAttachment.metallicRoughnessTextureAsset == "textures/albedo.png",
+          "glTF metallic-roughness identity crosses the explicit MotionScene bridge");
+    auto unsafeTexture = replaceOnce(textured, "textures/albedo.png", "../albedo.png");
+    rejected = false;
+    try { (void)loadGltf(unsafeTexture); } catch (const std::invalid_argument&) { rejected = true; }
+    check(rejected, "glTF base-color texture rejects mounted-root traversal");
+}
+
 void validGlbImport() {
     auto bytes = triangleBytes();
     std::string json = R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],"buffers":[{"byteLength":102}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":36},{"buffer":0,"byteOffset":72,"byteLength":24},{"buffer":0,"byteOffset":96,"byteLength":6}],"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},{"bufferView":1,"componentType":5126,"count":3,"type":"VEC3"},{"bufferView":2,"componentType":5126,"count":3,"type":"VEC2"},{"bufferView":3,"componentType":5123,"count":3,"type":"SCALAR"}],"meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"indices":3}]}]})";
@@ -222,6 +276,7 @@ void rejectsUnsupportedAndMalformed() {
 
 int main() {
     validJsonImport();
+    pbrMaterialImport();
     validGlbImport();
     unindexedAndExternalBuffer();
     rejectsUnsupportedAndMalformed();

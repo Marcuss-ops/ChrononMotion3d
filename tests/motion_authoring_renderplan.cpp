@@ -1,7 +1,11 @@
 #include "chrononmotion/chrononmotion.hpp"
 #include "chrononmotion/motion/RenderPlanEmission.hpp"
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
+#include "chrononmotion/motion/LightRigRenderPlan.hpp"
+#include "chrononmotion/motion/HdriRenderPlan.hpp"
 #include "chrononmotion/motion/RigBaking.hpp"
+#include "gltf_motion_fixture.hpp"
+#include "hdri_fixture.hpp"
 #include "motion_check.hpp"
 #include <chronon3d/render_plan/render_plan.hpp>
 #include <nlohmann/json.hpp>
@@ -234,6 +238,7 @@ void testTypedChronon3dLowering() {
         {{{ 0.f,  1.f, 0.f}}, {{0.f, 0.f, 1.f}}, {{0.5f, 1.f}}},
     };
     triangle.indices = {0, 1, 2};
+    triangle.metallic_roughness_texture_asset = "textures/orm.png";
     triangle.material = chronon3d::render_plan::InlineMeshMaterialPlan{};
     triangle.material->base_color = std::array<float, 4>{0.1f, 0.6f, 0.3f, 1.f};
     meshLayer.inline_mesh = triangle;
@@ -244,6 +249,22 @@ void testTypedChronon3dLowering() {
     check(parsedInlineMesh.at("layers").at(0).at("inline_mesh").at("vertices").size() == 3 &&
           parsedInlineMesh.at("layers").at(0).at("inline_mesh").at("indices") == nlohmann::json{0, 1, 2},
           "the emitter preserves procedural mesh vertices and triangle indices");
+    check(parsedInlineMesh.at("layers").at(0).at("inline_mesh").at("metallic_roughness_texture") == "textures/orm.png",
+          "the emitter preserves the inline mesh metallic-roughness image reference");
+    auto multiLightPlan = inlineMeshPlan;
+    auto editorialRig = lightRigPresets::make("editorial_key_rim_fill");
+    lightRigPresets::animateRotation(editorialRig, 0.f, 3.f / 30.f, {}, {0.f, .2f, .1f});
+    appendLightRigToRenderPlan(multiLightPlan, editorialRig, 30.f, 4);
+    check(multiLightPlan.layers.size() == inlineMeshPlan.layers.size() + 3 &&
+          renderPlanEmissionProblem(multiLightPlan).empty(),
+          "editorial light rig lowers to three valid V3 light layers");
+    const auto multiLightPayload = renderPlanToJson(multiLightPlan);
+    const auto multiLightJson = nlohmann::json::parse(multiLightPayload);
+    check(multiLightJson.at("layers").size() == multiLightPlan.layers.size() &&
+          multiLightJson.at("layers").at(1).at("light").at("kind") == "spot" &&
+          multiLightJson.at("layers").at(1).at("animation").at("tracks").size() > 0 &&
+          renderPlanToJson(multiLightPlan) == multiLightPayload,
+          "animated multi-light payload emits deterministically through the V3 producer");
     const auto& emittedBaseColor = parsedInlineMesh.at("layers").at(0).at("inline_mesh").at("material").at("base_color");
     check(emittedBaseColor.size() == 4,
           "the emitter preserves all four inline mesh base color components");
@@ -264,6 +285,10 @@ void testTypedChronon3dLowering() {
     check(!renderPlanEmissionProblem(invalidMeshPlan).empty() &&
           throwsInvalid([&] { (void)renderPlanToJson(invalidMeshPlan); }),
           "out-of-range inline mesh indices fail closed before emission");
+    invalidMeshPlan = inlineMeshPlan;
+    invalidMeshPlan.layers[0].inline_mesh->metallic_roughness_texture_asset = "../unsafe.png";
+    check(!renderPlanEmissionProblem(invalidMeshPlan).empty(),
+          "inline mesh metallic-roughness texture rejects mounted-root traversal");
 
     MotionScene proceduralMeshScene("procedural mesh canary", 30.f);
     auto proceduralTriangle = BufferGeometry::create();
@@ -303,9 +328,20 @@ void testTypedChronon3dLowering() {
               nlohmann::json{0, 1, 2},
           "procedural MotionScene geometry reaches the emitted RenderPlan without a second adapter");
     MotionScene pbrMeshScene("procedural pbr mesh contract", 30.f);
-    const MaterialDescriptor pbrDescriptor = MaterialDescriptor::pbr(10, Color(0x8090a0), 0.25f, 0.8f);
-    pbrMeshScene.addMesh(73, "pbr triangle", MeshAttachment{
-        .geometry = proceduralTriangle, .material = pbrDescriptor}).alive(0, 1);
+    MaterialDescriptor pbrDescriptor = MaterialDescriptor::pbr(10, Color(0x8090a0), 0.25f, 0.8f);
+    pbrDescriptor.doubleSided = true;
+    pbrDescriptor.alphaCutoff = 0.25f;
+    pbrDescriptor.validate();
+    check(pbrDescriptor.doubleSided && pbrDescriptor.roughness == 0.25f &&
+          pbrDescriptor.metalness == 0.8f,
+          "PBR descriptor preserves the agreed roughness/metalness and double-sided state");
+    auto invalidPbrDescriptor = pbrDescriptor;
+    invalidPbrDescriptor.roughness = std::numeric_limits<float>::infinity();
+    check(throwsInvalid([&] { invalidPbrDescriptor.validate(); }),
+          "PBR descriptor rejects non-finite roughness");
+    MeshAttachment pbrAttachment{.geometry = proceduralTriangle, .material = pbrDescriptor};
+    pbrAttachment.baseColorTextureAsset = "textures/paint.png";
+    pbrMeshScene.addMesh(73, "pbr triangle", std::move(pbrAttachment)).alive(0, 1);
     proceduralMeshOptions.contentLayers.clear();
     proceduralMeshOptions.contentLayers.emplace("73", proceduralMeshContent);
     const auto loweredPbrMesh = lowerToRenderPlan(pbrMeshScene, proceduralMeshOptions);
@@ -314,12 +350,28 @@ void testTypedChronon3dLowering() {
           "PBR MotionScene meshes remain expressible in the compact RenderPlan material contract");
     if (loweredPbrMesh.layers.size() == 1 && loweredPbrMesh.layers[0].inline_mesh &&
         loweredPbrMesh.layers[0].inline_mesh->material) {
-        checkNear(loweredPbrMesh.layers[0].inline_mesh->material->specular,
-                  pbrDescriptor.metalness, 1e-6f,
-                  "PBR lowering maps metalness into RenderPlan specular strength");
+        check(loweredPbrMesh.layers[0].inline_mesh->material->metallic == pbrDescriptor.metalness &&
+              loweredPbrMesh.layers[0].inline_mesh->material->roughness == pbrDescriptor.roughness &&
+              loweredPbrMesh.layers[0].inline_mesh->material->double_sided == true &&
+              loweredPbrMesh.layers[0].inline_mesh->material->alpha_cutoff == pbrDescriptor.alphaCutoff,
+              "PBR lowering preserves exact factors and alpha cutoff in RenderPlan");
         checkNear(loweredPbrMesh.layers[0].inline_mesh->material->shininess,
                   1.f + (1.f - pbrDescriptor.roughness) * 1023.f, 1e-3f,
                   "PBR lowering maps roughness into RenderPlan shininess approximation");
+        const auto pbrJson = nlohmann::json::parse(renderPlanToJson(loweredPbrMesh));
+        check(renderPlanToJson(loweredPbrMesh) == renderPlanToJson(loweredPbrMesh),
+              "PBR RenderPlan serialization is byte-stable across repeated writes");
+        const auto& emittedLayer = pbrJson.at("layers").at(0);
+        check(emittedLayer.at("asset") == "textures/paint.png" &&
+              (!emittedLayer.contains("input_color_space") ||
+               emittedLayer.at("input_color_space") == "srgb"),
+              "PBR base-color texture identity reaches the V3 mesh asset slot");
+        const auto& emittedMaterial = pbrJson.at("layers").at(0).at("inline_mesh").at("material");
+        check(std::abs(emittedMaterial.at("metallic").get<float>() - pbrDescriptor.metalness) < 1e-6f &&
+              std::abs(emittedMaterial.at("roughness").get<float>() - pbrDescriptor.roughness) < 1e-6f &&
+              emittedMaterial.at("double_sided") == true &&
+              std::abs(emittedMaterial.at("alpha_cutoff").get<float>() - pbrDescriptor.alphaCutoff) < 1e-6f,
+              "PBR exact properties survive deterministic RenderPlan serialization");
     }
     MotionScene animatedMeshScene("animated mesh contract", 30.f);
     Layer& animatedMesh = animatedMeshScene.addMesh(
@@ -576,6 +628,20 @@ void testTypedChronon3dLowering() {
     invalidLightPlan.layers[0].light->color[0] = 0.123f;
     check(!renderPlanEmissionProblem(invalidLightPlan).empty(),
           "light colors that the hexadecimal consumer contract would quantize are refused");
+
+    auto hdriPlan = slowedVideo;
+    const auto probe = decodeHdriRadiance(chrononmotion_test::constantRadianceHdr());
+    attachHdriEnvironmentToRenderPlan(hdriPlan, probe, "assets/studio.hdri-env");
+    check(renderPlanEmissionProblem(hdriPlan).empty(),
+          "HDRI reader's diffuse SH coefficients can be attached to V3 RenderPlan");
+    const auto emittedEnvironment = nlohmann::json::parse(renderPlanToJson(hdriPlan)).at("environment_light");
+    check(emittedEnvironment.at("probe_asset") == "assets/studio.hdri-env" &&
+          emittedEnvironment.at("irradiance_sh").size() == 27,
+          "HDRI asset reference and all diffuse SH coefficients survive producer emission");
+    auto unsafeHdriPlan = hdriPlan;
+    unsafeHdriPlan.environment_light->probe_asset = "../outside.hdri-env";
+    check(!renderPlanEmissionProblem(unsafeHdriPlan).empty(),
+          "HDRI probe paths reject traversal before writing RenderPlan JSON");
 
     auto safeAreaPlan = slowedVideo;
     safeAreaPlan.layers[0].safe_insets = std::array<float, 4>{80.f, 60.f, 220.f, 60.f};
@@ -1036,6 +1102,8 @@ void testTypedChronon3dLowering() {
           "deformed rig mesh frame serialization is deterministic");
     auto secondRigFrame = rigFrame;
     secondRigFrame.positions[2].z = 2.f;
+    rigFrame.normals = {{0.f, 0.f, 1.f}, {0.f, 0.f, 1.f}, {0.f, 0.f, 1.f}};
+    secondRigFrame.normals = {{0.f, 1.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 1.f, 0.f}};
     applyRigGeometryFrame(riggedMesh, secondRigFrame, std::array<std::uint32_t, 3>{0, 1, 2});
     auto secondRigFramePlan = inlineMeshPlan;
     secondRigFramePlan.layers[0] = riggedMesh;
@@ -1048,12 +1116,16 @@ void testTypedChronon3dLowering() {
     };
     auto animatedRigPlan = inlineMeshPlan;
     animatedRigPlan.layers[0] = riggedMesh;
+    animatedRigPlan.layers[0].asset = "textures/character-base.png";
+    animatedRigPlan.layers[0].input_color_space = "srgb";
+    animatedRigPlan.layers[0].inline_mesh->metallic_roughness_texture_asset = "textures/character-orm.png";
     applyRigGeometryBake(animatedRigPlan.layers[0], geometryBake, 1,
                          std::array<std::uint32_t, 3>{0, 1, 2}, 4);
     check(animatedRigPlan.layers[0].inline_mesh->animation.size() == 2 &&
           animatedRigPlan.layers[0].inline_mesh->animation[1].frame == 5 &&
-          animatedRigPlan.layers[0].inline_mesh->animation[1].positions[2][2] == 2.f,
-          "RigProgram bake lowers all frame geometry to a V3 baked vertex sample sequence");
+          animatedRigPlan.layers[0].inline_mesh->animation[1].positions[2][2] == 2.f &&
+          animatedRigPlan.layers[0].inline_mesh->animation[1].normals[0][1] == 1.f,
+          "RigProgram bake lowers frame positions and normals to V3 geometry samples");
     check(animatedRigPlan.layers[0].inline_mesh->vertices[2].uv == triangle.vertices[2].uv &&
           animatedRigPlan.layers[0].inline_mesh->material->base_color == triangle.material->base_color,
           "animated RigProgram lowering keeps authored UV and alpha-bearing material unchanged");
@@ -1062,8 +1134,45 @@ void testTypedChronon3dLowering() {
           "animated rig geometry passes producer validation for V3 emission");
     const auto animatedRigJson = nlohmann::json::parse(renderPlanToJson(animatedRigPlan));
     check(animatedRigJson.at("layers").at(0).at("inline_mesh").at("animation").size() == 2 &&
-          animatedRigJson.at("layers").at(0).at("inline_mesh").at("animation")[1].at("frame") == 5,
-          "V3 emission writes baked rig sample times and deformed positions");
+          animatedRigJson.at("layers").at(0).at("inline_mesh").at("animation")[1].at("frame") == 5 &&
+          animatedRigJson.at("layers").at(0).at("inline_mesh").at("animation")[1].at("normals")[0][1] == 1.f &&
+          animatedRigJson.at("layers").at(0).at("asset") == "textures/character-base.png" &&
+          animatedRigJson.at("layers").at(0).at("inline_mesh").at("metallic_roughness_texture") == "textures/character-orm.png",
+          "V3 emission keeps animated positions/normals with base and ORM texture references");
+
+    chrononmotion_test::GltfMotionFixture gltfFixture;
+    const auto importedGltf = gltfFixture.load(gltfFixture.withAnimatedMorphChannel());
+    check(importedGltf.skins.size() == 1 && importedGltf.geometry.size() == 1 &&
+          importedGltf.clips.size() == 1 && importedGltf.clips[0].morphs.size() == 1,
+          "animated glTF fixture imports skin, clip, morph target and morph-weight channel");
+    RigProgram importedProgram;
+    importedProgram.graph = importedGltf.graph;
+    importedProgram.animation = importedGltf.clips[0].animation;
+    importedProgram.geometry = importedGltf.geometry;
+    for (const auto& morph : importedGltf.clips[0].morphs)
+        importedProgram.geometry.at(morph.geometryId - 1).morphTracks = morph.weights;
+    const RigProgramEvaluator importedEvaluator(importedProgram);
+    const auto importedBake = importedEvaluator.bake(0, 30, 30.f);
+    check(importedBake.signature == importedEvaluator.bake(0, 30, 30.f).signature,
+          "skinned and morphed glTF bake repeats deterministically");
+    auto importedGltfPlan = inlineMeshPlan;
+    importedGltfPlan.canvas.duration = chronon3d::Frame{31};
+    applyRigGeometryBake(importedGltfPlan.layers[0], importedBake,
+                         importedGltf.geometry[0].id,
+                         importedGltf.geometry[0].indices, 0);
+    check(importedGltfPlan.layers[0].inline_mesh->animation.size() == 31 &&
+          importedGltfPlan.layers[0].inline_mesh->animation[15].positions[0][0] == 1.f &&
+          importedGltfPlan.layers[0].inline_mesh->animation[15].positions[1][1] == 0.5f &&
+          importedGltfPlan.layers[0].inline_mesh->animation[30].positions[1][1] == 1.f,
+          "imported skin and morph samples bake to the V3 inline_mesh.animation contract");
+    check(renderPlanEmissionProblem(importedGltfPlan).empty(),
+          "animated glTF geometry passes typed RenderPlan producer validation");
+    const auto importedGltfJson = renderPlanToJson(importedGltfPlan);
+    const auto parsedImportedGltf = nlohmann::json::parse(importedGltfJson);
+    check(parsedImportedGltf.at("layers").at(0).at("inline_mesh").at("animation").size() == 31 &&
+          renderPlanToJson(importedGltfPlan) == importedGltfJson,
+          "glTF skin/morph V3 animation emission round-trips deterministically");
+
     auto rejectedBake = geometryBake;
     rejectedBake.frames[1].geometry.clear();
     const auto previousSamples = animatedRigPlan.layers[0].inline_mesh->animation;

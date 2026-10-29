@@ -28,6 +28,7 @@ namespace chrononmotion::motion {
         std::uint32_t id{0};
         RigNodeId rigidNode{0}; // Rigid SVG group/layer binding; zero means world geometry.
         std::vector<Vector3> source{};
+        std::vector<Vector3> sourceNormals{};
         std::vector<RigMorphTarget> morphs{};
         std::vector<Track<float>> morphTracks{}; // Empty entries retain static weights.
         std::vector<RigSkinVertex> skin{};
@@ -35,7 +36,11 @@ namespace chrononmotion::motion {
         std::vector<std::uint32_t> indices{}; // Optional supplied triangle topology; deformation preserves it.
         DeformerStack deformers{};
     };
-    struct RigFrameGeometry { std::uint32_t id{0}; std::vector<Vector3> positions{}; };
+    struct RigFrameGeometry {
+        std::uint32_t id{0};
+        std::vector<Vector3> positions{};
+        std::vector<Vector3> normals{};
+    };
     enum class RigEvaluationStage { Authored, Spaces, Drivers, PoseMix, Solve, Constraints, Secondary, Geometry, Final };
     struct RigScheduledIK {
         std::uint32_t id{0};

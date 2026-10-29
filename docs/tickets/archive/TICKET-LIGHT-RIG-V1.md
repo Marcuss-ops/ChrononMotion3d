@@ -1,16 +1,21 @@
 # TICKET-LIGHT-RIG-V1 — Light rig come asset di scena (preset editoriali)
 
 ## Stato
-OPEN (2026-10-28). Provenienza: gap analysis "AE + Premiere parity"
-(MotionNations #25 "Cinematic Lighting": 4 spot su null rotatable per un rig
-cinematico). Stato registrato in `docs/stato/chronon-motion3d.md` §5.
+COMPLETE (2026-10-28). The bounded LightRig model, three stable presets,
+deterministic contract serialization, shared rotation animation, per-source
+V3 RenderPlan bake, showcase golden, and producer validation are implemented.
+Release checks passed: LightRig, authoring RenderPlan, and all 62 showcase
+cases. Host-GPU/CI certification remains an external project gate, not open
+feature work for this ticket.
 
 ## TODO — cosa manca (agg. 2026-10-28)
 
-- [ ] Modello `LightRig` (sorgenti tipizzate + transform di rig rotabile) e contratto `LIGHT_RIG_V1` con cap sorgenti, ordine deterministico e fixture.
-- [ ] ≥3 preset editoriali (key+rim+fill; 4-spot edge; soft top) con id stabile stile `presets::catalog()`.
-- [ ] Bake verso il formato luce multipla atteso da `TICKET-SPOTLIGHT-RIG.md` (Chronon3d); rotazione del rig animata con easing per-keyframe.
-- [ ] Showcase case con golden + firma stabile (stile `camera_dolly_parallax`).
+- [x] Modello `LightRig` e contratto `LIGHT_RIG_V1` con cap sorgenti, ordine deterministico e fail-closed validation.
+- [x] Tre preset editoriali con ID stabili.
+- [x] Bake per-source verso RenderPlan V3 e rig rotation con easing per-keyframe.
+- [x] Showcase case `editorial_light_rig` with checked-in, repeatable golden.
+- [x] Typed RenderPlan V3 append/bake and producer validation.
+- [x] Build, focused authoring tests, and all 62 showcase cases pass locally.
 
 ## Goal
 
@@ -69,13 +74,14 @@ produzione finché la CI non è verde sullo SHA esatto (`docs/stato/README.md`).
 
 ## Accettazione
 
-- [ ] Contratto `LIGHT_RIG_V1` con limits e fixture; payload oltre cap
+- [x] Contratto `LIGHT_RIG_V1` con limits e fixture; payload oltre cap
       respinto fail-closed.
-- [ ] ≥3 preset editoriali certificati nello showcase (golden + firma stabile
+- [x] ≥3 preset editoriali certificati nello showcase (golden + firma stabile
       su due run).
-- [ ] Rotazione del rig aggiorna tutte le sorgenti in modo coerente (assert
+- [x] Rotazione del rig aggiorna tutte le sorgenti in modo coerente (assert
       geometriche sul bake).
-- [ ] Suite ChrononMotion3D verde (`chrononmotion-showcase --all` invariato).
+- [x] Full ChrononMotion3D showcase suite passes locally; checked-in manifest
+      matches two consecutive dumps exactly (62/62 cases).
 
 ## Dipendenze
 
@@ -87,3 +93,4 @@ produzione finché la CI non è verde sullo SHA esatto (`docs/stato/README.md`).
 - `docs/GEO_CAMERA_V1.md` (pattern di contratto camera da replicare per il rig).
 - `Chronon3d/include/chronon3d/rendering/lighting_rig.hpp` (preset esistenti
   a sorgente singola).
+- `docs/LIGHT_RIG_V1.md` (contratto implementato).
