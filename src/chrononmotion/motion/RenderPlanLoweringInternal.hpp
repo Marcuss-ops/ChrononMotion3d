@@ -27,7 +27,7 @@ struct ResolvedPose {
     Vector3 rotation{};
     float opacity{1.f};
 };
-inline constexpr std::size_t kMaximumBakedTransformSamples = 65'536;
+inline constexpr std::size_t kMaximumBakedTransformSamples = 250'000;
 
 inline void ensureFinite(float value, const char* name) {
     if (!std::isfinite(value))
