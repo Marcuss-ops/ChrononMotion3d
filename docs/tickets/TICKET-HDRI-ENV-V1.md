@@ -122,6 +122,18 @@ produzione finché la CI non è verde sullo SHA esatto (`docs/stato/README.md`).
   consumes diffuse SH plus roughness-selected specular cubemap mips. GPU parity
   remains open.
 
+## Verifica software CLI aggiornata — 2026-10-29
+
+- `chrononmotion_(hdri|light_rig|authoring|rig_pipeline|gltf|showcase_all)` in
+  `build/release-fast` — 6/6 PASS.
+- Il CLI Chronon3D ha compilato il piano con e senza `environment_light` e ha
+  completato l'esportazione raw software. Entrambi i file contengono quattro
+  frame uniformi neri (frame da 64×64 RGBA); quindi non sono pixel proof e non
+  dimostrano l'effetto visivo dell'HDRI. Il PNG still mostra geometria, ma la
+  lane still non è una superficie di misura attendibile.
+- Rimane necessario completare il consumo visibile dell'inline mesh nel
+  percorso video/software. Nessuna parità Vulkan o GPU è dichiarata.
+
 ## Riferimenti
 
 - `docs/GLTF_READER.md` (pattern del boundary da replicare).
