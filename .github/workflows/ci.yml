@@ -48,8 +48,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install GLM (Chronon3D header dependency)
-        run: sudo apt-get update && sudo apt-get install -y libglm-dev
+      - name: Install GLM and fmt (Chronon3D header dependencies)
+        # The RenderPlan adapter enables a find_package(fmt) path in
+        # CMakeLists.txt; without libfmt-dev the configure step fails before
+        # the adapter parity gates can run.
+        run: sudo apt-get update && sudo apt-get install -y libglm-dev libfmt-dev
 
       - name: Check out sibling Chronon3D (best effort)
         id: sibling
