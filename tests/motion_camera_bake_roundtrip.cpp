@@ -9,6 +9,7 @@
 
 #include <cmath>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 using namespace chrononmotion;
@@ -139,6 +140,59 @@ void checkCameraBake() {
         checkNear(lastSample.position[2], 30.f, kEps,
                   "parented camera final sample Z mirrors world Z=(-40+10)=-30 to +30");
     }
+
+    section("resolved camera samples: runtime look-at and roll normalization");
+    auto aimedRig = std::make_shared<CameraRig>(1, 50.f, 16.f / 9.f, 0.1f, 10000.f);
+    aimedRig->setPosition({0.f, 0.f, 1200.f});
+    aimedRig->setTarget({120.f, 30.f, 0.f});
+    aimedRig->setRoll(0.25f);
+
+    bool directRejected = false;
+    try {
+        (void)lowerCameraPose(aimedRig->sample(0.f), 0.1f, 10000.f);
+    } catch (const std::invalid_argument&) {
+        directRejected = true;
+    }
+    check(directRejected,
+          "lowerCameraPose still fails closed on unresolved look-at/roll metadata");
+
+    const auto aimedProvider = makeCameraSampleProvider(
+        aimedRig, kFps, "camera-sample-look-at-roll", 0.1f, 10000.f);
+    const auto resolvedAimed = aimedProvider.sample(0.0);
+    auto aimedPose = aimedRig->sample(0.f);
+    aimedPose.hasTarget = false;
+    aimedPose.roll = 0.f;
+    const auto expectedAimed = lowerCameraPose(aimedPose, 0.1f, 10000.f);
+    checkNear(resolvedAimed.position[0], expectedAimed.position[0], kEps,
+              "runtime provider accepts look-at and preserves the aimed position X");
+    checkNear(resolvedAimed.position[1], expectedAimed.position[1], kEps,
+              "runtime provider accepts look-at and preserves the aimed position Y");
+    checkNear(resolvedAimed.position[2], expectedAimed.position[2], kEps,
+              "runtime provider accepts look-at and preserves the depth-converted Z");
+    for (int axis = 0; axis < 3; ++axis)
+        checkNear(resolvedAimed.rotation_deg[axis], expectedAimed.rotation_deg[axis], 1e-3f,
+                  "runtime provider bakes look-at and roll into the lowered rotation");
+
+    const auto aimedBake = bakeResolvedCameraSamples(*aimedRig, kFps, 1, 0.1f, 10000.f);
+    check(aimedBake.size() == 1, "offline bake still emits the aimed camera sample");
+    if (!aimedBake.empty()) {
+        for (int axis = 0; axis < 3; ++axis)
+            checkNear(aimedBake[0].camera.rotation_deg[axis], resolvedAimed.rotation_deg[axis], 1e-3f,
+                      "offline bake and runtime provider agree on the resolved aimed rotation");
+    }
+
+    constexpr double kAimedSubframe = 15.5;
+    const auto resolvedSubframeAimed = aimedProvider.sample(kAimedSubframe);
+    auto subframePose = aimedRig->sample(
+        static_cast<float>(kAimedSubframe / static_cast<double>(kFps)));
+    subframePose.hasTarget = false;
+    subframePose.roll = 0.f;
+    const auto expectedSubframeAimed = lowerCameraPose(subframePose, 0.1f, 10000.f);
+    checkNear(resolvedSubframeAimed.position[0], expectedSubframeAimed.position[0], kEps,
+              "aimed runtime provider samples the exact fractional frame");
+    for (int axis = 0; axis < 3; ++axis)
+        checkNear(resolvedSubframeAimed.rotation_deg[axis], expectedSubframeAimed.rotation_deg[axis], 1e-3f,
+                  "aimed runtime provider keeps look-at/roll parity at subframe time");
 
     (void)layer;
 }
