@@ -88,8 +88,9 @@ namespace threepp::shaders {
                             weightSum += weight;
                         }
                     }
+                    // Filter RGBA together: forcing alpha opaque destroys
+                    // transparent plates before downstream compositing.
                     gl_FragColor = col / weightSum;
-                    gl_FragColor.a = 1.0;
 
                     #include <encodings_fragment>
                 })"};

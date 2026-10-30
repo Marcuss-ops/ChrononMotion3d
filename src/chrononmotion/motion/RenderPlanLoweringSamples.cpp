@@ -32,11 +32,11 @@ std::array<float, 3> planPosition(const ResolvedPose& pose, LayerType type,
     if (type == LayerType::Text || type == LayerType::Shape ||
         type == LayerType::Particles || type == LayerType::Light) {
         return {pose.position.x + static_cast<float>(width) * .5f,
-                pose.position.y + static_cast<float>(height) * .5f, pose.position.z};
+                pose.position.y + static_cast<float>(height) * .5f, -pose.position.z};
     }
     // Motion cameras and 3D layers use the conventional forward -Z axis;
     // RenderPlan's camera-backed projection uses forward +Z. Mirror depth at
-    // this boundary so authored anchors and camera targets remain coincident.
+    // this boundary for all layer types, including canvas-centred primitives.
     return {pose.position.x, pose.position.y, -pose.position.z};
 }
 

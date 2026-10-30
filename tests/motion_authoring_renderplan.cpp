@@ -981,6 +981,36 @@ void testTypedChronon3dLowering() {
           loweredPositionTrack.property == "position" &&
           loweredPositionTrack.keyframes.back().value[2] == 12.f,
           "3D layer anchor and its baked transform use the same mirrored RenderPlan depth");
+    // Primitive base transforms and dense animation keys must use the same
+    // mirrored depth, regardless of whether a second frame enables a track.
+    for (const auto type : {LayerType::Text, LayerType::Shape, LayerType::Particles}) {
+        for (int lastFrame : {0, 1}) {
+            MotionScene primitiveScene("primitive depth", 30.f);
+            auto& primitive = primitiveScene.addContent(
+                90, "primitive", type == LayerType::Text
+                    ? ContentRef::text("primitive", {20.f, 20.f})
+                    : ContentRef::image("primitive", {20.f, 20.f}));
+            primitive.transform.position.set(4.f, 5.f, -12.f);
+            primitive.lifetime = FrameRange::between(0, lastFrame);
+            RenderPlanLoweringOptions primitiveOptions;
+            primitiveOptions.width = 640;
+            primitiveOptions.height = 360;
+            LayerPlan primitivePlan;
+            primitivePlan.type = type;
+            primitiveOptions.contentLayers.emplace("90", primitivePlan);
+            const auto lowered = lowerToRenderPlan(primitiveScene, primitiveOptions);
+            const auto& primitiveLayer = lowered.layers.front();
+            check(primitiveLayer.position[2] == 12.f,
+                  "primitive base depth mirrors the Motion coordinate system");
+            if (lastFrame != 0) {
+                check(primitiveLayer.animation &&
+                          primitiveLayer.animation->tracks.front().property == "position" &&
+                          primitiveLayer.animation->tracks.front().keyframes.front().value[2] ==
+                              primitiveLayer.position[2],
+                      "primitive animated depth agrees with the static base depth");
+            }
+        }
+    }
     CameraRig dofRig(24, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     dofRig.setPosition({1.f, 2.f, -8.f}).setFStop(19.2f).setFocusDistance(425.f);
     auto dofCameraOptions = cameraOptions;

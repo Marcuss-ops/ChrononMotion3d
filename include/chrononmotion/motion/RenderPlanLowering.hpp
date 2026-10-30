@@ -49,6 +49,11 @@ namespace chrononmotion::motion {
         /// Keep the rig's initial pose in `camera`, but leave time-varying camera
         /// evaluation to a runtime CameraSampleProvider instead of serializing resolved samples.
         bool bakeResolvedCameraSamples{true};
+        /// Optional strictly increasing absolute fractional frame times supplied
+        /// by the renderer's shutter schedule. Empty retains the legacy integer
+        /// frame bake, which approximates nonlinear motion between samples.
+        /// Include every time the consumer will request; other times interpolate.
+        std::vector<double> cameraSampleFrames{};
     };
 
     /// Evaluate the MotionScene at each output frame, compile each evaluated
@@ -86,12 +91,23 @@ namespace chrononmotion::motion {
     [[nodiscard]] nlohmann::json cameraSamplesToJson(
         const std::vector<chronon3d::render_plan::CameraSamplePlan>& samples);
 
-    /// Create a runtime provider for C3D's exact presentation/shutter sample
-    /// times, including pre-roll times before frame zero.
-    /// The caller must keep the rig immutable for the provider's lifetime and
+    /// Create a runtime provider for an unparented rig at C3D's exact
+    /// presentation/shutter sample times, including pre-roll. Parented rigs
+    /// require the scene overload. The caller must keep the rig immutable and
     /// supply a stable fingerprint for that authored rig.
     [[nodiscard]] chronon3d::render_plan::RuntimeCameraSampleProvider
     makeCameraSampleProvider(std::shared_ptr<const CameraRig> rig, float fps,
+                             std::string fingerprint,
+                             float nearPlane = 1.f, float farPlane = 10000.f);
+
+    /// Resolve a parented camera through a dedicated MotionScene at each exact
+    /// requested frame. The provider owns and mutates the scene during sampling;
+    /// callers must not mutate or evaluate it elsewhere for its lifetime. Calls
+    /// on copies of this provider are serialized. The fingerprint must identify
+    /// both the rig and the complete authored hierarchy and timing.
+    [[nodiscard]] chronon3d::render_plan::RuntimeCameraSampleProvider
+    makeCameraSampleProvider(std::shared_ptr<const CameraRig> rig,
+                             std::shared_ptr<MotionScene> scene,
                              std::string fingerprint,
                              float nearPlane = 1.f, float farPlane = 10000.f);
 

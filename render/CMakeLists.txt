@@ -260,24 +260,13 @@ if(CHRONONMOTION_BUILD_TESTS)
                 -Wno-error=reorder -Wno-error=unused-parameter
                 -Wno-error=missing-field-initializers)
     endif()
-    add_test(NAME chrononmotion_t16_camera_truth
-            COMMAND chrononmotion_t16_camera_truth
-                    "${CMAKE_CURRENT_BINARY_DIR}/T16_Camera_Truth")
-    set_tests_properties(chrononmotion_t16_camera_truth PROPERTIES
-            ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
+    # Historical T16/MrBeast fixture: kept as a manual executable, not a
+    # camera acceptance test. Its coverage must be replaced by the new scene.
 
-    # CAM-04 pixel truth: consumes a serialized C3D RenderPlan directly, so
-    # camera, layer geometry and image assets have one shared source of truth.
+    # Historical CAM-04 renderer for the T16 image-plane subset.
     add_executable(chrononmotion_cam04_renderplan_pixels tests/cam04_renderplan_pixels.cpp)
     target_link_libraries(chrononmotion_cam04_renderplan_pixels PRIVATE chrononmotion_render)
     target_compile_options(chrononmotion_cam04_renderplan_pixels PRIVATE -Wall -Wextra)
-    add_test(NAME chrononmotion_cam04_renderplan_pixels
-            COMMAND chrononmotion_cam04_renderplan_pixels
-                    "${CMAKE_CURRENT_SOURCE_DIR}/../../Chronon3d/docs/evidence/camera-authority-migration/T16/scene.camera.three_depth.plan.json"
-                    "${CMAKE_CURRENT_BINARY_DIR}/CAM04_RenderPlan")
-    set_tests_properties(chrononmotion_cam04_renderplan_pixels PROPERTIES
-            ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
-
     add_executable(chrononmotion_t19b_camera_rig_contract tests/t19b_camera_rig_contract.cpp)
     target_link_libraries(chrononmotion_t19b_camera_rig_contract PRIVATE chrononmotion)
     target_compile_options(chrononmotion_t19b_camera_rig_contract PRIVATE -Wall -Wextra)

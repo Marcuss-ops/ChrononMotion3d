@@ -5,8 +5,12 @@
 #include "chrononmotion/motion/CameraRig.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
+#include "chrononmotion/motion/RenderPlanEmission.hpp"
 #include "motion_check.hpp"
 
+#include <chronon3d/animation/temporal/temporal_samples.hpp>
+
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <stdexcept>
@@ -140,6 +144,122 @@ void checkCameraBake() {
         checkNear(lastSample.position[2], 30.f, kEps,
                   "parented camera final sample Z mirrors world Z=(-40+10)=-30 to +30");
     }
+
+    section("parented runtime camera uses MotionScene at shutter times");
+    auto runtimeScene = std::make_shared<MotionScene>("runtime_parent", kFps);
+    auto& runtimeParent = runtimeScene->addNull(200, "AnimatedParent");
+    runtimeParent.tracks.position.add(0.f, Vector3(50.f, -20.f, -10.f), Easing::easeInOut());
+    runtimeParent.tracks.position.add(1.f, Vector3(180.f, 40.f, -50.f), Easing::linear());
+    runtimeParent.tracks.rotation.add(0.f, Vector3(0.f, 0.f, 0.f), Easing::linear());
+    runtimeParent.tracks.rotation.add(1.f, Vector3(0.f, 0.4f, 0.f), Easing::linear());
+    auto worldRig = std::make_shared<CameraRig>(201, 50.f, 16.f / 9.f);
+    worldRig->setParent(200).setPosition({10.f, 5.f, 20.f}).setRoll(0.3f);
+    worldRig->positionTrack().add(0.f, Vector3(10.f, 5.f, 20.f), Easing::easeInOut());
+    worldRig->positionTrack().add(1.f, Vector3(30.f, 5.f, 20.f), Easing::linear());
+
+    bool localParentRejected = false;
+    try { (void)makeCameraSampleProvider(worldRig, kFps, "parent-without-scene"); }
+    catch (const std::invalid_argument&) { localParentRejected = true; }
+    check(localParentRejected, "parented rig without a scene is rejected");
+    bool localBakeRejected = false;
+    try { (void)bakeResolvedCameraSamples(*worldRig, kFps, 1); }
+    catch (const std::invalid_argument&) { localBakeRejected = true; }
+    check(localBakeRejected, "parented rig cannot be baked as a local pose");
+
+    // An identity parent must not apply an already sampled roll a second time.
+    Matrix4 identity;
+    auto localPose = worldRig->sample(0.f);
+    auto worldPose = worldRig->sampleWorld(0.f, identity);
+    localPose.hasTarget = false;
+    localPose.roll = 0.f;
+    const auto localCamera = lowerCameraPose(localPose);
+    const auto identityCamera = lowerCameraPose(worldPose);
+    for (int axis = 0; axis < 3; ++axis)
+        checkNear(identityCamera.rotation_deg[axis], localCamera.rotation_deg[axis], 1e-3f,
+                  "identity parent does not apply sampled roll twice");
+
+    worldRig->setTarget({0.f, 0.f, 0.f}).setFocusDistance(200.f).setFStop(2.8f);
+    worldRig->targetTrack().add(0.f, Vector3(0.f, 0.f, 0.f), Easing::easeInOut());
+    worldRig->targetTrack().add(1.f, Vector3(30.f, 10.f, -20.f), Easing::linear());
+    worldRig->fovTrack().add(0.f, 50.f, Easing::easeInOut());
+    worldRig->fovTrack().add(1.f, 70.f, Easing::linear());
+    worldRig->focusDistanceTrack().add(0.f, 200.f, Easing::easeInOut());
+    worldRig->focusDistanceTrack().add(1.f, 500.f, Easing::linear());
+    RenderPlanLoweringOptions worldOptions;
+    worldOptions.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
+    worldOptions.cameraRig = worldRig.get();
+    const auto worldPlan = lowerToRenderPlan(*runtimeScene, worldOptions);
+    const auto worldProvider = makeCameraSampleProvider(worldRig, runtimeScene, "parent-and-rig-v1");
+    check(worldPlan.camera_samples.has_value(), "parented camera bake exists");
+    if (worldPlan.camera_samples) {
+        for (const auto& baked : *worldPlan.camera_samples) {
+            const auto runtime = worldProvider.sample(baked.frame);
+            for (int axis = 0; axis < 3; ++axis) {
+                checkNear(runtime.position[axis], baked.camera.position[axis], kEps,
+                          "parented runtime and offline position agree at whole frames");
+                checkNear(runtime.rotation_deg[axis], baked.camera.rotation_deg[axis], 1e-3f,
+                          "parented runtime and offline rotation agree at whole frames");
+            }
+        }
+    }
+    for (double frame : {-0.25, 3.125, 15.375, 29.875, 3.125}) {
+        const auto actual = worldProvider.sample(frame);
+        const double whole = std::floor(frame);
+        runtimeScene->evaluate(MotionTime{static_cast<int>(whole), kFps,
+                                          static_cast<float>(frame - whole)});
+        const auto expected = lowerCameraPose(worldRig->sampleWorld(
+            static_cast<float>(frame / kFps), runtimeScene->worldMatrix(200)));
+        for (int axis = 0; axis < 3; ++axis) {
+            checkNear(actual.position[axis], expected.position[axis], kEps,
+                      "parented runtime samples exact fractional world position");
+            checkNear(actual.rotation_deg[axis], expected.rotation_deg[axis], 1e-3f,
+                      "parented runtime samples exact fractional world orientation");
+        }
+    }
+
+    section("explicit shutter camera samples and JSON timestamp precision");
+    chronon3d::temporal::TemporalSampleParams shutter;
+    for (int center : {0, 15, 30}) {
+        const auto schedule = chronon3d::temporal::make_temporal_sample_plan(
+            shutter, 8, chronon3d::Frame{center}, chronon3d::FrameRate{30, 1}, 64, 64);
+        check(schedule.valid(), "C3D shutter scheduler returns a valid eight-sample plan");
+        for (const auto& context : schedule.contexts)
+            worldOptions.cameraSampleFrames.push_back(context.time.frame);
+    }
+    worldOptions.cameraSampleFrames.push_back(15.123456789012345);
+    std::sort(worldOptions.cameraSampleFrames.begin(), worldOptions.cameraSampleFrames.end());
+    runtimeScene->evaluate(7);
+    const auto exactPlan = lowerToRenderPlan(*runtimeScene, worldOptions);
+    check(runtimeScene->lastEvaluatedFrame() == 7, "explicit bake restores scene evaluation");
+    check(exactPlan.camera_samples && exactPlan.camera_samples->size() == worldOptions.cameraSampleFrames.size(),
+          "explicit bake uses all requested shutter timestamps");
+    if (exactPlan.camera_samples) {
+        const auto json = nlohmann::json::parse(renderPlanToJson(exactPlan));
+        for (std::size_t i = 0; i < exactPlan.camera_samples->size(); ++i) {
+            const auto& sample = exactPlan.camera_samples->at(i);
+            check(sample.frame == worldOptions.cameraSampleFrames[i], "explicit timestamp preserved in plan");
+            check(json.at("camera_samples").at(i).at("frame").get<double>() == sample.frame,
+                  "explicit timestamp round-trips through JSON without float narrowing");
+            const auto runtime = worldProvider.sample(sample.frame);
+            checkNear(runtime.fov_deg, sample.camera.fov_deg, kEps,
+                      "explicit offline and runtime eased FOV agree");
+            checkNear(runtime.dof_focus_distance, sample.camera.dof_focus_distance, kEps,
+                      "explicit offline and runtime eased focus agree");
+            checkNear(runtime.f_stop, sample.camera.f_stop, kEps,
+                      "explicit offline and runtime aperture agree");
+            for (int axis = 0; axis < 3; ++axis) {
+                checkNear(runtime.position[axis], sample.camera.position[axis], kEps,
+                          "explicit offline and runtime world positions agree");
+                checkNear(runtime.rotation_deg[axis], sample.camera.rotation_deg[axis], 1e-3f,
+                          "explicit offline and runtime world rotations agree");
+            }
+        }
+    }
+    worldOptions.cameraSampleFrames = {1.0, 1.0};
+    bool repeatedTimeRejected = false;
+    try { (void)lowerToRenderPlan(*runtimeScene, worldOptions); }
+    catch (const std::invalid_argument&) { repeatedTimeRejected = true; }
+    check(repeatedTimeRejected, "duplicate explicit sample times are rejected");
 
     section("resolved camera samples: runtime look-at and roll normalization");
     auto aimedRig = std::make_shared<CameraRig>(1, 50.f, 16.f / 9.f, 0.1f, 10000.f);

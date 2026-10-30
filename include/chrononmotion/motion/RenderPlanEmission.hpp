@@ -81,8 +81,8 @@ namespace chrononmotion::motion {
     /// Write `plan` as deterministic JSON.
     ///
     /// Byte-for-byte reproducible: object keys are written in a fixed order,
-    /// arrays follow the plan's own order, and every number is the shortest
-    /// decimal that round-trips back to the same `float`. Throws
+    /// arrays follow the plan's own order, and numbers round-trip as `float`,
+    /// except camera sample frames, which retain their `double` identity. Throws
     /// `std::invalid_argument` carrying `renderPlanEmissionProblem(plan)` when
     /// the plan is not expressible.
     [[nodiscard]] std::string renderPlanToJson(

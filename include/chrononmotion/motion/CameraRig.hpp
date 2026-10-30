@@ -139,7 +139,8 @@ namespace chrononmotion::motion {
         /// Sample the local pose at `seconds`.
         [[nodiscard]] CameraPose sample(float seconds) const;
 
-        /// Resolve a sampled local camera pose into world space under `parentWorld`.
+        /// Resolve an already sampled local camera pose into world space under
+        /// `parentWorld`. Its orientation must already include look-at and roll.
         /// Rejects non-finite, singular, sheared, or reflected parent transforms.
         [[nodiscard]] static CameraPose resolveWorldPose(CameraPose pose, const Matrix4& parentWorld);
 

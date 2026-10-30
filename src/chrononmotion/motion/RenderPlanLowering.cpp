@@ -90,6 +90,16 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     const auto problems = scene.validate();
     if (!problems.empty())
         throw std::invalid_argument("lowerToRenderPlan: scene validation failed: " + problems.front());
+    if (!options.cameraSampleFrames.empty() && (!options.cameraRig || !options.bakeResolvedCameraSamples))
+        throw std::invalid_argument("lowerToRenderPlan: explicit camera sample frames require a baked CameraRig");
+    if (options.cameraSampleFrames.size() > 1'000'000)
+        throw std::invalid_argument("lowerToRenderPlan: explicit camera sample sequence exceeds 1000000 samples");
+    double previousCameraFrame = -std::numeric_limits<double>::infinity();
+    for (double frame : options.cameraSampleFrames) {
+        if (!std::isfinite(frame) || frame <= previousCameraFrame || frame < -1'000'000.0 || frame > 1'000'000.0)
+            throw std::invalid_argument("lowerToRenderPlan: explicit camera sample frames must be finite, strictly increasing, and within [-1000000, 1000000]");
+        previousCameraFrame = frame;
+    }
     const Layer::Id cameraParentId = options.cameraRig ? options.cameraRig->layer().parentId : Layer::kRoot;
     if (cameraParentId != Layer::kRoot && scene.findLayer(cameraParentId) == nullptr)
         throw std::invalid_argument("lowerToRenderPlan: CameraRig parentId does not reference an authored layer in MotionScene");
@@ -297,9 +307,31 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     if (options.cameraRig && options.bakeResolvedCameraSamples) {
         const std::size_t frameCount = static_cast<std::size_t>(
             std::max<std::int64_t>(1, plan.canvas.duration.integral()));
-        if (frameCount > 65536)
+        if (options.cameraSampleFrames.empty() && frameCount > 65536)
             throw std::invalid_argument("lowerToRenderPlan: resolved camera sample sequence exceeds 65536 frames");
-        if (cameraParentId != Layer::kRoot) {
+        if (!options.cameraSampleFrames.empty()) {
+            std::vector<chronon3d::render_plan::CameraSamplePlan> explicitSamples;
+            explicitSamples.reserve(options.cameraSampleFrames.size());
+            for (double frame : options.cameraSampleFrames) {
+                const double wholeFrame = std::floor(frame);
+                int whole = static_cast<int>(wholeFrame);
+                float fraction = static_cast<float>(frame - wholeFrame);
+                if (fraction >= 1.f) { ++whole; fraction = 0.f; }
+                const MotionTime time{whole, scene.fps(), fraction};
+                CameraPose pose;
+                if (cameraParentId != Layer::kRoot) {
+                    scene.evaluate(time);
+                    pose = options.cameraRig->sampleWorld(time.pts(), scene.worldMatrix(cameraParentId));
+                } else {
+                    pose = options.cameraRig->sample(static_cast<float>(frame / scene.fps()));
+                }
+                pose.hasTarget = false;
+                pose.roll = 0.f;
+                explicitSamples.push_back({frame, lowerCameraPose(
+                    pose, resolvedOptions.camera->near, resolvedOptions.camera->far)});
+            }
+            plan.camera_samples = std::move(explicitSamples);
+        } else if (cameraParentId != Layer::kRoot) {
             std::vector<chronon3d::render_plan::CameraSamplePlan> parentedSamples;
             parentedSamples.reserve(frameCount);
             for (std::size_t frame = 0; frame < frameCount; ++frame) {
