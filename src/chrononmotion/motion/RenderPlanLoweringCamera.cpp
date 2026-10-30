@@ -180,7 +180,15 @@ chronon3d::render_plan::RuntimeCameraSampleProvider makeCameraSampleProvider(
         const float seconds = static_cast<float>(frame / static_cast<double>(fps));
         if (!std::isfinite(seconds))
             throw std::invalid_argument("CameraSampleProvider: sample time is not representable");
-        return lowerCameraPose(rig->sample(seconds), nearPlane, farPlane);
+        // CameraRig::sample() already bakes look-at and roll into the
+        // orientation. Clear the authoring metadata before lowering: the
+        // RenderPlan has no target/roll channels, and lowerCameraPose() must
+        // keep rejecting unresolved direct calls. This mirrors the offline
+        // bake path above instead of letting the runtime provider diverge.
+        CameraPose pose = rig->sample(seconds);
+        pose.hasTarget = false;
+        pose.roll = 0.f;
+        return lowerCameraPose(pose, nearPlane, farPlane);
     };
     return provider;
 }
