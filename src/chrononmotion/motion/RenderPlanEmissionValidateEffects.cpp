@@ -101,6 +101,30 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                             effect.roughen_complexity < 1 || effect.roughen_complexity > 4)
                             return owner + " carries roughen-edge values outside supported ranges";
                         break;
+                    case LayerPlan::EffectKindPlan::GaussianBlur:
+                        if (!std::isfinite(effect.radius) || effect.radius < 0.f || effect.radius > 256.f)
+                            return owner + " carries gaussian-blur radius outside [0, 256]";
+                        break;
+                    case LayerPlan::EffectKindPlan::DropShadow:
+                        if (!std::isfinite(effect.radius) || effect.radius < 0.f || effect.radius > 256.f ||
+                            !std::isfinite(effect.offset[0]) || std::abs(effect.offset[0]) > 10000.f ||
+                            !std::isfinite(effect.offset[1]) || std::abs(effect.offset[1]) > 10000.f ||
+                            std::any_of(effect.effect_color.begin(), effect.effect_color.end(), [](float v) {
+                                return !std::isfinite(v) || v < 0.f || v > 1.f;
+                            }))
+                            return owner + " carries drop-shadow values outside supported ranges";
+                        break;
+                    case LayerPlan::EffectKindPlan::ChromaticAberration:
+                        if (!std::isfinite(effect.chromatic_red_offset) || std::abs(effect.chromatic_red_offset) > 128.f ||
+                            !std::isfinite(effect.chromatic_blue_offset) || std::abs(effect.chromatic_blue_offset) > 128.f)
+                            return owner + " carries chromatic-aberration offsets outside [-128, 128]";
+                        break;
+                    case LayerPlan::EffectKindPlan::LensDistortion:
+                        if (!std::isfinite(effect.lens_curvature) || effect.lens_curvature < -1.f || effect.lens_curvature > 1.f ||
+                            !std::isfinite(effect.lens_scale) || effect.lens_scale < 0.1f || effect.lens_scale > 4.f ||
+                            !std::isfinite(effect.lens_center[0]) || !std::isfinite(effect.lens_center[1]))
+                            return owner + " carries lens-distortion values outside supported ranges";
+                        break;
                     default:
                         return owner + " carries an effect type this emitter does not write";
                 }
@@ -130,6 +154,10 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                         case LayerPlan::EffectKindPlan::Vignette: return chronon3d::effects::ids::ColorVignette;
                         case LayerPlan::EffectKindPlan::Glow: return chronon3d::effects::ids::LightGlow;
                         case LayerPlan::EffectKindPlan::Bloom: return chronon3d::effects::ids::LightBloom;
+                        case LayerPlan::EffectKindPlan::GaussianBlur: return chronon3d::effects::ids::BlurGaussian;
+                        case LayerPlan::EffectKindPlan::DropShadow: return chronon3d::effects::ids::LightDropShadow;
+                        case LayerPlan::EffectKindPlan::ChromaticAberration: return chronon3d::effects::ids::StylizeChromaticAberration;
+                        case LayerPlan::EffectKindPlan::LensDistortion: return chronon3d::effects::ids::DistortLensDistortion;
                         default: break;
                     }
                     return {};

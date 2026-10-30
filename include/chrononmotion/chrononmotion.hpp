@@ -20,7 +20,9 @@
 #include "chrononmotion/assets/GltfReader.hpp"
 #include "chrononmotion/assets/GltfMotionBridge.hpp"
 #include "chrononmotion/assets/HdriReader.hpp"
+#if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)
 #include "chrononmotion/motion/HdriRenderPlan.hpp"
+#endif
 
 #include "chrononmotion/animation/AnimationClip.hpp"
 #include "chrononmotion/animation/AnimationUtils.hpp"

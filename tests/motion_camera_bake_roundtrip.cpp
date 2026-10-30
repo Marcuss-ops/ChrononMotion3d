@@ -97,6 +97,49 @@ void checkCameraBake() {
     checkNear(preRoll.position[0], expectedPreRoll.position.x, kEps,
               "runtime provider supports shutter samples before frame zero");
 
+    section("resolved camera samples: parented CameraRig under Null controller");
+    MotionScene parentedScene("parented_bake", kFps);
+    auto& controller = parentedScene.addNull(100, "CameraRigNull");
+    controller.tracks.position.add(0.f, Vector3(100.f, 50.f, -20.f), Easing::linear());
+    controller.tracks.position.add(1.f, Vector3(200.f, 70.f, -40.f), Easing::linear());
+    auto& content = parentedScene.addContent(
+        101, "card", ContentRef::image("bake-canary", Vector2(64.f, 64.f)));
+    (void)content;
+
+    CameraRig parentedRig(102, 50.f, 16.f / 9.f);
+    parentedRig.setParent(100);
+    parentedRig.positionTrack().add(0.f, Vector3(0.f, 0.f, 10.f), Easing::linear());
+    parentedRig.positionTrack().add(1.f, Vector3(10.f, -5.f, 10.f), Easing::linear());
+
+    RenderPlanLoweringOptions parentedOptions = options;
+    parentedOptions.contentLayers.clear();
+    chronon3d::render_plan::LayerPlan cardPlan;
+    cardPlan.type = chronon3d::render_plan::LayerType::Image;
+    cardPlan.asset = "bake-canary";
+    cardPlan.size = {64.f, 64.f};
+    cardPlan.size_dimensions = 2;
+    parentedOptions.contentLayers.emplace("101", std::move(cardPlan));
+    parentedOptions.cameraRig = &parentedRig;
+
+    const auto parentedPlan = lowerToRenderPlan(parentedScene, parentedOptions);
+    check(parentedPlan.camera.has_value() && parentedPlan.camera_samples.has_value(),
+          "parented CameraRig lowers to camera and camera_samples without throwing");
+    if (parentedPlan.camera && parentedPlan.camera_samples) {
+        checkNear(parentedPlan.camera->position[0], 100.f, kEps,
+                  "parented camera initial X combines Null controller and local offset");
+        checkNear(parentedPlan.camera->position[1], 50.f, kEps,
+                  "parented camera initial Y combines Null controller and local offset");
+        checkNear(parentedPlan.camera->position[2], 10.f, kEps,
+                  "parented camera initial Z mirrors world Z=(-20+10)=-10 to +10");
+        const auto& lastSample = parentedPlan.camera_samples->back().camera;
+        checkNear(lastSample.position[0], 210.f, kEps,
+                  "parented camera final sample X combines animated Null and local offset");
+        checkNear(lastSample.position[1], 65.f, kEps,
+                  "parented camera final sample Y combines animated Null and local offset");
+        checkNear(lastSample.position[2], 30.f, kEps,
+                  "parented camera final sample Z mirrors world Z=(-40+10)=-30 to +30");
+    }
+
     (void)layer;
 }
 

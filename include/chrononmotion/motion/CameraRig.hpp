@@ -139,6 +139,13 @@ namespace chrononmotion::motion {
         /// Sample the local pose at `seconds`.
         [[nodiscard]] CameraPose sample(float seconds) const;
 
+        /// Resolve a sampled local camera pose into world space under `parentWorld`.
+        /// Rejects non-finite, singular, sheared, or reflected parent transforms.
+        [[nodiscard]] static CameraPose resolveWorldPose(CameraPose pose, const Matrix4& parentWorld);
+
+        /// Sample the pose at `seconds` and resolve it under `parentWorld`.
+        [[nodiscard]] CameraPose sampleWorld(float seconds, const Matrix4& parentWorld) const;
+
         /// The analytic derivative of the pose at `seconds`. Reports zero for
         /// every channel without keys at the requested time (outside the keyed
         /// range a track holds its value, so its rate is zero). The angular

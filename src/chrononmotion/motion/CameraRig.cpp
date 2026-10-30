@@ -391,6 +391,66 @@ namespace chrononmotion::motion {
         return pose;
     }
 
+    CameraPose CameraRig::resolveWorldPose(CameraPose pose, const Matrix4& parentWorld) {
+        for (float element : parentWorld.elements) {
+            if (!std::isfinite(element))
+                throw std::invalid_argument("CameraRig::resolveWorldPose: parent world matrix contains non-finite values");
+        }
+        if (pose.hasTarget) {
+            lookAtPose(pose, pose.target);
+        }
+        if (pose.roll != 0.f) {
+            roll(pose, pose.roll);
+        }
+
+        Matrix4 local;
+        local.compose(pose.position, pose.orientation, Vector3(1.f, 1.f, 1.f));
+        Matrix4 world;
+        world.multiplyMatrices(parentWorld, local);
+
+        for (float element : world.elements) {
+            if (!std::isfinite(element))
+                throw std::invalid_argument("CameraRig::resolveWorldPose: composed world matrix contains non-finite values");
+        }
+
+        const Vector3 origin(world.elements[12], world.elements[13], world.elements[14]);
+        const Vector3 x(world.elements[0], world.elements[1], world.elements[2]);
+        const Vector3 y(world.elements[4], world.elements[5], world.elements[6]);
+        const Vector3 z(world.elements[8], world.elements[9], world.elements[10]);
+        const float sx = x.length();
+        const float sy = y.length();
+        const float sz = z.length();
+        if (!std::isfinite(sx) || !std::isfinite(sy) || !std::isfinite(sz) ||
+            sx <= 1e-8f || sy <= 1e-8f || sz <= 1e-8f) {
+            throw std::invalid_argument("CameraRig::resolveWorldPose: singular or non-finite parent world transform");
+        }
+
+        const Vector3 normalizedX = x * (1.f / sx);
+        const Vector3 normalizedY = y * (1.f / sy);
+        const Vector3 normalizedZ = z * (1.f / sz);
+        if (std::abs(normalizedX.dot(normalizedY)) > 1e-4f ||
+            std::abs(normalizedX.dot(normalizedZ)) > 1e-4f ||
+            std::abs(normalizedY.dot(normalizedZ)) > 1e-4f) {
+            throw std::invalid_argument("CameraRig::resolveWorldPose: sheared parent world transform cannot represent a rigid camera");
+        }
+        if (normalizedX.clone().cross(normalizedY).dot(normalizedZ) <= 0.f) {
+            throw std::invalid_argument("CameraRig::resolveWorldPose: reflected parent world transform cannot represent a rigid camera");
+        }
+
+        Matrix4 rotation;
+        rotation.makeBasis(normalizedX, normalizedY, normalizedZ);
+        pose.position = origin;
+        pose.orientation.setFromRotationMatrix(rotation);
+        pose.orientation.normalize();
+        pose.hasTarget = false;
+        pose.roll = 0.f;
+        return pose;
+    }
+
+    CameraPose CameraRig::sampleWorld(float seconds, const Matrix4& parentWorld) const {
+        return resolveWorldPose(sample(seconds), parentWorld);
+    }
+
     void CameraRig::apply(float seconds, PerspectiveCamera& camera, const Matrix4* parentWorld) const {
 
         apply(sample(seconds), camera, parentWorld);

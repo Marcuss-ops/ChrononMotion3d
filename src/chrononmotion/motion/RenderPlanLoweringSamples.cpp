@@ -210,14 +210,16 @@ RenderPlan lowerSamplesToRenderPlan(
                 throw std::invalid_argument("lowerToRenderPlan: mesh layers require a Mesh RenderPlan layer");
         } else if (supplied.type != LayerType::Image && supplied.type != LayerType::Video &&
                    supplied.type != LayerType::Text && supplied.type != LayerType::Shape &&
-                   supplied.type != LayerType::Particles && supplied.type != LayerType::Light) {
+                   supplied.type != LayerType::Particles && supplied.type != LayerType::Light &&
+                   supplied.type != LayerType::Adjustment) {
             throw std::invalid_argument("lowerToRenderPlan: unsupported content-layer type for motion content");
         }
         if (!layer.content.id.empty() && supplied.type == LayerType::Shape &&
             layer.content.kind != ContentKind::Image)
             throw std::invalid_argument("lowerToRenderPlan: shape content requires an explicitly supplied Shape LayerPlan");
         if (layer.content.kind == ContentKind::Image && supplied.type != LayerType::Image &&
-            supplied.type != LayerType::Shape)
+            supplied.type != LayerType::Shape && supplied.type != LayerType::Particles &&
+            supplied.type != LayerType::Adjustment)
             throw std::invalid_argument("lowerToRenderPlan: image content must map to an image or explicit shape plan");
         if (layer.content.kind == ContentKind::Video && supplied.type != LayerType::Video)
             throw std::invalid_argument("lowerToRenderPlan: video content must map to a video plan");
@@ -251,9 +253,11 @@ RenderPlan lowerSamplesToRenderPlan(
         ensureFinite(camera.dof_focus_distance, "camera depth-of-field focus distance");
         ensureFinite(camera.dof_aperture, "camera depth-of-field aperture");
         ensureFinite(camera.dof_max_blur, "camera depth-of-field maximum blur");
+        const bool depthOfFieldEnabled = camera.dof_enabled && camera.dof_aperture > 0.f;
         if (camera.fov_deg < 10.f || camera.fov_deg > 120.f || camera.near <= 0.f ||
             camera.far <= camera.near || camera.zoom <= 0.f || camera.type != "perspective" ||
-            camera.dof_focus_distance <= 0.f || camera.dof_focus_distance > 10'000'000.f ||
+            camera.dof_focus_distance < 0.f || (depthOfFieldEnabled && camera.dof_focus_distance <= 0.f) ||
+            camera.dof_focus_distance > 10'000'000.f ||
             camera.dof_aperture < 0.f || camera.dof_aperture > 1.f ||
             camera.dof_max_blur < 0.f || camera.dof_max_blur > 256.f)
             throw std::invalid_argument("lowerToRenderPlan: camera projection values are invalid");
@@ -272,7 +276,9 @@ RenderPlan lowerSamplesToRenderPlan(
                 throw std::invalid_argument("lowerToRenderPlan: supplied layer type does not match video content");
             if (layer.content.isText() && output.type != LayerType::Text)
                 throw std::invalid_argument("lowerToRenderPlan: supplied layer type does not match text content");
-            if (layer.content.isImage() && output.type != LayerType::Image && output.type != LayerType::Shape)
+            if (layer.content.isImage() && output.type != LayerType::Image &&
+                output.type != LayerType::Shape && output.type != LayerType::Particles &&
+                output.type != LayerType::Adjustment)
                 throw std::invalid_argument("lowerToRenderPlan: supplied layer type does not match image content");
             if (layer.content.isMesh() && output.type != LayerType::Mesh)
                 throw std::invalid_argument("lowerToRenderPlan: supplied layer type does not match mesh content");

@@ -227,6 +227,15 @@ if(CHRONON3D_INCLUDE_DIR)
     if(CHRONONMOTION_WERROR)
         target_compile_options(chrononmotion_map_flyover PRIVATE -Werror)
     endif()
+
+    # The definitive 4-stage documentary showcase generator.
+    add_executable(chrononmotion_plan_documentary_showcase tools/plan_documentary_showcase.cpp)
+    target_link_libraries(chrononmotion_plan_documentary_showcase PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
+    target_compile_features(chrononmotion_plan_documentary_showcase PRIVATE cxx_std_20)
+    target_compile_options(chrononmotion_plan_documentary_showcase PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_plan_documentary_showcase PRIVATE -Werror)
+    endif()
 endif()
 
 if(CHRONONMOTION_BUILD_BENCHMARKS)

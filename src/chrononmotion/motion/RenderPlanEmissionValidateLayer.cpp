@@ -101,6 +101,7 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 case LayerType::Particles:
                 case LayerType::Light:
                 case LayerType::Mesh:
+                case LayerType::Adjustment:
                     break;
                 default:
                     return owner + " is a '" + layerTypeName(layer.type) +
