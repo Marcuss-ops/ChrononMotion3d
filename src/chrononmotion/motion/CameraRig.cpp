@@ -396,13 +396,8 @@ namespace chrononmotion::motion {
             if (!std::isfinite(element))
                 throw std::invalid_argument("CameraRig::resolveWorldPose: parent world matrix contains non-finite values");
         }
-        if (pose.hasTarget) {
-            lookAtPose(pose, pose.target);
-        }
-        if (pose.roll != 0.f) {
-            roll(pose, pose.roll);
-        }
-
+        // The input is already sampled: look-at and roll are incorporated in
+        // orientation by sample(). Reapplying roll doubles it without a target.
         Matrix4 local;
         local.compose(pose.position, pose.orientation, Vector3(1.f, 1.f, 1.f));
         Matrix4 world;

@@ -19,10 +19,12 @@
 #ifndef CHRONONMOTION_MOTION_JSON_WRITER_HPP
 #define CHRONONMOTION_MOTION_JSON_WRITER_HPP
 
+#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -115,6 +117,15 @@ namespace chrononmotion::motion::detail {
         void boolean(bool value) { out_ += value ? "true" : "false"; }
         void number(float value) { out_ += formatFloat(value); }
         void number(double value) { out_ += formatFloat(static_cast<float>(value)); }
+        /// Preserve the full binary64 value for identity-bearing timestamps.
+        void exactNumber(double value) {
+            if (!std::isfinite(value)) { out_ += "null"; return; }
+            if (value == 0.0) value = 0.0;
+            char buffer[64];
+            const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+            if (result.ec != std::errc{}) throw std::runtime_error("JSON double formatting failed");
+            out_.append(buffer, result.ptr);
+        }
 
         void integer(long long value) {
             char buffer[32];

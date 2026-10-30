@@ -337,7 +337,7 @@ namespace chrononmotion::motion {
                 writer.item();
                 writer.beginObject();
                 writer.key("frame");
-                writer.number(sample.frame);
+                writer.exactNumber(sample.frame);
                 writer.key("camera");
                 writeCamera(writer, sample.camera);
                 writer.endObject();

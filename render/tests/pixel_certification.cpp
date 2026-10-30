@@ -5,6 +5,9 @@
 #include "threepp/geometries/SphereGeometry.hpp"
 #include "threepp/materials/MeshBasicMaterial.hpp"
 #include "threepp/objects/Mesh.hpp"
+#include "threepp/postprocessing/BokehPass.hpp"
+#include "threepp/postprocessing/EffectComposer.hpp"
+#include "threepp/postprocessing/RenderPass.hpp"
 #include "threepp/renderers/GLRenderer.hpp"
 #include "threepp/renderers/RenderTarget.hpp"
 #include "threepp/scenes/Scene.hpp"
@@ -124,6 +127,39 @@ int main() try {
         require(std::hypot(centroid.first - projected.x, centroid.second - projected.y) <= 0.5,
                 "3D-to-2D projected anchor differs from white pixel centroid by > 0.5 px");
     }
+
+    // Bokeh must not turn a transparent RGBA plate into an opaque frame.
+    // Render both a sharp and defocused pass into an offscreen target; an
+    // empty corner stays transparent while the centre remains covered.
+    renderer.setClearColor(Color(0x000000), 0.f);
+    EffectComposer::Options alphaOptions;
+    alphaOptions.type = Type::UnsignedByte;
+    EffectComposer alphaComposer(renderer, alphaOptions);
+    alphaComposer.renderToScreen = false;
+    alphaComposer.setSize(kWidth, kHeight);
+    alphaComposer.addPass(std::make_shared<RenderPass>(scene, camera));
+    auto bokeh = std::make_shared<BokehPass>(scene, camera, 3.f, 0.02f, 0.03f);
+    alphaComposer.addPass(bokeh);
+    const auto rgba = [&] {
+        alphaComposer.render();
+        renderer.setRenderTarget(&alphaComposer.readBuffer());
+        std::vector<unsigned char> pixels(static_cast<std::size_t>(kWidth) * kHeight * 4);
+        renderer.readPixels({0, 0}, {kWidth, kHeight}, Format::RGBA, pixels.data());
+        return pixels;
+    };
+    bokeh->enabled = false;
+    const auto sharpRgba = rgba();
+    bokeh->enabled = true;
+    const auto blurredRgba = rgba();
+    const auto centerAlpha = (static_cast<std::size_t>(kHeight / 2) * kWidth + kWidth / 2) * 4 + 3;
+    require(sharpRgba[3] == 0 && blurredRgba[3] == 0,
+            "BokehPass destroys transparent plate background");
+    require(sharpRgba[centerAlpha] > 240 && blurredRgba[centerAlpha] > 200,
+            "BokehPass loses opaque subject coverage");
+    std::size_t intermediateAlpha = 0;
+    for (std::size_t i = 3; i < blurredRgba.size(); i += 4)
+        intermediateAlpha += blurredRgba[i] > 0 && blurredRgba[i] < 255;
+    require(intermediateAlpha > 0, "BokehPass did not preserve fractional alpha around blurred edges");
 
     renderer.setRenderTarget(nullptr);
     renderer.dispose();

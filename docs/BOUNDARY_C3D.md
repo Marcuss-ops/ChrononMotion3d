@@ -75,6 +75,21 @@
 
 ## Zone FUTURE-SCOPE (NON reimplementare in parallelo)
 
+### Camera parented e shutter: avanzamento parziale
+- `makeCameraSampleProvider(rig, scene, fingerprint)` risolve il parent nel
+  `MotionScene` al tempo frazionario richiesto. Il chiamante deve dedicare la
+  scena al provider, mantenere rig e gerarchia immutabili e includere entrambi
+  nel fingerprint; il provider serializza le proprie chiamate.
+- `RenderPlanLoweringOptions::cameraSampleFrames` accetta gli istanti esatti
+  forniti dallo scheduler C3D, che rimane l'unica autorità del calendario.
+  Il JSON conserva la precisione double dei timestamp. Se la lista è vuota il
+  bake usa ancora i frame interi; tra campioni C3D interpola e non è garantita
+  parità per curve arbitrarie. Nessun produttore di job è ancora collegato a
+  questa opzione e i layer restano campionati ai frame interi.
+- Il pass `BokehPass` del renderer di prova CM3D non forza più alpha opaco;
+  ciò non certifica un handoff RGBA animato GPU-native o la qualità dei bordi.
+  `render/` resta attualmente un harness e non un renderer di produzione.
+
 ### F2 — Easing: tre vocabolari
 - C3D `easing.hpp` (enum → GLM), CM3D `motion/Easing.hpp` (CubicBezier class),
   CM3D `extras/core/Interpolations.hpp` (eredietà threepp). Il mapping va

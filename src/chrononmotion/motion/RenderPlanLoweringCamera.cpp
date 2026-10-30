@@ -10,6 +10,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <mutex>
 #include <numeric>
 #include <optional>
 #include <span>
@@ -118,6 +119,8 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
 std::vector<chronon3d::render_plan::CameraSamplePlan> bakeResolvedCameraSamples(
     const CameraRig& rig, float fps, std::size_t frameCount, float nearPlane, float farPlane,
     const Vector3& cameraPositionOffset) {
+    if (rig.layer().parentId != Layer::kRoot)
+        throw std::invalid_argument("bakeResolvedCameraSamples: parented rigs require MotionScene world transforms");
     if (!std::isfinite(fps) || fps <= 0.f)
         throw std::invalid_argument("bakeResolvedCameraSamples: fps must be finite and positive");
     if (frameCount == 0 || frameCount > 65536)
@@ -166,6 +169,9 @@ chronon3d::render_plan::RuntimeCameraSampleProvider makeCameraSampleProvider(
     if (!rig || !std::isfinite(fps) || fps <= 0.f || fingerprint.empty())
         throw std::invalid_argument(
             "makeCameraSampleProvider: rig, positive finite fps, and stable fingerprint are required");
+    if (rig->layer().parentId != Layer::kRoot)
+        throw std::invalid_argument(
+            "makeCameraSampleProvider: parented rig requires a MotionScene");
     if (!std::isfinite(nearPlane) || !std::isfinite(farPlane) ||
         nearPlane <= 0.f || farPlane <= nearPlane)
         throw std::invalid_argument(
@@ -186,6 +192,49 @@ chronon3d::render_plan::RuntimeCameraSampleProvider makeCameraSampleProvider(
         // keep rejecting unresolved direct calls. This mirrors the offline
         // bake path above instead of letting the runtime provider diverge.
         CameraPose pose = rig->sample(seconds);
+        pose.hasTarget = false;
+        pose.roll = 0.f;
+        return lowerCameraPose(pose, nearPlane, farPlane);
+    };
+    return provider;
+}
+
+chronon3d::render_plan::RuntimeCameraSampleProvider makeCameraSampleProvider(
+    std::shared_ptr<const CameraRig> rig, std::shared_ptr<MotionScene> scene,
+    std::string fingerprint, float nearPlane, float farPlane) {
+    if (!rig || !scene || fingerprint.empty() || !std::isfinite(scene->fps()) || scene->fps() <= 0.f)
+        throw std::invalid_argument(
+            "makeCameraSampleProvider: rig, scene, positive fps and stable fingerprint are required");
+    const auto parentId = rig->layer().parentId;
+    if (parentId == Layer::kRoot || !scene->findLayer(parentId))
+        throw std::invalid_argument(
+            "makeCameraSampleProvider: parent must reference a layer in the MotionScene");
+    const auto problems = scene->validate();
+    if (!problems.empty())
+        throw std::invalid_argument("makeCameraSampleProvider: scene validation failed: " + problems.front());
+    if (!std::isfinite(nearPlane) || !std::isfinite(farPlane) ||
+        nearPlane <= 0.f || farPlane <= nearPlane)
+        throw std::invalid_argument("makeCameraSampleProvider: clipping planes are invalid");
+
+    const float fps = scene->fps();
+    auto mutex = std::make_shared<std::mutex>();
+    chronon3d::render_plan::RuntimeCameraSampleProvider provider;
+    provider.fingerprint = std::move(fingerprint);
+    provider.sample = [rig = std::move(rig), scene = std::move(scene), mutex = std::move(mutex),
+                       fps, parentId, nearPlane, farPlane](double frame) {
+        if (!std::isfinite(frame) || frame < -1'000'000.0 || frame > 1'000'000.0)
+            throw std::invalid_argument(
+                "CameraSampleProvider: frame must be finite and in [-1000000, 1000000]");
+        const double floorFrame = std::floor(frame);
+        int whole = static_cast<int>(floorFrame);
+        float fraction = static_cast<float>(frame - floorFrame);
+        if (fraction >= 1.f) { ++whole; fraction = 0.f; }
+        const MotionTime time{whole, fps, fraction};
+        std::lock_guard lock(*mutex);
+        if (rig->layer().parentId != parentId || scene->fps() != fps)
+            throw std::invalid_argument("CameraSampleProvider: rig parent or scene fps changed");
+        scene->evaluate(time);
+        CameraPose pose = rig->sampleWorld(time.pts(), scene->worldMatrix(parentId));
         pose.hasTarget = false;
         pose.roll = 0.f;
         return lowerCameraPose(pose, nearPlane, farPlane);
