@@ -90,8 +90,9 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     const auto problems = scene.validate();
     if (!problems.empty())
         throw std::invalid_argument("lowerToRenderPlan: scene validation failed: " + problems.front());
-    if (options.cameraRig && options.cameraRig->layer().parentId != Layer::kRoot)
-        throw std::invalid_argument("lowerToRenderPlan: parented CameraRig layers must be resolved to world space before lowering");
+    const Layer::Id cameraParentId = options.cameraRig ? options.cameraRig->layer().parentId : Layer::kRoot;
+    if (cameraParentId != Layer::kRoot && scene.findLayer(cameraParentId) == nullptr)
+        throw std::invalid_argument("lowerToRenderPlan: CameraRig parentId does not reference an authored layer in MotionScene");
     int lastFrame = std::max(0, scene.contentEndFrame());
     if (options.cameraRig) {
         const float cameraEndTime = options.cameraRig->endTime();
@@ -128,6 +129,8 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     }
     std::vector<std::vector<ResolvedPose>> samples(scene.layerCount());
     for (auto& layerSamples : samples) layerSamples.reserve(frameCount);
+    std::vector<Matrix4> cameraParentWorlds;
+    if (cameraParentId != Layer::kRoot) cameraParentWorlds.reserve(frameCount);
     std::map<Layer::Id, std::vector<LightState>> lightSamples;
     const bool restoreEvaluation = scene.hasEvaluated();
     const MotionTime previousTime = scene.lastEvaluatedTime();
@@ -139,6 +142,9 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     } restore{scene, previousTime, restoreEvaluation};
     for (std::size_t frame = 0; frame < frameCount; ++frame) {
         scene.evaluate(static_cast<int>(frame));
+        if (cameraParentId != Layer::kRoot) {
+            cameraParentWorlds.push_back(scene.worldMatrix(cameraParentId));
+        }
         const CompiledScene compiled = scene.compile();
         for (const LightState& light : compiled.lights) {
             auto& frames = lightSamples[light.sample.id];
@@ -175,7 +181,9 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: CameraRig only lowers to a perspective RenderPlan camera");
         const float nearPlane = options.camera ? options.camera->near : options.cameraRig->nearPlane();
         const float farPlane = options.camera ? options.camera->far : options.cameraRig->farPlane();
-        CameraPose firstPose = options.cameraRig->sample(0.f);
+        CameraPose firstPose = cameraParentId != Layer::kRoot
+            ? options.cameraRig->sampleWorld(0.f, cameraParentWorlds.front())
+            : options.cameraRig->sample(0.f);
         // CameraRig::sample has already resolved these authoring channels into
         // orientation; clear only the redundant metadata before projection.
         firstPose.hasTarget = false;
@@ -291,8 +299,24 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             std::max<std::int64_t>(1, plan.canvas.duration.integral()));
         if (frameCount > 65536)
             throw std::invalid_argument("lowerToRenderPlan: resolved camera sample sequence exceeds 65536 frames");
-        plan.camera_samples = bakeResolvedCameraSamples(*options.cameraRig, scene.fps(), frameCount,
-            resolvedOptions.camera->near, resolvedOptions.camera->far);
+        if (cameraParentId != Layer::kRoot) {
+            std::vector<chronon3d::render_plan::CameraSamplePlan> parentedSamples;
+            parentedSamples.reserve(frameCount);
+            for (std::size_t frame = 0; frame < frameCount; ++frame) {
+                const Matrix4& parentWorld = frame < cameraParentWorlds.size()
+                    ? cameraParentWorlds[frame]
+                    : cameraParentWorlds.back();
+                const CameraPose pose = options.cameraRig->sampleWorld(
+                    static_cast<float>(frame) / scene.fps(), parentWorld);
+                parentedSamples.push_back({
+                    static_cast<double>(frame),
+                    lowerCameraPose(pose, resolvedOptions.camera->near, resolvedOptions.camera->far)});
+            }
+            plan.camera_samples = std::move(parentedSamples);
+        } else {
+            plan.camera_samples = bakeResolvedCameraSamples(*options.cameraRig, scene.fps(), frameCount,
+                resolvedOptions.camera->near, resolvedOptions.camera->far);
+        }
         bool sequenceUsesDof = resolvedOptions.camera->dof_enabled;
         for (const auto& sample : *plan.camera_samples)
             sequenceUsesDof = sequenceUsesDof || sample.camera.dof_enabled;

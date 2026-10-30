@@ -168,6 +168,27 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                             writer.key("seed"); writer.unsignedInteger(effect.roughen_seed);
                         }
                         break;
+                    case LayerPlan::EffectKindPlan::GaussianBlur:
+                        writer.key("type"); writer.token("gaussian_blur");
+                        writer.key("radius"); writer.number(effect.radius);
+                        break;
+                    case LayerPlan::EffectKindPlan::DropShadow:
+                        writer.key("type"); writer.token("drop_shadow");
+                        writer.key("radius"); writer.number(effect.radius);
+                        writer.key("offset"); writeFloats(writer, effect.offset, effect.offset.size());
+                        writer.key("color"); writeFloats(writer, effect.effect_color, effect.effect_color.size());
+                        break;
+                    case LayerPlan::EffectKindPlan::ChromaticAberration:
+                        writer.key("type"); writer.token("chromatic_aberration");
+                        writer.key("red_offset"); writer.number(effect.chromatic_red_offset);
+                        writer.key("blue_offset"); writer.number(effect.chromatic_blue_offset);
+                        break;
+                    case LayerPlan::EffectKindPlan::LensDistortion:
+                        writer.key("type"); writer.token("lens_distortion");
+                        writer.key("curvature"); writer.number(effect.lens_curvature);
+                        writer.key("scale"); writer.number(effect.lens_scale);
+                        writer.key("center"); writeFloats(writer, effect.lens_center, effect.lens_center.size());
+                        break;
                     default:
                         throw std::invalid_argument("writeEffects: effect was not validated");
                 }

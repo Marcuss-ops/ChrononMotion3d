@@ -14,11 +14,12 @@ set(_motion_lowering "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLo
 set(_motion_lowering_camera "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLoweringCamera.cpp")
 set(_motion_lowering_samples "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLoweringSamples.cpp")
 set(_chronon_compiler "${CHRONON3D_ROOT}/src/render_plan/render_plan_compiler_animation_utils.cpp")
+set(_chronon_camera_adapter "${CHRONON3D_ROOT}/src/render_plan/render_plan_camera_adapter.hpp")
 
 foreach(_path IN ITEMS
         "${_schema_path}" "${_plan_header}" "${_plan_layer_types}" "${_decoder}" "${_fingerprint}"
         "${_motion_emitter}" "${_motion_lowering}" "${_motion_lowering_camera}"
-        "${_motion_lowering_samples}" "${_chronon_compiler}")
+        "${_motion_lowering_samples}" "${_chronon_compiler}" "${_chronon_camera_adapter}")
     if(NOT EXISTS "${_path}")
         message(FATAL_ERROR "RenderPlan camera parity input does not exist: ${_path}")
     endif()
@@ -36,6 +37,8 @@ file(READ "${_motion_lowering_camera}" _lowering_camera_text)
 file(READ "${_motion_lowering_samples}" _lowering_samples_text)
 string(APPEND _lowering_text "\n${_lowering_camera_text}\n${_lowering_samples_text}")
 file(READ "${_chronon_compiler}" _compiler_text)
+file(READ "${_chronon_camera_adapter}" _camera_adapter_text)
+string(APPEND _compiler_text "\n${_camera_adapter_text}")
 
 string(JSON _dof_properties ERROR_VARIABLE _json_error
     GET "${_schema}" "$defs" "camera" "properties" "dof" "properties")

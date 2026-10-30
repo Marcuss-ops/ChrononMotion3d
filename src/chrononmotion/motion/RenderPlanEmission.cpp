@@ -81,6 +81,13 @@ namespace chrononmotion::motion {
             writer.key("type");
             writer.token(layerTypeName(layer.type));
 
+            if (layer.type == LayerType::Adjustment) {
+                writer.key("effects");
+                writeEffects(writer, layer.effects);
+                writer.endObject();
+                return;
+            }
+
             if (!layer.asset.empty()) {
                 writer.key("asset");
                 writer.text(layer.asset);
