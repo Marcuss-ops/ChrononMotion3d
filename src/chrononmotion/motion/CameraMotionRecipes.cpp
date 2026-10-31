@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 // ChrononMotion — camera motion preset families.
 #include "chrononmotion/motion/CameraMotion.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
@@ -21,6 +22,7 @@ using presets::detail::keyVector3;
     void cameraFocusPush(CameraRig& rig, const ShotAnchor& subject, int inFrame, int duration,
                          float pushDistance, float startFStop, float endFStop,
                          float fps, const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraFocusPush", scene);
         if (duration <= 0) throw std::invalid_argument("cameraFocusPush: duration must be positive");
 
@@ -43,12 +45,12 @@ using presets::detail::keyVector3;
         endPos.addScaledVector(forward, pushDistance);
 
         rig.setTarget(targetPos);
-        keyVector3(rig.positionTrack(), t0, t1, start.position, endPos, easing);
-        rig.targetTrack().add(t0, targetPos, easing);
-        rig.targetTrack().add(t1, targetPos, Easing::linear());
+        keyVector3(tracks.positionTrack(), t0, t1, start.position, endPos, easing);
+        tracks.targetTrack().add(t0, targetPos, easing);
+        tracks.targetTrack().add(t1, targetPos, Easing::linear());
 
-        rig.fStopTrack().add(t0, startFStop, easing);
-        rig.fStopTrack().add(t1, endFStop, Easing::linear());
+        tracks.fStopTrack().add(t0, startFStop, easing);
+        tracks.fStopTrack().add(t1, endFStop, Easing::linear());
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 4));
         for (unsigned int i = 0; i <= steps; ++i) {
@@ -58,14 +60,16 @@ using presets::detail::keyVector3;
             Vector3 pos;
             pos.lerpVectors(start.position, endPos, u);
             const float dist = pos.distanceTo(targetPos);
-            rig.focusDistanceTrack().add(time, dist, Easing::linear());
+            tracks.focusDistanceTrack().add(time, dist, Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 2. cameraRackFocusDuo
     void cameraRackFocusDuo(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                             int inFrame, int duration, float fStop, float fps,
                             const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraRackFocusDuo", scene);
         if (duration <= 0) throw std::invalid_argument("cameraRackFocusDuo: duration must be positive");
 
@@ -81,11 +85,12 @@ using presets::detail::keyVector3;
         const float distB = CameraFocusResolver::resolveFocus(
             CameraFocusMode::TargetDistance, current, targetB);
 
-        rig.focusDistanceTrack().add(t0, distA, easing);
-        rig.focusDistanceTrack().add(t1, distB, Easing::linear());
+        tracks.focusDistanceTrack().add(t0, distA, easing);
+        tracks.focusDistanceTrack().add(t1, distB, Easing::linear());
 
-        rig.fStopTrack().add(t0, fStop, easing);
-        rig.fStopTrack().add(t1, fStop, Easing::linear());
+        tracks.fStopTrack().add(t0, fStop, easing);
+        tracks.fStopTrack().add(t1, fStop, Easing::linear());
+        tracks.apply(rig);
     }
 
     // 3. cameraDollyFocusHandoff
@@ -93,6 +98,7 @@ using presets::detail::keyVector3;
                                  int inFrame, int duration, const Vector3& dollyDelta,
                                  float fStop, float fps, const Easing& easing,
                                  const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraDollyFocusHandoff", scene);
         if (duration <= 0) throw std::invalid_argument("cameraDollyFocusHandoff: duration must be positive");
 
@@ -115,14 +121,14 @@ using presets::detail::keyVector3;
         endPos.addScaledVector(up, dollyDelta.y);
         endPos.addScaledVector(forward, -dollyDelta.z);
 
-        keyVector3(rig.positionTrack(), t0, t1, start.position, endPos, easing);
+        keyVector3(tracks.positionTrack(), t0, t1, start.position, endPos, easing);
 
         rig.setTarget(targetA);
-        rig.targetTrack().add(t0, targetA, easing);
-        rig.targetTrack().add(t1, targetB, Easing::linear());
+        tracks.targetTrack().add(t0, targetA, easing);
+        tracks.targetTrack().add(t1, targetB, Easing::linear());
 
-        rig.fStopTrack().add(t0, fStop, easing);
-        rig.fStopTrack().add(t1, fStop, Easing::linear());
+        tracks.fStopTrack().add(t0, fStop, easing);
+        tracks.fStopTrack().add(t1, fStop, Easing::linear());
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 4));
         for (unsigned int i = 0; i <= steps; ++i) {
@@ -135,14 +141,16 @@ using presets::detail::keyVector3;
             Vector3 curTarget;
             curTarget.lerpVectors(targetA, targetB, u);
 
-            rig.focusDistanceTrack().add(time, pos.distanceTo(curTarget), Easing::linear());
+            tracks.focusDistanceTrack().add(time, pos.distanceTo(curTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 4. cameraLateralSubjectToSubject
     void cameraLateralSubjectToSubject(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                        int inFrame, int duration, float fps,
                                        const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraLateralSubjectToSubject", scene);
         if (duration <= 0) throw std::invalid_argument("cameraLateralSubjectToSubject: duration must be positive");
 
@@ -164,11 +172,11 @@ using presets::detail::keyVector3;
         Vector3 endPos = targetB;
         endPos.add(offset);
 
-        keyVector3(rig.positionTrack(), t0, t1, startPos, endPos, easing);
+        keyVector3(tracks.positionTrack(), t0, t1, startPos, endPos, easing);
 
         rig.setTarget(targetA);
-        rig.targetTrack().add(t0, targetA, easing);
-        rig.targetTrack().add(t1, targetB, Easing::linear());
+        tracks.targetTrack().add(t0, targetA, easing);
+        tracks.targetTrack().add(t1, targetB, Easing::linear());
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 4));
         for (unsigned int i = 0; i <= steps; ++i) {
@@ -181,14 +189,16 @@ using presets::detail::keyVector3;
             Vector3 curTarget;
             curTarget.lerpVectors(targetA, targetB, u);
 
-            rig.focusDistanceTrack().add(time, pos.distanceTo(curTarget), Easing::linear());
+            tracks.focusDistanceTrack().add(time, pos.distanceTo(curTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 5. cameraOrbit90Reveal
     void cameraOrbit90Reveal(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                              const Vector3& pivot, int inFrame, int duration, float fps,
                              const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraOrbit90Reveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraOrbit90Reveal: duration must be positive");
 
@@ -213,10 +223,11 @@ using presets::detail::keyVector3;
             Vector3 curTarget;
             curTarget.lerpVectors(targetA, targetB, u);
 
-            rig.positionTrack().add(time, temp.position, Easing::linear());
-            rig.targetTrack().add(time, curTarget, Easing::linear());
-            rig.focusDistanceTrack().add(time, temp.position.distanceTo(curTarget), Easing::linear());
+            tracks.positionTrack().add(time, temp.position, Easing::linear());
+            tracks.targetTrack().add(time, curTarget, Easing::linear());
+            tracks.focusDistanceTrack().add(time, temp.position.distanceTo(curTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 6. cameraCornerTurnReveal
@@ -224,6 +235,7 @@ using presets::detail::keyVector3;
                                 const Vector3& cornerPoint, int inFrame, int duration,
                                 float cornerRadius, float fps, const Easing& easing,
                                 const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraCornerTurnReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraCornerTurnReveal: duration must be positive");
 
@@ -284,16 +296,18 @@ using presets::detail::keyVector3;
             Vector3 curTarget;
             curTarget.lerpVectors(targetA, targetB, u);
 
-            rig.positionTrack().add(time, pos, Easing::linear());
-            rig.targetTrack().add(time, curTarget, Easing::linear());
-            rig.focusDistanceTrack().add(time, pos.distanceTo(curTarget), Easing::linear());
+            tracks.positionTrack().add(time, pos, Easing::linear());
+            tracks.targetTrack().add(time, curTarget, Easing::linear());
+            tracks.focusDistanceTrack().add(time, pos.distanceTo(curTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 7. cameraDetachTurnReacquire
     void cameraDetachTurnReacquire(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                    int inFrame, int duration, float fps,
                                    const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraDetachTurnReacquire", scene);
         if (duration <= 0) throw std::invalid_argument("cameraDetachTurnReacquire: duration must be positive");
 
@@ -322,9 +336,10 @@ using presets::detail::keyVector3;
                 curTarget.lerpVectors(targetA, targetB, smoothB);
             }
 
-            rig.targetTrack().add(time, curTarget, Easing::linear());
-            rig.focusDistanceTrack().add(time, start.position.distanceTo(curTarget), Easing::linear());
+            tracks.targetTrack().add(time, curTarget, Easing::linear());
+            tracks.focusDistanceTrack().add(time, start.position.distanceTo(curTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 8. cameraForegroundPassReveal
@@ -332,6 +347,7 @@ using presets::detail::keyVector3;
                                     int inFrame, int duration, const Vector3& lateralPassOffset,
                                     float fStop, float fps, const Easing& easing,
                                     const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraForegroundPassReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraForegroundPassReveal: duration must be positive");
 
@@ -350,14 +366,14 @@ using presets::detail::keyVector3;
         Vector3 endPos = startPos;
         endPos.add(lateralPassOffset);
 
-        keyVector3(rig.positionTrack(), t0, t1, startPos, endPos, easing);
+        keyVector3(tracks.positionTrack(), t0, t1, startPos, endPos, easing);
 
         rig.setTarget(targetA);
-        rig.targetTrack().add(t0, targetA, easing);
-        rig.targetTrack().add(t1, targetB, Easing::linear());
+        tracks.targetTrack().add(t0, targetA, easing);
+        tracks.targetTrack().add(t1, targetB, Easing::linear());
 
-        rig.fStopTrack().add(t0, fStop, easing);
-        rig.fStopTrack().add(t1, fStop, Easing::linear());
+        tracks.fStopTrack().add(t0, fStop, easing);
+        tracks.fStopTrack().add(t1, fStop, Easing::linear());
 
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 4));
         for (unsigned int i = 0; i <= steps; ++i) {
@@ -371,8 +387,9 @@ using presets::detail::keyVector3;
             const float distA = pos.distanceTo(targetA);
             const float distB = pos.distanceTo(targetB);
             const float foc = distA + (distB - distA) * u;
-            rig.focusDistanceTrack().add(time, foc, Easing::linear());
+            tracks.focusDistanceTrack().add(time, foc, Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 9. cameraDepthPeel
@@ -380,6 +397,7 @@ using presets::detail::keyVector3;
                          int inFrame, int duration, float pushPerSubject,
                          float fStop, float fps, const Easing& easing,
                          const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraDepthPeel", scene);
         if (subjects.size() < 2) {
             throw std::invalid_argument("cameraDepthPeel: requires at least two subjects");
@@ -393,8 +411,8 @@ using presets::detail::keyVector3;
         const CameraPose start = rig.sample(t0);
 
         Vector3 curPos = start.position;
-        rig.fStopTrack().add(t0, fStop, Easing::linear());
-        rig.fStopTrack().add(t1, fStop, Easing::linear());
+        tracks.fStopTrack().add(t0, fStop, Easing::linear());
+        tracks.fStopTrack().add(t1, fStop, Easing::linear());
 
         const std::size_t numSegs = subjects.size() - 1;
         const int segDuration = std::max(1, duration / static_cast<int>(numSegs));
@@ -411,25 +429,27 @@ using presets::detail::keyVector3;
             Vector3 nextPos = curPos;
             nextPos.z -= pushPerSubject;
 
-            keyVector3(rig.positionTrack(), tStart, tEnd, curPos, nextPos, easing);
+            keyVector3(tracks.positionTrack(), tStart, tEnd, curPos, nextPos, easing);
 
             if (i == 0) rig.setTarget(targetCurr);
-            rig.targetTrack().add(tStart, targetCurr, easing);
-            rig.targetTrack().add(tEnd, targetNext, Easing::linear());
+            tracks.targetTrack().add(tStart, targetCurr, easing);
+            tracks.targetTrack().add(tEnd, targetNext, Easing::linear());
 
             const float distStart = curPos.distanceTo(targetCurr);
             const float distEnd = nextPos.distanceTo(targetNext);
-            rig.focusDistanceTrack().add(tStart, distStart, easing);
-            rig.focusDistanceTrack().add(tEnd, distEnd, Easing::linear());
+            tracks.focusDistanceTrack().add(tStart, distStart, easing);
+            tracks.focusDistanceTrack().add(tEnd, distEnd, Easing::linear());
 
             curPos = nextPos;
         }
+        tracks.apply(rig);
     }
 
     // 10. cameraArcBetweenSubjects
     void cameraArcBetweenSubjects(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                   int inFrame, int duration, float arcBowDistance,
                                   float fps, const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraArcBetweenSubjects", scene);
         if (duration <= 0) throw std::invalid_argument("cameraArcBetweenSubjects: duration must be positive");
 
@@ -476,9 +496,10 @@ using presets::detail::keyVector3;
             Vector3 curTarget;
             curTarget.lerpVectors(targetA, targetB, u);
 
-            rig.positionTrack().add(time, pos, Easing::linear());
-            rig.targetTrack().add(time, curTarget, Easing::linear());
-            rig.focusDistanceTrack().add(time, pos.distanceTo(curTarget), Easing::linear());
+            tracks.positionTrack().add(time, pos, Easing::linear());
+            tracks.targetTrack().add(time, curTarget, Easing::linear());
+            tracks.focusDistanceTrack().add(time, pos.distanceTo(curTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 }

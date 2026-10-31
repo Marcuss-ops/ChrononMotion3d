@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 #include "chrononmotion/motion/CameraSequence.hpp"
 #include "chrononmotion/math/Finite.hpp"
 
@@ -133,31 +134,31 @@ namespace chrononmotion::motion::camera {
             return pose;
         }
 
-        void keyLeg(CameraRig& rig, const LegPlan& plan, int inFrame, int travelFrames, float fps) {
+        void keyLeg(CameraRigTrackBatch& tracks, const LegPlan& plan, int inFrame,
+                    int travelFrames, float fps) {
             const float t0 = at(inFrame, fps);
             const float tApex = at(inFrame + travelFrames / 2, fps);
             const float t1 = at(inFrame + travelFrames, fps);
             const CameraPose apex = apexPose(plan, 0.5f);
-            auto& position = rig.positionTrack();
-            auto& target = rig.targetTrack();
             const Easing approach = plan.travelEase > 0.f
                     ? Easing::cubicBezier(0.7f, 0.9f, 0.7f, 0.9f)
                     : Easing::cubicBezier(0.5f, 0.f, 0.7f, 0.9f);
             const Easing land = Easing::cubicBezier(0.3f, 0.1f, 0.5f, 1.f);
-            position.add(t0, plan.restA.position, approach);
-            position.add(tApex, apex.position, land);
-            position.add(t1, plan.restB.position, Easing::easeInOut());
-            target.add(t0, plan.restA.target, approach);
-            target.add(tApex, apex.target, land);
-            target.add(t1, plan.restB.target, Easing::easeInOut());
+            tracks.position(t0, plan.restA.position, approach);
+            tracks.position(tApex, apex.position, land);
+            tracks.position(t1, plan.restB.position, Easing::easeInOut());
+            tracks.target(t0, plan.restA.target, approach);
+            tracks.target(tApex, apex.target, land);
+            tracks.target(t1, plan.restB.target, Easing::easeInOut());
             if (plan.rollPeak != 0.f) {
-                rig.rollTrack().add(t0, 0.f, Easing::easeInOut())
-                    .add(tApex, plan.rollPeak, Easing::easeOut()).add(t1, 0.f, Easing::easeInOut());
+                tracks.roll(t0, 0.f, Easing::easeInOut());
+                tracks.roll(tApex, plan.rollPeak, Easing::easeOut());
+                tracks.roll(t1, 0.f, Easing::easeInOut());
             }
             if (plan.fovPeak != 0.f) {
-                rig.fovTrack().add(t0, plan.restA.fov, Easing::easeInOut())
-                    .add(tApex, plan.fovPeak, Easing::easeOut())
-                    .add(t1, plan.restB.fov, Easing::easeInOut());
+                tracks.fov(t0, plan.restA.fov, Easing::easeInOut());
+                tracks.fov(tApex, plan.fovPeak, Easing::easeOut());
+                tracks.fov(t1, plan.restB.fov, Easing::easeInOut());
             }
             if (plan.focusShift != 0.f || plan.fStop != 0.f) {
                 CameraPose focusA = plan.restA;
@@ -168,12 +169,14 @@ namespace chrononmotion::motion::camera {
                     CameraFocusMode::TargetDistance, focusA, plan.restA.target);
                 const float distB = CameraFocusResolver::resolveFocus(
                     CameraFocusMode::TargetDistance, focusB, plan.restB.target);
-                rig.focusDistanceTrack().add(t0, distA, Easing::easeInOut())
-                    .add(tApex, (distA + distB) * 0.5f, Easing::easeInOut())
-                    .add(t1, distB, Easing::easeInOut());
+                tracks.focusDistance(t0, distA, Easing::easeInOut());
+                tracks.focusDistance(tApex, (distA + distB) * 0.5f, Easing::easeInOut());
+                tracks.focusDistance(t1, distB, Easing::easeInOut());
                 if (plan.fStop != 0.f)
-                    rig.fStopTrack().add(t0, plan.fStop, Easing::easeInOut())
-                        .add(t1, plan.fStop, Easing::easeInOut());
+                {
+                    tracks.fStop(t0, plan.fStop, Easing::easeInOut());
+                    tracks.fStop(t1, plan.fStop, Easing::easeInOut());
+                }
             }
         }
 
@@ -211,6 +214,7 @@ namespace chrononmotion::motion::camera {
         }
 
         int frame = sequence.inFrame;
+        CameraRigTrackBatch tracks(rig);
         CameraPose firstRest{};
         bool first = true;
         for (std::size_t i = 0; i + 1 < sequence.beats.size(); ++i) {
@@ -224,28 +228,35 @@ namespace chrononmotion::motion::camera {
             const float tIn = at(frame, fps);
             const float tSettle = at(frame + std::min(a.hold - 2, 8), fps);
             const float tOut = at(holdEnd, fps);
-            rig.positionTrack().add(tIn, restA.position, Easing::linear())
-                .add(tSettle, restA.position, Easing::easeInOut()).add(tOut, restA.position, Easing::linear());
-            rig.targetTrack().add(tIn, restA.target, Easing::linear())
-                .add(tSettle, restA.target, Easing::easeInOut()).add(tOut, restA.target, Easing::linear());
-            rig.fovTrack().add(tIn, restA.fov, Easing::linear()).add(tOut, restA.fov, Easing::linear());
+            tracks.position(tIn, restA.position, Easing::linear());
+            tracks.position(tSettle, restA.position, Easing::easeInOut());
+            tracks.position(tOut, restA.position, Easing::linear());
+            tracks.target(tIn, restA.target, Easing::linear());
+            tracks.target(tSettle, restA.target, Easing::easeInOut());
+            tracks.target(tOut, restA.target, Easing::linear());
+            tracks.fov(tIn, restA.fov, Easing::linear());
+            tracks.fov(tOut, restA.fov, Easing::linear());
 
             const LegPlan plan = planLeg(sequence.handoff, restA, restB, sequence.intensity);
-            keyLeg(rig, plan, holdEnd, sequence.travelFrames, fps);
+            keyLeg(tracks, plan, holdEnd, sequence.travelFrames, fps);
             frame = holdEnd + sequence.travelFrames;
         }
 
         const auto& last = sequence.beats.back();
         const CameraPose rest = restPoseFor(last.subject, viewport, sequence.intensity);
         const float tIn = at(frame, fps), tOut = at(frame + last.hold, fps);
-        rig.positionTrack().add(tIn, rest.position, Easing::linear())
-            .add(tIn + 8.f / fps, rest.position, Easing::easeInOut()).add(tOut, rest.position, Easing::linear());
-        rig.targetTrack().add(tIn, rest.target, Easing::linear())
-            .add(tIn + 8.f / fps, rest.target, Easing::easeInOut()).add(tOut, rest.target, Easing::linear());
-        rig.fovTrack().add(tIn, rest.fov, Easing::linear()).add(tOut, rest.fov, Easing::linear());
+        tracks.position(tIn, rest.position, Easing::linear());
+        tracks.position(tIn + 8.f / fps, rest.position, Easing::easeInOut());
+        tracks.position(tOut, rest.position, Easing::linear());
+        tracks.target(tIn, rest.target, Easing::linear());
+        tracks.target(tIn + 8.f / fps, rest.target, Easing::easeInOut());
+        tracks.target(tOut, rest.target, Easing::linear());
+        tracks.fov(tIn, rest.fov, Easing::linear());
+        tracks.fov(tOut, rest.fov, Easing::linear());
 
         rig.setTarget(firstRest.target).setPosition(firstRest.position).setFov(firstRest.fov)
             .setAspect(viewport.x / std::max(viewport.y, 1.f));
+        tracks.apply(rig);
         for (const auto& beat : sequence.beats) {
             const CameraPose pose = restPoseFor(beat.subject, viewport, sequence.intensity);
             if (!projectInside(beat.subject, pose, viewport))

@@ -33,9 +33,7 @@ int main() try {
     sequence.focusFov = 38.f;
     sequence.fStop = 5.6f;
     sequence.maxBlur = 10.f;
-    sequence.highlightGain = 1.25f;
     sequence.focusTravelFrames = 24;
-    sequence.irisBlades = 8;
 
     applyFocusSequence(rig, sequence, 30.f);
     const CameraPose nearWord = rig.sample(6.f / 30.f);
@@ -51,9 +49,30 @@ int main() try {
           "camera reaches the second off-center subject");
     check(near(farWord.focusDistance, 1160.f), "rack focus reaches the far subject's axial plane");
     check(near(farWord.fov, 38.f), "the focus FOV is authored at the destination");
-    check(near(farWord.fStop, 5.6f) &&
-                  farWord.irisBlades == 8 && near(farWord.maxBlur, 10.f) && near(farWord.highlightGain, 1.25f),
-          "physical lens and renderer DOF parameters are preserved on the rig");
+    check(near(farWord.fStop, 5.6f) && farWord.irisBlades == 0 &&
+                  near(farWord.maxBlur, 10.f) && near(farWord.highlightGain, 0.f),
+          "focus sequence emits only the circular-bokeh lens contract supported by C3D");
+
+    FocusSequence unsupportedShape = sequence;
+    unsupportedShape.irisBlades = 8;
+    bool rejectedShape = false;
+    try {
+        CameraRig rejectedRig;
+        applyFocusSequence(rejectedRig, unsupportedShape, 30.f);
+    } catch (const std::invalid_argument&) {
+        rejectedShape = true;
+    }
+    check(rejectedShape, "focus sequence rejects unsupported shaped bokeh before authoring rig keys");
+    unsupportedShape.irisBlades = 0;
+    unsupportedShape.highlightGain = 1.25f;
+    rejectedShape = false;
+    try {
+        CameraRig rejectedRig;
+        applyFocusSequence(rejectedRig, unsupportedShape, 30.f);
+    } catch (const std::invalid_argument&) {
+        rejectedShape = true;
+    }
+    check(rejectedShape, "focus sequence rejects unsupported highlight gain before authoring rig keys");
 
     CameraRig focusTrackRig;
     focusTrackRig.setPosition({0.f, 0.f, 10.f}).setTarget({0.f, 0.f, 0.f});

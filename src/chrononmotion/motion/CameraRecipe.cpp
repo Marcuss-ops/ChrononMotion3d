@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 #include "chrononmotion/motion/CameraRecipe.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
@@ -39,17 +40,18 @@ namespace chrononmotion::motion::camera {
 
         float focusFor(float percent, float near, float far) { return near + (far - near) * (percent / 100.f); }
 
-        void keyLeg(CameraRig& rig, const CameraPose& pose, float roll, bool hasRoll,
+        void keyLeg(CameraRigTrackBatch& tracks, const CameraPose& pose, float roll, bool hasRoll,
                     float focus, bool hasFocus, float t, const Easing& easing) {
-            rig.positionTrack().add(t, pose.position, easing);
-            rig.targetTrack().add(t, pose.target, Easing::easeInOut());
-            if (hasRoll) rig.rollTrack().add(t, roll, easing);
-            if (hasFocus) rig.focusDistanceTrack().add(t, focus, easing);
+            tracks.position(t, pose.position, easing);
+            tracks.target(t, pose.target, Easing::easeInOut());
+            if (hasRoll) tracks.roll(t, roll, easing);
+            if (hasFocus) tracks.focusDistance(t, focus, easing);
         }
 
         void applySingleShot(CameraRig& rig, const CameraMotionRecipe& spec,
                              const CameraRecipeShot& shot, int duration, float fps,
                              const Vector2& viewport) {
+            CameraRigTrackBatch tracks(rig);
             const float scale = intensityFactor(shot.intensity);
             const float ref = referenceDistance(shot.subject, shot.fov, viewport);
             CameraPose rest;
@@ -87,18 +89,19 @@ namespace chrononmotion::motion::camera {
             const float focusMid = hasFocus ? focusFor(mid.focus, shot.focusNear, shot.focusFar) : 0.f;
             const float focusEnd = hasFocus ? focusFor(end.focus, shot.focusNear, shot.focusFar) : 0.f;
 
-            keyLeg(rig, startPose, rollStart, hasRoll, focusStart, hasFocus, at(in, fps), travel);
-            if (travel0 != in) keyLeg(rig, startPose, rollStart, hasRoll, focusStart, hasFocus, at(travel0, fps), travel);
+            keyLeg(tracks, startPose, rollStart, hasRoll, focusStart, hasFocus, at(in, fps), travel);
+            if (travel0 != in) keyLeg(tracks, startPose, rollStart, hasRoll, focusStart, hasFocus, at(travel0, fps), travel);
             if (useMid) {
                 const int midFrame = in + static_cast<int>(std::round(duration * (hasDistMid ? spec.distMidAt : spec.posMidAt)));
                 const float rollMidKey = hasMid(spec.rollPeak) ? degToRad(spec.rollPeak * scale) : rollMid;
-                keyLeg(rig, midPose, rollMidKey, hasRoll, focusMid, hasFocus, at(midFrame, fps), travel);
+                keyLeg(tracks, midPose, rollMidKey, hasRoll, focusMid, hasFocus, at(midFrame, fps), travel);
             } else if (hasRoll && hasMid(spec.rollPeak)) {
-                rig.rollTrack().add(at((travel0 + travel1) / 2, fps), degToRad(spec.rollPeak * scale), travel);
+                tracks.roll(at((travel0 + travel1) / 2, fps), degToRad(spec.rollPeak * scale), travel);
             }
-            keyLeg(rig, endPose, rollEnd, hasRoll, focusEnd, hasFocus, at(travel1, fps), travel);
-            keyLeg(rig, endPose, rollEnd, hasRoll, focusEnd, hasFocus, at(endFrame, fps), Easing::linear());
+            keyLeg(tracks, endPose, rollEnd, hasRoll, focusEnd, hasFocus, at(travel1, fps), travel);
+            keyLeg(tracks, endPose, rollEnd, hasRoll, focusEnd, hasFocus, at(endFrame, fps), Easing::linear());
             rig.setTarget(rest.target).setPosition(endPose.position).setFov(shot.fov);
+            tracks.apply(rig);
             for (float v : {ref, endPose.position.x, endPose.position.y, endPose.position.z})
                 if (!std::isfinite(v)) throw std::invalid_argument("applyRecipe: non-finite resolved key");
         }
@@ -106,6 +109,7 @@ namespace chrononmotion::motion::camera {
         void applyTwoShot(CameraRig& rig, const CameraMotionRecipe& spec,
                           const CameraRecipeShot& shot, int duration, float fps,
                           const Vector2& viewport) {
+            CameraRigTrackBatch tracks(rig);
             const float dt = 1.f / fps, scale = intensityFactor(shot.intensity);
             const float ref = referenceDistance(shot.subject, shot.fov, viewport);
             CameraPose rest;
@@ -132,17 +136,18 @@ namespace chrononmotion::motion::camera {
             const float focusOut = hasFocus ? focusFor(outEnd.focus, shot.focusNear, shot.focusFar) : 0.f;
             const float focusIn = hasFocus ? focusFor(inStart.focus, shot.focusNear, shot.focusFar) : 0.f;
             const float focusRest = hasFocus ? focusFor(inEnd.focus, shot.focusNear, shot.focusFar) : 0.f;
-            keyLeg(rig, rest, degToRad(spec.rollStart * scale), hasRoll,
+            keyLeg(tracks, rest, degToRad(spec.rollStart * scale), hasRoll,
                    hasFocus ? focusFor(spec.focusStart, shot.focusNear, shot.focusFar) : 0.f,
                    hasFocus, at(in, fps), outEase);
-            rig.positionTrack().add(cutTime, outPose.position, outEase);
-            rig.targetTrack().add(cutTime, outPose.target, Easing::easeInOut());
-            if (hasRoll) rig.rollTrack().add(cutTime, rollOut, outEase);
-            if (hasFocus) rig.focusDistanceTrack().add(cutTime, focusOut, outEase);
+            tracks.position(cutTime, outPose.position, outEase);
+            tracks.target(cutTime, outPose.target, Easing::easeInOut());
+            if (hasRoll) tracks.roll(cutTime, rollOut, outEase);
+            if (hasFocus) tracks.focusDistance(cutTime, focusOut, outEase);
             const Easing inEase = spec.snapIn ? Easing::expoOut() : Easing::easeInOut();
-            keyLeg(rig, inPose, rollIn, hasRoll, focusIn, hasFocus, inTime, inEase);
-            keyLeg(rig, rest, 0.f, hasRoll, focusRest, hasFocus, at(endFrame, fps), Easing::linear());
+            keyLeg(tracks, inPose, rollIn, hasRoll, focusIn, hasFocus, inTime, inEase);
+            keyLeg(tracks, rest, 0.f, hasRoll, focusRest, hasFocus, at(endFrame, fps), Easing::linear());
             rig.setTarget(rest.target).setPosition(rest.position).setFov(shot.fov);
+            tracks.apply(rig);
         }
     }
 
@@ -187,19 +192,21 @@ namespace chrononmotion::motion::camera {
         });
         int previousFrame = -1;
         CameraPose last{};
+        CameraRigTrackBatch tracks(rig);
         for (const auto& waypoint : ordered) {
             if (waypoint.frame < 0 || waypoint.frame <= previousFrame ||
                 !math::isFinite(waypoint.position) || !math::isFinite(waypoint.target))
                 throw std::invalid_argument("applyCameraTrack: invalid or unordered waypoint");
             const float time = at(waypoint.frame, fps);
-            rig.positionTrack().add(time, waypoint.position, waypoint.easing);
-            rig.targetTrack().add(time, waypoint.target, waypoint.easing);
+            tracks.position(time, waypoint.position, waypoint.easing);
+            tracks.target(time, waypoint.target, waypoint.easing);
             last.position = waypoint.position;
             last.target = waypoint.target;
             last.hasTarget = true;
             previousFrame = waypoint.frame;
         }
         rig.setPosition(last.position).setTarget(last.target);
+        tracks.apply(rig);
     }
 
     void applyRecipe(CameraRig& rig, const CameraMotionRecipe& recipe,
@@ -218,6 +225,7 @@ namespace chrononmotion::motion::camera {
         if (recipe.twoShot && (!(recipe.cutAt > 0.f) || !(recipe.cutAt < 1.f)))
             throw std::invalid_argument("applyRecipe: cutAt must be inside (0, 1)");
         if (!recipe.waypoints.empty()) {
+            CameraRigTrackBatch tracks(rig);
             if (recipe.waypoints.size() < 2 || recipe.waypoints.front().progress != 0.f ||
                 recipe.waypoints.back().progress != 1.f)
                 throw std::invalid_argument("applyRecipe: tracked recipe requires waypoint endpoints at 0 and 1");
@@ -238,9 +246,9 @@ namespace chrononmotion::motion::camera {
                 const Vector3 position = shot.subject.center.clone().add(waypoint.positionOffset);
                 const Vector3 target = shot.subject.center.clone().add(waypoint.targetOffset);
                 const Easing easing = easingFor(waypoint.easing);
-                rig.positionTrack().add(time, position, easing);
-                rig.targetTrack().add(time, target, easing);
-                rig.fovTrack().add(time, waypoint.fov, easing);
+                tracks.position(time, position, easing);
+                tracks.target(time, target, easing);
+                tracks.fov(time, waypoint.fov, easing);
                 last.position = position;
                 last.target = target;
                 last.fov = waypoint.fov;
@@ -249,6 +257,7 @@ namespace chrononmotion::motion::camera {
                 previousFrame = frame;
             }
             rig.setPosition(last.position).setTarget(last.target).setFov(last.fov);
+            tracks.apply(rig);
             return;
         }
         if (recipe.twoShot) applyTwoShot(rig, recipe, shot, duration, fps, viewport);

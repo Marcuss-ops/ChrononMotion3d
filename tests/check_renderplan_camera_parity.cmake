@@ -5,91 +5,95 @@ if(NOT DEFINED CHRONON3D_ROOT OR NOT DEFINED MOTION_SOURCE_DIR)
 endif()
 
 set(_schema_path "${CHRONON3D_ROOT}/schemas/json/chronon.render-plan.v2.schema.json")
-set(_plan_header "${CHRONON3D_ROOT}/include/chronon3d/render_plan/render_plan.hpp")
 set(_plan_layer_types "${CHRONON3D_ROOT}/include/chronon3d/render_plan/render_plan_layer_types.hpp")
 set(_decoder "${CHRONON3D_ROOT}/src/render_plan/render_plan_decoder_support.cpp")
 set(_fingerprint "${CHRONON3D_ROOT}/src/render_plan/fingerprint_values.cpp")
+set(_camera_adapter "${CHRONON3D_ROOT}/src/render_plan/render_plan_camera_adapter.hpp")
 set(_motion_emitter "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanEmission.cpp")
-set(_motion_lowering "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLowering.cpp")
 set(_motion_lowering_camera "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLoweringCamera.cpp")
 set(_motion_lowering_samples "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanLoweringSamples.cpp")
-set(_chronon_compiler "${CHRONON3D_ROOT}/src/render_plan/render_plan_compiler_animation_utils.cpp")
-set(_chronon_camera_adapter "${CHRONON3D_ROOT}/src/render_plan/render_plan_camera_adapter.hpp")
+set(_motion_validation "${MOTION_SOURCE_DIR}/src/chrononmotion/motion/RenderPlanEmissionValidationBounds.cpp")
 
-foreach(_path IN ITEMS
-        "${_schema_path}" "${_plan_header}" "${_plan_layer_types}" "${_decoder}" "${_fingerprint}"
-        "${_motion_emitter}" "${_motion_lowering}" "${_motion_lowering_camera}"
-        "${_motion_lowering_samples}" "${_chronon_compiler}" "${_chronon_camera_adapter}")
+foreach(_path IN ITEMS "${_schema_path}" "${_plan_layer_types}" "${_decoder}" "${_fingerprint}"
+        "${_camera_adapter}" "${_motion_emitter}" "${_motion_lowering_camera}"
+        "${_motion_lowering_samples}" "${_motion_validation}")
     if(NOT EXISTS "${_path}")
         message(FATAL_ERROR "RenderPlan camera parity input does not exist: ${_path}")
     endif()
 endforeach()
 
 file(READ "${_schema_path}" _schema)
-file(READ "${_plan_header}" _plan)
-file(READ "${_plan_layer_types}" _plan_layer_text)
-string(APPEND _plan "\n${_plan_layer_text}")
+file(READ "${_plan_layer_types}" _plan)
 file(READ "${_decoder}" _decoder_text)
 file(READ "${_fingerprint}" _fingerprint_text)
+file(READ "${_camera_adapter}" _adapter_text)
 file(READ "${_motion_emitter}" _emitter_text)
-file(READ "${_motion_lowering}" _lowering_text)
 file(READ "${_motion_lowering_camera}" _lowering_camera_text)
 file(READ "${_motion_lowering_samples}" _lowering_samples_text)
-string(APPEND _lowering_text "\n${_lowering_camera_text}\n${_lowering_samples_text}")
-file(READ "${_chronon_compiler}" _compiler_text)
-file(READ "${_chronon_camera_adapter}" _camera_adapter_text)
-string(APPEND _compiler_text "\n${_camera_adapter_text}")
-
-string(JSON _dof_properties ERROR_VARIABLE _json_error
-    GET "${_schema}" "$defs" "camera" "properties" "dof" "properties")
-if(_json_error)
-    message(FATAL_ERROR "Could not read camera.dof properties from the V2 schema: ${_json_error}")
-endif()
-string(JSON _field_count LENGTH "${_dof_properties}")
-if(_field_count LESS 1)
-    message(FATAL_ERROR "The V2 schema declares no camera DoF fields")
-endif()
+file(READ "${_motion_validation}" _motion_validation_text)
 
 function(require_source_token label source token)
     string(FIND "${source}" "${token}" _found)
     if(_found EQUAL -1)
-        message(FATAL_ERROR "RenderPlan camera parity failure: ${label} is missing '${token}'")
+        message(FATAL_ERROR "RenderPlan camera contract failure: ${label} is missing '${token}'")
     endif()
 endfunction()
 
-require_source_token("Motion DoF emission" "${_emitter_text}" "writer.key(\"dof\")")
+function(require_absent_token label source token)
+    string(FIND "${source}" "${token}" _found)
+    if(NOT _found EQUAL -1)
+        message(FATAL_ERROR "RenderPlan camera contract failure: ${label} still contains '${token}'")
+    endif()
+endfunction()
 
-math(EXPR _last_index "${_field_count} - 1")
-foreach(_index RANGE 0 ${_last_index})
-    string(JSON _field MEMBER "${_dof_properties}" ${_index})
-    set(_plan_field "dof_${_field}")
+# One typed authoring authority for each lens value.
+foreach(_token IN ITEMS "float f_stop" "int iris_blades" "float dof_highlight_gain")
+    require_source_token("CameraPlan" "${_plan}" "${_token}")
+endforeach()
+foreach(_token IN ITEMS "dof_f_stop" "dof_iris_blades" "dof_aperture")
+    require_absent_token("CameraPlan" "${_plan}" "${_token}")
+endforeach()
 
-    # The contract list is derived directly from the authoritative JSON schema.
-    # Each path below must explicitly consume/carry the same field.
-    require_source_token("CameraPlan" "${_plan}" "${_plan_field}")
-    require_source_token("RenderPlan decoder" "${_decoder_text}" "raw_dof.value(\"${_field}\"")
-    require_source_token("RenderPlan fingerprint" "${_fingerprint_text}" "camera.${_plan_field}")
-    require_source_token("Motion JSON writer" "${_emitter_text}" "writer.key(\"${_field}\")")
-    require_source_token("Motion lowerer" "${_lowering_text}" "camera.${_plan_field}")
-    require_source_token("Chronon camera lowering" "${_compiler_text}" "source.${_plan_field}")
-    if(_field STREQUAL "f_stop")
-        # Physical f-stop resolves through the camera lens model, then selects
-        # the physical DoF path when a focal length is present.
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "camera.lens.f_stop = authored_f_stop")
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "camera.dof.use_physical_model = source.focal_length_mm > 0.0f && authored_f_stop > 0.0f")
-    elseif(_field STREQUAL "enabled")
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "camera.dof.enabled = source.dof_enabled")
-    elseif(_field STREQUAL "focus_distance")
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "camera.dof.focus_distance = source.dof_focus_distance")
-    elseif(_field STREQUAL "aperture")
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "camera.dof.aperture = source.dof_aperture")
-    elseif(_field STREQUAL "max_blur")
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "camera.dof.max_blur = source.dof_max_blur")
-    elseif(_field STREQUAL "iris_blades")
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "camera.dof.iris_blades = static_cast<std::uint32_t>(source.dof_iris_blades)")
-    elseif(_field STREQUAL "highlight_gain")
-        require_source_token("Chronon camera lowering" "${_compiler_text}" "camera.dof.highlight_gain = source.dof_highlight_gain")
+# The wire reader may normalize the deprecated nested spelling, but producers
+# write only the canonical camera-level fields.
+foreach(_token IN ITEMS "camera.f_stop = value.value(\"f_stop\"" "camera.iris_blades = value.value(\"iris_blades\""
+        "raw_dof.contains(\"f_stop\")" "raw_dof.contains(\"iris_blades\")"
+        "camera.f_stop and camera.dof.f_stop must agree" "camera.iris_blades and camera.dof.iris_blades must agree")
+    require_source_token("C3D camera decoder" "${_decoder_text}" "${_token}")
+endforeach()
+foreach(_token IN ITEMS "camera.f_stop" "camera.iris_blades")
+    require_source_token("C3D camera fingerprint" "${_fingerprint_text}" "${_token}")
+endforeach()
+require_source_token("C3D camera adapter" "${_adapter_text}" "source.f_stop")
+require_source_token("C3D camera adapter" "${_adapter_text}" "source.iris_blades")
+require_source_token("C3D camera adapter" "${_adapter_text}" "camera.lens.f_stop = authored_f_stop")
+
+require_source_token("Motion camera lowering" "${_lowering_camera_text}" "camera.f_stop = pose.fStop")
+require_source_token("Motion camera lowering" "${_lowering_camera_text}" "camera.iris_blades = pose.irisBlades")
+require_source_token("Motion camera sample JSON" "${_lowering_camera_text}" "value[\"f_stop\"] = camera.f_stop")
+require_source_token("Motion camera sample JSON" "${_lowering_camera_text}" "value[\"iris_blades\"] = camera.iris_blades")
+require_absent_token("Motion camera sample JSON" "${_lowering_camera_text}" "value[\"dof\"][\"f_stop\"]")
+require_absent_token("Motion camera sample JSON" "${_lowering_camera_text}" "value[\"dof\"][\"iris_blades\"]")
+
+# The streaming JSON writer has exactly one occurrence of each key: the
+# camera-level canonical value. Nested fields are decoder-only aliases.
+foreach(_field IN ITEMS "f_stop" "iris_blades")
+    string(REGEX MATCHALL "writer.key\\(\\\"${_field}\\\"\\)" _wire_writes "${_emitter_text}")
+    list(LENGTH _wire_writes _wire_write_count)
+    if(NOT _wire_write_count EQUAL 1)
+        message(FATAL_ERROR "Motion must emit camera.${_field} exactly once; got ${_wire_write_count} writes")
     endif()
 endforeach()
 
-message(STATUS "RenderPlan camera DoF parity verified for ${_field_count} schema-defined fields")
+# All three producer/consumer entry points call the same range and capability
+# admission function; none keeps a second hand-maintained camera range table.
+require_source_token("Motion lowering validation" "${_lowering_samples_text}" "camera_contract_problem(*plan.camera)")
+require_source_token("Motion emission validation" "${_motion_validation_text}" "camera_contract_problem(camera)")
+require_source_token("C3D camera decoder" "${_decoder_text}" "camera_contract_problem(camera)")
+foreach(_source IN ITEMS "${_lowering_samples_text}" "${_motion_validation_text}")
+    foreach(_duplicate IN ITEMS "camera.fov_deg <" "camera.near <=" "camera.dof_max_blur <" "camera.f_stop <")
+        require_absent_token("shared camera validation" "${_source}" "${_duplicate}")
+    endforeach()
+endforeach()
+
+message(STATUS "RenderPlan camera contract verified: one typed lens authority, decoder-only wire aliases, shared admission")

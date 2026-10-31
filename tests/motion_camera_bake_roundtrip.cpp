@@ -79,6 +79,16 @@ void checkCameraBake() {
                     plan2.camera_samples->at(i).camera.rotation_deg == samples[i].camera.rotation_deg;
     check(identical, "offline camera samples are bit-deterministic across runs");
 
+    auto resolvedLayerOptions = options;
+    resolvedLayerOptions.requireResolvedLayerSamples = true;
+    const auto resolvedLayerPlan = lowerToRenderPlan(scene, resolvedLayerOptions);
+    const auto resolvedImage = std::find_if(resolvedLayerPlan.layers.begin(), resolvedLayerPlan.layers.end(),
+        [](const auto& candidate) { return candidate.id == "7"; });
+    check(resolvedImage != resolvedLayerPlan.layers.end() &&
+              resolvedImage->transform_samples.size() == samples.size() &&
+              !resolvedImage->animation,
+          "production camera mode emits resolved per-frame layer samples without integer TRS tracks");
+
     auto runtimeRig = std::make_shared<CameraRig>();
     runtimeRig->positionTrack().add(0.f, Vector3(0.f, 0.f, 1200.f), Easing::easeInOut());
     runtimeRig->positionTrack().add(1.f, Vector3(120.f, 30.f, 800.f), Easing::linear());
@@ -129,6 +139,8 @@ void checkCameraBake() {
     const auto parentedPlan = lowerToRenderPlan(parentedScene, parentedOptions);
     check(parentedPlan.camera.has_value() && parentedPlan.camera_samples.has_value(),
           "parented CameraRig lowers to camera and camera_samples without throwing");
+    check(parentedPlan.layers.size() == 1 && parentedPlan.layers.front().id == "101",
+          "parent controller Null is folded into the camera and omitted from renderable plan layers");
     if (parentedPlan.camera && parentedPlan.camera_samples) {
         checkNear(parentedPlan.camera->position[0], 100.f, kEps,
                   "parented camera initial X combines Null controller and local offset");

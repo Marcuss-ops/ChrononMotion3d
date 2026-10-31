@@ -82,6 +82,7 @@ int main(int argc, char** argv) try {
     options.outputPath = "optical_studio.mp4";
     options.contentLayers = std::move(content);
     options.cameraRig = &rig;
+    options.requireResolvedLayerSamples = true;
     // Even without shutter, use resolved transforms rather than legacy
     // integer vector tracks. With shutter, Motion uses the C3D calendar.
     if (mode != "shutter")

@@ -480,7 +480,11 @@ int main(int argc, char** argv) {
         options.jobId = "map_flyover_" + place->name;
         options.outputPath = outputPath;
         options.contentLayers = content;
-        if (cameraBacked) options.cameraRig = &cameraRig;
+        if (cameraBacked) {
+            options.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
+            options.cameraRig = &cameraRig;
+            options.requireResolvedLayerSamples = true;
+        }
 
         chronon3d::render_plan::RenderPlan plan = lowerToRenderPlan(scene, options);
         plan.output.format = chronon3d::render_plan::OutputFormat::Mp4;

@@ -381,6 +381,7 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_test(NAME chrononmotion_camera_framing COMMAND chrononmotion_camera_framing)
 
     add_executable(chrononmotion_camera_sequence tests/motion_camera_sequence.cpp)
+    target_include_directories(chrononmotion_camera_sequence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/chrononmotion/motion)
     target_link_libraries(chrononmotion_camera_sequence PRIVATE chrononmotion)
     add_test(NAME chrononmotion_camera_sequence COMMAND chrononmotion_camera_sequence)
 

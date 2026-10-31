@@ -17,14 +17,14 @@
 
 ### C1 — Apertura: f/stop come unica verità authored
 - `CameraRig.hpp:209-233`: bridge "DOF unification"; il legacy gain non è più
-  authored né trasportato; `gain = 0.672/f_stop` è solo unità interna della
-  preview GL. Il quantificatore 0.672 esiste SOLO lato CM3D (grep cross-repo
-  2026-10-28: nessun altro sito).
+  authored né trasportato. La preview GL deriva il proprio gain interno da
+  `f_stop`; il wire usa `camera.f_stop` come singola autorità, e il consumer
+  C3D deriva da esso il parametro interno del kernel dopo il decode.
 
 ### C2 — Lowering fisico V3 implementato
 - `RenderPlanLoweringCamera.cpp:99-118`: `focal_length_mm`, `f_stop`,
-  `dof_f_stop`, `dof_iris_blades`, `dof_highlight_gain` emessi dal rig;
-  `dof_aperture` solo derivato via `blurGainFromFStop`, mai authored.
+  `iris_blades` e `dof_highlight_gain` emessi dal rig;
+  `dof.aperture` non è più emesso sul wire.
 - Fail-closed speculare: `lowerCameraPose` (range f/stop [0.7, 32], iris [0, 12],
   gain [0, 8], DOF con aperture ⇒ focus distance > 0) e decoder C3D
   `render_plan_decoder_support.cpp:244-257` valida le stesse gamme.
@@ -40,12 +40,27 @@
   preset di default produceva un piano che il renderer rifiuta);
   `irisBlades` già 0. Pin di contratto nel test
   `tests/motion_camera_focus_sequence.cpp` (default FocusSequence → pose
-  highlightGain == 0).
+  highlightGain == 0; the applier rejects unsupported shaped-bokeh inputs
+  before writing any rig channels).
 
-### C5 — Semantic of dof_aperture pinned (fix 2026-10-28)
-- `render_plan_layer_types.hpp` (CameraPlan::dof_aperture): commento LEGACY
-  TRANSPORT FIELD — solo derivato da f_stop, mai authored; `dof_f_stop` è
-  l'unica unità authored.
+### C5 — Legacy DoF wire gain rimosso (migrazione coordinata 2026-10-31)
+- `CameraPlan::dof_aperture` e `camera.dof.aperture` sono stati rimossi dal
+  wire/schema e dall'emissione CM3D. `CameraPlan::f_stop` è l'unica unità
+  authored e typed; `camera.dof.f_stop` resta accettato come alias wire per
+  compatibilità ed è normalizzato al decode.
+- `CameraPlan::dof_f_stop` e `CameraPlan::dof_iris_blades` sono stati rimossi:
+  i valori nested wire sono normalizzati nei campi camera-level, con errore se
+  contraddicono i valori top-level. CM3D emette soltanto i campi camera-level;
+  gli alias annidati sono decoder-only e hanno demolition debt `ACTIVE` nel
+  ticket di consolidamento.
+- Lowering e emissione CM3D delegano range/capability admission allo stesso
+  `camera_contract_problem()` del decoder C3D; i range camera non sono più
+  mantenuti in tre blocchi manuali separati.
+- Il renderer deriva il proprio parametro interno di blur dal f-stop nel
+  `render_plan_camera_adapter.hpp`; `DepthOfFieldSettings::aperture` resta
+  un'unità d'implementazione del kernel, non un campo authored/trasportato.
+- Il decoder rifiuta il vecchio wire key. L'equivalenza pixel/runtime va ancora
+  certificata con i gate del ticket di consolidamento.
 
 ### C6 — Full-scene shutter: emissione `temporal_motion_blur` (chiusa 2026-10-28)
 - CM3D autoreggia lo shutter come unità authored unica
@@ -84,7 +99,8 @@
   FOV verticale 10–120°, focale 0 oppure 12–200 mm, sensore 1–100 mm,
   f-stop 0 oppure 0.7–32. Focale positiva precede FOV nella proiezione;
   focus distance è distanza positiva lungo l'asse ottico nelle unità scena.
-  `dof_aperture` rimane gain legacy derivato, non un secondo f-stop authored.
+  Il wire non trasporta un gain aperture: il consumer deriva il parametro
+  interno del kernel da f-stop.
   Iris blades e highlight gain diversi da zero sono rifiutati prima del render.
 - `resolved_sample_frames(canvas, blur)` usa lo scheduler temporale C3D, include
   frame interi e tutti i sottocampioni shutter (180°/8 nella acceptance).
@@ -97,9 +113,10 @@
   TRS (slerp per orientamento), quindi NON equivalenza authored arbitraria.
   Il provider runtime camera è materializzato dal compilatore agli stessi
   istanti; il programma immutabile conserva valori, non callback o scena Motion.
-- Supporto iniziale campioni layer: Image/Color/Text/Shape senza tracce extra;
-  altre capability falliscono esplicitamente. Questo estende il contratto
-  esistente senza una nuova authority di regia o una cache parallela.
+- Campioni layer supportati: i layer visuali 2.5D (Image/Video/Color/Text/Shape/
+  Particles/Adjustment) senza tracce extra; Light e Mesh restano esclusi perché
+  hanno semantiche di consumo dedicate. Questo estende il contratto esistente
+  senza una nuova authority di regia o una cache parallela.
 
 #### Demolition debt — integer transform bake
 - Owner: manutentore del confine Motion/RenderPlan.
@@ -169,9 +186,24 @@ campo.
   verde; evidenza consumer in
   `Chronon3d/docs/evidence/camera-surface-consolidation/`.
 
-La regola non chiude S2/S3: il collasso degli applier resta subordinato al fix
-F3 (`planPosition` vs `planAnimationPosition`) e la dismissione di
-`dof_aperture` alla migrazione coordinata di schema, producer e consumer.
+F3 (`planPosition` vs `planAnimationPosition`) è verificato localmente: il
+canary Motion→RenderPlan→C3D mostra la card PNG rossa davanti al frame 0 e
+dietro al frame 1 dopo l'attraversamento Z. S2 può quindi iniziare. La rimozione
+wire S3 è implementata e i frame DoF raw software 30/75/149 sono byte-identici
+al baseline; le due evidenze sono in
+`Chronon3d/docs/evidence/camera-surface-consolidation/`.
+
+Per ogni piano materializzato V3, impostare
+`RenderPlanLoweringOptions::requireResolvedLayerSamples`: usa il calendario
+shutter se attivo, altrimenti ogni frame di presentazione, ed evita i TRS
+keyframe interi. Il requisito vale anche per piani senza CameraRig; quando
+esiste un rig, camera e layer condividono gli stessi timestamp. Template lo
+applica nel wrapper comune e i producer Motion censiti lo richiedono
+esplicitamente, incluso Showreel camera-free. Image/Video/Color/Text/Shape/
+Particle/Adjustment sono supportati; Light e Mesh restano esclusi per le loro
+semantiche di consumo dedicate. I Null controller non sono contenuti renderabili
+e non vanno serializzati come Color trasparenti. La demolition debt resta ACTIVE
+finché il corpus compatibility/typed non passa l'equivalenza prevista sopra.
 
 ## Regola di manutenzione
 

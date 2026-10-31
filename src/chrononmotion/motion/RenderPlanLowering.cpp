@@ -316,6 +316,11 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: explicit sample frames must include every shutter and presentation timestamp");
         }
     }
+    if (options.requireResolvedLayerSamples && sampleFrames.empty()) {
+        sampleFrames.reserve(frameCount);
+        for (std::size_t frame = 0; frame < frameCount; ++frame)
+            sampleFrames.push_back(static_cast<double>(frame));
+    }
     if (!sampleFrames.empty()) {
         if (plan.schema != kRenderPlanSchemaV3 ||
             (scene.layerCount() != 0 && sampleFrames.size() > kMaximumBakedTransformSamples / scene.layerCount()))
@@ -324,15 +329,33 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             const auto authored = std::find_if(metadata.begin(), metadata.end(), [&](const Layer& layer) {
                 return std::to_string(layer.id) == output.id;
             });
-            if (authored == metadata.end() || authored->isNull()) continue;
-            if (output.type != LayerType::Image && output.type != LayerType::Color &&
-                output.type != LayerType::Text && output.type != LayerType::Shape)
-                throw std::invalid_argument("lowerToRenderPlan: exact shutter layer type is unsupported");
+            if (authored == metadata.end() || authored->isNull()) {
+                if (output.type == LayerType::Light || output.type == LayerType::Mesh)
+                    continue;
+                if (output.parent || output.animation || output.follow_path || output.auto_orient ||
+                    output.transition_in || output.transition_out)
+                    throw std::invalid_argument(
+                        "lowerToRenderPlan: a visual plan layer without a Motion transform source must be static");
+                output.transform_samples.reserve(sampleFrames.size());
+                for (double frame : sampleFrames) {
+                    chronon3d::render_plan::LayerPlan::ResolvedTransformSample sample;
+                    sample.frame = frame;
+                    sample.position = output.position;
+                    sample.scale = output.scale;
+                    sample.rotation_deg = output.rotation;
+                    sample.opacity = output.opacity.value_or(1.f);
+                    output.transform_samples.push_back(std::move(sample));
+                }
+                continue;
+            }
+            if (output.type == LayerType::Light || output.type == LayerType::Mesh)
+                throw std::invalid_argument(
+                    "lowerToRenderPlan: resolved layer samples support 2.5D visual layers, not light or mesh layers");
             if (output.animation) {
                 for (const auto& track : output.animation->tracks)
                     if (track.property != "position" && track.property != "scale" &&
                         track.property != "rotation" && track.property != "opacity")
-                        throw std::invalid_argument("lowerToRenderPlan: exact shutter cannot discard non-transform animation");
+                        throw std::invalid_argument("lowerToRenderPlan: resolved transform samples cannot discard non-transform animation");
             }
             output.animation.reset();
             output.transform_samples.reserve(sampleFrames.size());

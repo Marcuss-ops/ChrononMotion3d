@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 // ChrononMotion — the preset helpers, shared by the preset families.
 //
 // Internal to the library: this is the vocabulary every family keys with, not
@@ -54,6 +55,13 @@ namespace chrononmotion::motion::presets::detail {
 
         track.add(t0, from, easing);
         track.add(t1, to, Easing::linear());
+    }
+
+    /// Camera-applier overload: retain the same curved travel + flat hold
+    /// semantics while routing both keys through the shared rig writer.
+    inline void keyVector3(CameraRigTrackBatch::TrackProxy track, float t0, float t1,
+                           const Vector3& from, const Vector3& to, const Easing& easing) {
+        track.add(t0, from, easing).add(t1, to, Easing::linear());
     }
 
 }// namespace chrononmotion::motion::presets::detail

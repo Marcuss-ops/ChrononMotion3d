@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 #include "chrononmotion/motion/DocumentaryCameraPath.hpp"
 #include "chrononmotion/math/Finite.hpp"
 
@@ -121,6 +122,7 @@ void applyDocumentaryCameraPath(CameraRig& rig, const DocumentaryCameraPath& pat
             : titleCam;
 
     std::vector<CameraTrackWaypoint> keys;
+    CameraRigTrackBatch optics;
     const auto point = [&](int frame, const Vector3& position, const Vector3& target,
                            const Easing& easing = Easing::easeInOut()) {
         keys.push_back({frame, position, target, easing});
@@ -163,8 +165,8 @@ void applyDocumentaryCameraPath(CameraRig& rig, const DocumentaryCameraPath& pat
         case DocumentaryMove::FocusDrop:
             point(handoff, openingCamera, openingTarget);
             point(end, photoCam, last.center);
-            rig.fStopTrack().add(at(start, fps), 3.7f, Easing::linear())
-                .add(at(end, fps), 3.7f, Easing::linear());
+            optics.fStop(at(start, fps), 3.7f, Easing::linear());
+            optics.fStop(at(end, fps), 3.7f, Easing::linear());
             break;
         case DocumentaryMove::Reveal90: {
             const Vector3 side(path.title.center.x + path.cameraDistance, path.title.center.y,
@@ -222,8 +224,8 @@ void applyDocumentaryCameraPath(CameraRig& rig, const DocumentaryCameraPath& pat
             point(handoff, arc, path.title.center, Easing::easeIn());
             point(mid, arc, last.center, Easing::easeOut());
             point(end, photoCam, last.center);
-            rig.fStopTrack().add(at(handoff, fps), 0.f, Easing::linear())
-                .add(at(end, fps), 11.2f, Easing::easeInOut());
+            optics.fStop(at(handoff, fps), 0.f, Easing::linear());
+            optics.fStop(at(end, fps), 11.2f, Easing::easeInOut());
             break;
         }
         case DocumentaryMove::ArchiveCraneReveal: {
@@ -240,6 +242,7 @@ void applyDocumentaryCameraPath(CameraRig& rig, const DocumentaryCameraPath& pat
     }
 
     applyCameraTrack(rig, keys, fps);
+    optics.apply(rig);
     if (path.move == DocumentaryMove::FocusDrop)
         applyZPlaneFocusTrack(rig, start, end, handoff, path.title.center.z, last.center.z, fps);
     else
