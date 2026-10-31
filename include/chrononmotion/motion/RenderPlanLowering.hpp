@@ -50,9 +50,10 @@ namespace chrononmotion::motion {
         /// evaluation to a runtime CameraSampleProvider instead of serializing resolved samples.
         bool bakeResolvedCameraSamples{true};
         /// Optional strictly increasing absolute fractional frame times supplied
-        /// by the renderer's shutter schedule. Empty retains the legacy integer
-        /// frame bake, which approximates nonlinear motion between samples.
-        /// Include every time the consumer will request; other times interpolate.
+        /// by the renderer's schedule. With shutter enabled, an empty list uses
+        /// the canonical shutter calendar and an explicit list must include it.
+        /// Without shutter, empty retains the integer frame bake; times not in
+        /// an explicit list interpolate and may approximate nonlinear motion.
         std::vector<double> cameraSampleFrames{};
     };
 
