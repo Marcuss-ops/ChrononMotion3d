@@ -332,6 +332,24 @@ void checkCameraBake() {
     check(calendar.size() == 27, "three frames include integer times plus eight shutter samples each");
     check(shutterPlan.camera_samples && shutterPlan.camera_samples->size() == calendar.size(),
           "camera bake consumes the renderer-owned shutter calendar");
+    auto explicitShutterOptions = shutterOptions;
+    explicitShutterOptions.cameraSampleFrames = calendar;
+    explicitShutterOptions.cameraSampleFrames.push_back(calendar.back() + 1.0);
+    const auto explicitShutterPlan = lowerToRenderPlan(shutterScene, explicitShutterOptions);
+    check(explicitShutterPlan.camera_samples &&
+              explicitShutterPlan.camera_samples->size() == explicitShutterOptions.cameraSampleFrames.size(),
+          "a complete explicit shutter calendar may include additional samples");
+    explicitShutterOptions.cameraSampleFrames = calendar;
+    explicitShutterOptions.cameraSampleFrames.erase(explicitShutterOptions.cameraSampleFrames.begin());
+    bool missingShutterTimeRejected = false;
+    try { (void)lowerToRenderPlan(shutterScene, explicitShutterOptions); }
+    catch (const std::invalid_argument&) { missingShutterTimeRejected = true; }
+    check(missingShutterTimeRejected, "incomplete explicit shutter calendar is rejected");
+    explicitShutterOptions.cameraSampleFrames = {0., 1., 2.};
+    bool integerOnlyShutterRejected = false;
+    try { (void)lowerToRenderPlan(shutterScene, explicitShutterOptions); }
+    catch (const std::invalid_argument&) { integerOnlyShutterRejected = true; }
+    check(integerOnlyShutterRejected, "integer-only samples cannot approximate an exact shutter bake");
     const auto& resolvedLayer = shutterPlan.layers.front();
     check(!resolvedLayer.animation && resolvedLayer.transform_samples.size() == calendar.size(),
           "exact layer bake replaces approximate integer transform tracks");

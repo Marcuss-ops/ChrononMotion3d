@@ -307,8 +307,15 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     // The renderer owns shutter scheduling. Evaluate camera AND world layer
     // transforms at its exact timestamps instead of interpolating integer bakes.
     std::vector<double> sampleFrames = options.cameraSampleFrames;
-    if (sampleFrames.empty() && plan.temporal_motion_blur)
-        sampleFrames = chronon3d::render_plan::resolved_sample_frames(plan.canvas, plan.temporal_motion_blur);
+    if (plan.temporal_motion_blur) {
+        const auto requiredFrames = chronon3d::render_plan::resolved_sample_frames(plan.canvas, plan.temporal_motion_blur);
+        if (sampleFrames.empty()) {
+            sampleFrames = requiredFrames;
+        } else if (!std::includes(sampleFrames.begin(), sampleFrames.end(),
+                                  requiredFrames.begin(), requiredFrames.end())) {
+            throw std::invalid_argument("lowerToRenderPlan: explicit sample frames must include every shutter and presentation timestamp");
+        }
+    }
     if (!sampleFrames.empty()) {
         if (plan.schema != kRenderPlanSchemaV3 ||
             (scene.layerCount() != 0 && sampleFrames.size() > kMaximumBakedTransformSamples / scene.layerCount()))
