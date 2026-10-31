@@ -117,7 +117,23 @@ void PerspectiveCamera::updateProjectionMatrix() {
     this->projectionMatrixInverse.copy(this->projectionMatrix).invert();
 }
 
+// Adapted from threepp commit 61d02da6c5c00e7718216bdd89f98d437aab3c99 (MIT).
+void PerspectiveCamera::copy(const Object3D& source, bool recursive) {
+    Camera::copy(source, recursive);
+    if (const auto* camera = source.as<PerspectiveCamera>()) {
+        fov = camera->fov;
+        focus = camera->focus;
+        aspect = camera->aspect;
+        filmGauge = camera->filmGauge;
+        filmOffset = camera->filmOffset;
+    }
+}
+
 std::shared_ptr<PerspectiveCamera> PerspectiveCamera::create(float fov, float aspect, float near, float far) {
 
     return std::make_shared<PerspectiveCamera>(fov, aspect, near, far);
+}
+
+std::shared_ptr<Object3D> PerspectiveCamera::createDefault() {
+    return create();
 }

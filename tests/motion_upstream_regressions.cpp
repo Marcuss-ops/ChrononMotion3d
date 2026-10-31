@@ -5,6 +5,9 @@
 // docs/THREEPP_TEST_COMPATIBILITY.md).
 #include "chrononmotion/animation/tracks/NumberKeyframeTrack.hpp"
 #include "chrononmotion/animation/tracks/VectorKeyframeTrack.hpp"
+#include "chrononmotion/cameras/Camera.hpp"
+#include "chrononmotion/cameras/OrthographicCamera.hpp"
+#include "chrononmotion/cameras/PerspectiveCamera.hpp"
 #include "chrononmotion/core/BufferAttribute.hpp"
 #include "chrononmotion/core/EventDispatcher.hpp"
 #include "chrononmotion/core/Object3D.hpp"
@@ -183,6 +186,60 @@ void objectGraph() {
               "externally driven local matrix propagates without a forced update");
 }
 
+// Adapted from threepp tests/objects/Clone_test.cpp at
+// 61d02da6c5c00e7718216bdd89f98d437aab3c99; renderer-only types are excluded.
+void cameraClones() {
+    section("upstream camera clone preserves type and projection");
+    auto perspective = PerspectiveCamera::create(35.f, 1.5f, 0.3f, 400.f);
+    perspective->zoom = 2.f;
+    perspective->focus = 4.f;
+    perspective->filmGauge = 24.f;
+    perspective->filmOffset = 1.5f;
+    perspective->setViewOffset(200, 100, 10, 20, 50, 40);
+    perspective->position.set(2.f, 3.f, 4.f);
+    perspective->updateMatrixWorld();
+    perspective->add(Object3D::create());
+    const auto p = perspective->clone<PerspectiveCamera>();
+    check(p != nullptr, "perspective clone retains its concrete type");
+    if (p) {
+        check(p->fov == 35.f && p->aspect == 2.f && p->nearPlane == 0.3f && p->farPlane == 400.f,
+              "perspective clone preserves optics and clipping");
+        check(p->zoom == 2.f && p->focus == 4.f && p->filmGauge == 24.f && p->filmOffset == 1.5f,
+              "perspective clone preserves zoom, focus and film settings");
+        check(p->view && p->view->offsetX == 10 && p->view->offsetY == 20,
+              "perspective clone preserves view offset");
+        check(p->projectionMatrix == perspective->projectionMatrix &&
+                  p->projectionMatrixInverse == perspective->projectionMatrixInverse &&
+                  p->matrixWorldInverse == perspective->matrixWorldInverse,
+              "perspective clone preserves projection and inverse matrices");
+        check(p->children.size() == 1 && p->children[0] != perspective->children[0] && p->children[0]->parent == p.get(),
+              "recursive camera clone preserves independent child hierarchy");
+        p->view->offsetX = 99;
+        check(perspective->view->offsetX == 10, "cloned view offset is independent");
+    }
+    const auto shallow = perspective->clone<PerspectiveCamera>(false);
+    check(shallow && shallow->children.empty(), "non-recursive camera clone excludes children");
+
+    auto ortho = OrthographicCamera::create(-3.f, 3.f, 2.f, -2.f, 1.f, 50.f);
+    ortho->zoom = 1.5f;
+    ortho->updateProjectionMatrix();
+    const auto o = ortho->clone<OrthographicCamera>();
+    check(o != nullptr, "orthographic clone retains its concrete type");
+    if (o) {
+        check(o->left == -3.f && o->right == 3.f && o->top == 2.f && o->bottom == -2.f &&
+                  o->nearPlane == 1.f && o->farPlane == 50.f && o->zoom == 1.5f,
+              "orthographic clone preserves bounds, clipping and zoom");
+        check(o->projectionMatrix == ortho->projectionMatrix &&
+                  o->projectionMatrixInverse == ortho->projectionMatrixInverse,
+              "orthographic clone preserves projection and inverse matrices");
+    }
+    auto base = std::make_shared<Camera>(0.25f, 25.f);
+    base->zoom = 3.f;
+    const auto b = base->clone<Camera>();
+    check(b && b->zoom == 3.f && b->nearPlane == 0.25f && b->farPlane == 25.f,
+          "base camera clone preserves its type and settings");
+}
+
 void eventDispatch() {
     section("upstream threepp core regressions: EventDispatcher");
     EventDispatcher dispatcher;
@@ -291,6 +348,7 @@ int main() {
     vector4AndQuaternionMath();
     boxMath();
     objectGraph();
+    cameraClones();
     eventDispatch();
     interpolants();
     keyframeTracksAndAttributes();

@@ -106,6 +106,15 @@ it today: it is small, self-contained and plausible for a motion/anchor/bounds
 engine to need. `Box2` is the one file with literally no consumer — kept by
 decision, since a 2D AABB is the natural anchor/text-bounds box.
 
+## Selective upstream camera port
+
+Camera `clone()`/`copy()` preserves the concrete perspective or orthographic
+camera and its projection state, adapted from threepp commit
+`61d02da6c5c00e7718216bdd89f98d437aab3c99` (MIT; copyright Lars Ivar Hatledal
+& threepp contributors). The separate upstream test inventory records this
+port and its exclusions. The existing fork/renderer pin is unchanged; this does
+not import a renderer, physical exposure, or a second camera authority.
+
 ## Behaviour deltas against upstream
 
 These are the changes that are more than a deletion; each one is a deliberate
