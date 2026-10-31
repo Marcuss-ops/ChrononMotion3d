@@ -167,7 +167,9 @@ if(CHRONON3D_INCLUDE_DIR)
     # RenderPlan's public headers use fmt formatting/validation APIs; resolve
     # them even in adapter builds that do not inherit C3D's vcpkg toolchain.
     find_package(fmt CONFIG REQUIRED) # boundary-guardrail: allowed — public C3D RenderPlan headers expose fmt in this offline adapter only.
+    get_filename_component(_chronon3d_calendar_root "${CHRONON3D_INCLUDE_DIR}" DIRECTORY)
     add_library(chrononmotion_chronon3d_adapter STATIC
+        "${_chronon3d_calendar_root}/src/animations/temporal/temporal_samples.cpp"
         src/chrononmotion/motion/LightRigRenderPlan.cpp
         src/chrononmotion/motion/HdriRenderPlan.cpp
         src/chrononmotion/motion/RenderPlanLowering.cpp
@@ -546,8 +548,7 @@ if(CHRONONMOTION_BUILD_TESTS)
         endif()
         add_test(NAME chrononmotion_projection_parity COMMAND chrononmotion_projection_parity)
 
-        add_executable(chrononmotion_camera_bake_roundtrip tests/motion_camera_bake_roundtrip.cpp
-            "${_chronon3d_root}/src/animations/temporal/temporal_samples.cpp")
+        add_executable(chrononmotion_camera_bake_roundtrip tests/motion_camera_bake_roundtrip.cpp)
         target_link_libraries(chrononmotion_camera_bake_roundtrip PRIVATE chrononmotion_chronon3d_adapter)
         target_compile_options(chrononmotion_camera_bake_roundtrip PRIVATE -Wall -Wextra)
         if(CHRONONMOTION_WERROR)

@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -15,11 +16,17 @@ using namespace chrononmotion;
 using namespace chrononmotion::motion;
 
 int main(int argc, char** argv) try {
-    if (argc < 3 || argc > 4) {
-        std::cerr << "usage: plan_optical_studio OUTPUT_PLAN ASSET_PREFIX [WIDTH]\n";
+    if (argc < 3 || argc > 6) {
+        std::cerr << "usage: plan_optical_studio OUTPUT_PLAN ASSET_PREFIX [WIDTH] [dof|sharp|shutter] [offline|provider]\n";
         return 2;
     }
-    const int width = argc == 4 ? std::atoi(argv[3]) : 1920;
+    const int width = argc >= 4 ? std::atoi(argv[3]) : 1920;
+    const std::string mode = argc >= 5 ? argv[4] : "dof";
+    const std::string source = argc == 6 ? argv[5] : "offline";
+    if (source != "offline" && source != "provider")
+        throw std::invalid_argument("source must be offline or provider");
+    if (mode != "dof" && mode != "sharp" && mode != "shutter")
+        throw std::invalid_argument("mode must be dof, sharp or shutter");
     if (width < 320 || width > 3840 || width % 16 != 0)
         throw std::invalid_argument("width must be a multiple of 16 in [320, 3840]");
     const int height = width * 9 / 16;
@@ -48,6 +55,11 @@ int main(int argc, char** argv) try {
     addPlate(2, "far", 505, 35, -380, 730, 830);
     addPlate(3, "middle", 0, 0, 0, 570, 650);
     addPlate(4, "near", -420, -30, 180, 460, 525);
+    auto* entering = scene.findLayer(4);
+    entering->tracks.position.add(0.f, Vector3{-540*s, -30*s, 180*s}, Easing::easeInOut())
+        .add(.8f, Vector3{-420*s, -30*s, 180*s});
+    entering->tracks.opacity.add(0.f, .15f, Easing::easeInOut()).add(.8f, 1.f);
+    if (mode == "shutter") scene.setShutter(ShutterSettings{180.f, 8});
 
     auto& parent = scene.addNull(90, "camera_dolly");
     parent.is3D = true;
@@ -55,7 +67,7 @@ int main(int argc, char** argv) try {
         .add(149.f/fps, Vector3{95*s, 0, 0});
     CameraRig rig(100, 50.f, float(width)/height, 1.f*s, 10000.f*s);
     rig.setParent(90).setPosition({0, 0, 1000*s});
-    rig.setFStop(1.4f).setMaxBlur(28*s).setFocusDistance(820*s);
+    rig.setFStop(mode == "sharp" ? 0.f : 1.4f).setMaxBlur(28*s).setFocusDistance(820*s);
     rig.focusDistanceTrack().add(0.f, 820*s)
         .add(1.2f, 820*s, Easing::easeInOut())
         .add(2.5f, 1000*s, Easing::easeInOut())
@@ -70,7 +82,22 @@ int main(int argc, char** argv) try {
     options.outputPath = "optical_studio.mp4";
     options.contentLayers = std::move(content);
     options.cameraRig = &rig;
+    // Even without shutter, use resolved transforms rather than legacy
+    // integer vector tracks. With shutter, Motion uses the C3D calendar.
+    if (mode != "shutter")
+        for (int frame = 0; frame <= last; ++frame) options.cameraSampleFrames.push_back(frame);
     auto plan = lowerToRenderPlan(scene, options);
+    if (source == "provider") {
+        // The same authored scene and rig feed the runtime Motion provider.
+        // Materialize at the exact offline timestamps for a reproducible
+        // end-to-end comparison through the CLI's serialized plan path.
+        auto providerScene = std::make_shared<MotionScene>(std::move(scene));
+        auto providerRig = std::make_shared<CameraRig>(std::move(rig));
+        const auto provider = makeCameraSampleProvider(
+            providerRig, providerScene, "optical-studio-provider", 1.f*s, 10000.f*s);
+        for (auto& sample : *plan.camera_samples)
+            sample.camera = provider.sample(sample.frame);
+    }
     plan.output.format = chronon3d::render_plan::OutputFormat::Mp4;
     plan.output.color_space = "srgb";
     const auto problem = renderPlanEmissionProblem(plan);

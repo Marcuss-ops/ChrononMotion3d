@@ -14,6 +14,7 @@
 #include "chrononmotion/motion/RenderPlanEmission.hpp"
 #include "chrononmotion/math/Finite.hpp"
 #include "RenderPlanEmissionInternal.hpp"
+#include <chronon3d/render_plan/resolved_transform_samples.hpp>
 
 #include "JsonWriter.hpp"
 
@@ -138,6 +139,11 @@ namespace {
                         previous = keyFrame;
                     }
                 }
+            }
+            for (const auto& layer : plan.layers) {
+                if (!layer.transform_samples.empty() && plan.schema != chronon3d::render_plan::kRenderPlanSchemaV3)
+                    return "resolved transform samples require RenderPlan V3";
+                if (const auto problem = chronon3d::render_plan::transform_samples_problem(layer)) return *problem;
             }
             if (plan.audio) return "the plan carries an audio mix";
             if (plan.prepared_overlay_package) return "the plan carries a prepared overlay package";

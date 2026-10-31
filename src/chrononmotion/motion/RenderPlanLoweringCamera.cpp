@@ -1,5 +1,6 @@
 #include "RenderPlanLoweringInternal.hpp"
 #include <chronon3d/render_plan/camera_sample_provider.hpp>
+#include <chronon3d/render_plan/camera_contract.hpp>
 #include "chrononmotion/math/Finite.hpp"
 #include "chrononmotion/motion/CompiledScene.hpp"
 #include "chrononmotion/motion/Layer.hpp"
@@ -113,6 +114,8 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
         camera.dof_iris_blades = pose.irisBlades;
         camera.dof_highlight_gain = pose.highlightGain;
     }
+    if (const auto problem = chronon3d::render_plan::camera_contract_problem(camera))
+        throw std::invalid_argument("lowerCameraPose: " + *problem);
     return camera;
 }
 
