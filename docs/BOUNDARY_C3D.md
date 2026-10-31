@@ -75,7 +75,44 @@
 
 ## Zone FUTURE-SCOPE (NON reimplementare in parallelo)
 
-### Camera parented e shutter: avanzamento parziale
+### Contratto camera/layer risolti — aggiornamento 2026-10-30
+
+- Motion risolve local → world con parent/Null, look-at, roll ed easing. Il
+  confine riflette Z (`S = diag(1,1,-1)`); per la camera `R_c3d = S R_motion S`.
+  Le rotazioni renderer sono gradi, ricostruite nell'ordine `qZ*qY*qX`.
+- `camera_contract.hpp` è l'ammissione condivisa producer/decoder/compiler:
+  FOV verticale 10–120°, focale 0 oppure 12–200 mm, sensore 1–100 mm,
+  f-stop 0 oppure 0.7–32. Focale positiva precede FOV nella proiezione;
+  focus distance è distanza positiva lungo l'asse ottico nelle unità scena.
+  `dof_aperture` rimane gain legacy derivato, non un secondo f-stop authored.
+  Iris blades e highlight gain diversi da zero sono rifiutati prima del render.
+- `resolved_sample_frames(canvas, blur)` usa lo scheduler temporale C3D, include
+  frame interi e tutti i sottocampioni shutter (180°/8 nella acceptance).
+  Il lowering Motion valuta camera e TRS/opacity dei layer agli stessi istanti.
+  `transform_samples` V3 trasporta TRS world già in coordinate renderer,
+  con origine canvas centrata anche per le primitive e timestamp double.
+  Niente parent/animation/follow_path simultanei: l'authority è una sola.
+- I consumer tipizzato e compatibility usano `sample_resolved_transform`:
+  timestamp esatto → valore memorizzato; fra timestamp interpolazione
+  TRS (slerp per orientamento), quindi NON equivalenza authored arbitraria.
+  Il provider runtime camera è materializzato dal compilatore agli stessi
+  istanti; il programma immutabile conserva valori, non callback o scena Motion.
+- Supporto iniziale campioni layer: Image/Color/Text/Shape senza tracce extra;
+  altre capability falliscono esplicitamente. Questo estende il contratto
+  esistente senza una nuova authority di regia o una cache parallela.
+
+#### Demolition debt — integer transform bake
+- Owner: manutentore del confine Motion/RenderPlan.
+- Reason: i job senza shutter e senza lista esplicita mantengono il formato
+  storico a keyframe interi; non sono dichiarati exact sub-frame.
+- Exit condition: tutti i producer esigono campioni risolti e il corpus
+  compatibility/typed ha equivalenza verificata per i payload supportati.
+- Equivalence gate: camera bake roundtrip + consumer typed raw pixel gate.
+- Removal scope: emissione dense integer TRS in RenderPlanLoweringSamples,
+  non le AnimationTrack authored generiche del renderer.
+- Status: ACTIVE. Il passaggio non elimina il renderer DoF C3D.
+
+### Camera parented e shutter: note storiche del checkpoint precedente
 - `makeCameraSampleProvider(rig, scene, fingerprint)` risolve il parent nel
   `MotionScene` al tempo frazionario richiesto. Il chiamante deve dedicare la
   scena al provider, mantenere rig e gerarchia immutabili e includere entrambi
@@ -83,9 +120,10 @@
 - `RenderPlanLoweringOptions::cameraSampleFrames` accetta gli istanti esatti
   forniti dallo scheduler C3D, che rimane l'unica autorità del calendario.
   Il JSON conserva la precisione double dei timestamp. Se la lista è vuota il
-  bake usa ancora i frame interi; tra campioni C3D interpola e non è garantita
-  parità per curve arbitrarie. Nessun produttore di job è ancora collegato a
-  questa opzione e i layer restano campionati ai frame interi.
+  bake senza shutter usa ancora i frame interi; tra campioni C3D interpola e
+  non è garantita parità per curve arbitrarie. Con shutter il lowering consuma
+  il calendario C3D e risolve anche i layer supportati agli stessi timestamp,
+  come descritto nel contratto aggiornato sopra.
 - Il pass `BokehPass` del renderer di prova CM3D non forza più alpha opaco;
   ciò non certifica un handoff RGBA animato GPU-native o la qualità dei bordi.
   `render/` resta attualmente un harness e non un renderer di produzione.

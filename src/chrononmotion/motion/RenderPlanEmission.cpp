@@ -123,6 +123,21 @@ namespace chrononmotion::motion {
                 writeFloats(writer, layer.rotation, layer.rotation_dimensions);
             }
 
+            if (!layer.transform_samples.empty()) {
+                writer.key("transform_samples");
+                writer.beginArray();
+                for (const auto& sample : layer.transform_samples) {
+                    writer.item();
+                    writer.beginObject();
+                    writer.key("frame"); writer.exactNumber(sample.frame);
+                    writer.key("position"); writeFloats(writer, sample.position, 3);
+                    writer.key("scale"); writeFloats(writer, sample.scale, 3);
+                    writer.key("rotation_deg"); writeFloats(writer, sample.rotation_deg, 3);
+                    writer.key("opacity"); writer.number(sample.opacity);
+                    writer.endObject();
+                }
+                writer.endArray();
+            }
             writer.key("enable_3d");
             writer.boolean(layer.enable_3d);
             writer.key("screen_space");

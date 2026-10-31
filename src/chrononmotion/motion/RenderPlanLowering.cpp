@@ -304,15 +304,71 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: temporal motion blur requires shutter_angle in (0, 360] and samples in [2, 64]");
         plan.temporal_motion_blur = blur;
     }
+    // The renderer owns shutter scheduling. Evaluate camera AND world layer
+    // transforms at its exact timestamps instead of interpolating integer bakes.
+    std::vector<double> sampleFrames = options.cameraSampleFrames;
+    if (sampleFrames.empty() && plan.temporal_motion_blur)
+        sampleFrames = chronon3d::render_plan::resolved_sample_frames(plan.canvas, plan.temporal_motion_blur);
+    if (!sampleFrames.empty()) {
+        if (plan.schema != kRenderPlanSchemaV3 ||
+            (scene.layerCount() != 0 && sampleFrames.size() > kMaximumBakedTransformSamples / scene.layerCount()))
+            throw std::invalid_argument("lowerToRenderPlan: resolved transform bake requires bounded V3 samples");
+        for (auto& output : plan.layers) {
+            const auto authored = std::find_if(metadata.begin(), metadata.end(), [&](const Layer& layer) {
+                return std::to_string(layer.id) == output.id;
+            });
+            if (authored == metadata.end() || authored->isNull()) continue;
+            if (output.type != LayerType::Image && output.type != LayerType::Color &&
+                output.type != LayerType::Text && output.type != LayerType::Shape)
+                throw std::invalid_argument("lowerToRenderPlan: exact shutter layer type is unsupported");
+            if (output.animation) {
+                for (const auto& track : output.animation->tracks)
+                    if (track.property != "position" && track.property != "scale" &&
+                        track.property != "rotation" && track.property != "opacity")
+                        throw std::invalid_argument("lowerToRenderPlan: exact shutter cannot discard non-transform animation");
+            }
+            output.animation.reset();
+            output.transform_samples.reserve(sampleFrames.size());
+            for (double frame : sampleFrames) {
+                const double wholeFrame = std::floor(frame);
+                int whole = static_cast<int>(wholeFrame);
+                float fraction = static_cast<float>(frame - wholeFrame);
+                if (fraction >= 1.f) { ++whole; fraction = 0.f; }
+                scene.evaluate(MotionTime{whole, scene.fps(), fraction});
+                const auto compiled = scene.compile();
+                const auto transform = std::find_if(compiled.transforms.begin(), compiled.transforms.end(),
+                    [&](const auto& value) { return value.id == authored->id; });
+                if (transform == compiled.transforms.end())
+                    throw std::invalid_argument("lowerToRenderPlan: missing resolved shutter layer");
+                const bool primitive = output.type == LayerType::Text || output.type == LayerType::Shape;
+                const auto pose = resolvePose(transform->world, transform->opacity, transform->visible,
+                    scene.state(authored->id).local.anchor, primitive, output.type == LayerType::Image);
+                // Reflect the complete world rotation, not just Euler Z.
+                // The consumer reconstructs qZ*qY*qX, so use its inverse.
+                Matrix4 rotation;
+                const float sx = pose.scale.x, sy = pose.scale.y, sz = pose.scale.z;
+                rotation.makeBasis(
+                    Vector3{transform->world.elements[0] / sx, transform->world.elements[1] / sx, -transform->world.elements[2] / sx},
+                    Vector3{transform->world.elements[4] / sy, transform->world.elements[5] / sy, -transform->world.elements[6] / sy},
+                    Vector3{-transform->world.elements[8] / sz, -transform->world.elements[9] / sz, transform->world.elements[10] / sz});
+                const auto euler = chrononCameraEuler(rotation);
+                output.transform_samples.push_back({frame,
+                    {pose.position.x, pose.position.y, -pose.position.z},
+                    {sx, sy, sz},
+                    {math::radToDeg(euler[0]), math::radToDeg(euler[1]), math::radToDeg(euler[2])},
+                    pose.opacity});
+            }
+        }
+    }
     if (options.cameraRig && options.bakeResolvedCameraSamples) {
         const std::size_t frameCount = static_cast<std::size_t>(
             std::max<std::int64_t>(1, plan.canvas.duration.integral()));
         if (options.cameraSampleFrames.empty() && frameCount > 65536)
             throw std::invalid_argument("lowerToRenderPlan: resolved camera sample sequence exceeds 65536 frames");
-        if (!options.cameraSampleFrames.empty()) {
+        if (!sampleFrames.empty()) {
             std::vector<chronon3d::render_plan::CameraSamplePlan> explicitSamples;
-            explicitSamples.reserve(options.cameraSampleFrames.size());
-            for (double frame : options.cameraSampleFrames) {
+            explicitSamples.reserve(sampleFrames.size());
+            for (double frame : sampleFrames) {
                 const double wholeFrame = std::floor(frame);
                 int whole = static_cast<int>(wholeFrame);
                 float fraction = static_cast<float>(frame - wholeFrame);

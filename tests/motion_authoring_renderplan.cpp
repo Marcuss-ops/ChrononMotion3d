@@ -1363,6 +1363,25 @@ void testTypedChronon3dLowering() {
     check(physicalDofCamera.f_stop == 2.8f && physicalDofCamera.dof_f_stop == 2.8f &&
           physicalDofCamera.dof_enabled,
           "camera lowering preserves physical f-stop and enables the RenderPlan physical DoF contract");
+    cameraPose.irisBlades = 6;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "camera lowering rejects unsupported iris shaping before emission");
+    cameraPose.irisBlades = 0;
+    cameraPose.highlightGain = 1.f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "camera lowering rejects unsupported highlight weighting before emission");
+    cameraPose.highlightGain = 0.f;
+    for (float fov : {10.f, 120.f}) {
+        cameraPose.fov = fov;
+        check(lowerCameraPose(cameraPose, 0.1f, 2000.f).fov_deg == fov,
+              "shared camera contract accepts both FOV endpoints");
+    }
+    for (float fov : {9.99f, 120.01f, std::numeric_limits<float>::quiet_NaN()}) {
+        cameraPose.fov = fov;
+        check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+              "shared camera contract rejects out-of-range and non-finite FOV");
+    }
+    cameraPose.fov = 50.f;
     cameraPose.maxBlur = 300.f;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
           "camera lowering rejects depth-of-field values outside the RenderPlan schema bounds");
@@ -1420,14 +1439,17 @@ void testTypedChronon3dLowering() {
     staticLensRig.setFStop(2.8f).setIrisBlades(6).setHighlightGain(1.5f);
     auto staticLensOptions = animatedDofOptions;
     staticLensOptions.cameraRig = &staticLensRig;
+    check(throwsInvalid([&] { (void)lowerToRenderPlan(cameraOnlyScene, staticLensOptions); }),
+          "a static unsupported iris/highlight lens is rejected before renderer admission");
+    staticLensRig.setIrisBlades(0).setHighlightGain(0.f);
     const auto staticLensPlan = lowerToRenderPlan(cameraOnlyScene, staticLensOptions);
     check(staticLensPlan.camera && staticLensPlan.camera->dof_enabled,
           "a fully static lens still enables DOF in the lowered base camera");
     check(staticLensPlan.camera && staticLensPlan.camera->dof_f_stop == 2.8f &&
           staticLensPlan.camera->dof_focus_distance == 480.f &&
           staticLensPlan.camera->dof_max_blur == 30.f &&
-          staticLensPlan.camera->dof_iris_blades == 6 &&
-          staticLensPlan.camera->dof_highlight_gain == 1.5f,
+          staticLensPlan.camera->dof_iris_blades == 0 &&
+          staticLensPlan.camera->dof_highlight_gain == 0.f,
           "every statically authored lens field reaches the lowered base camera");
     (void)loweredCameraPoseDof;
     check(throwsInvalid([&] {

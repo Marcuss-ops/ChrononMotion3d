@@ -314,6 +314,44 @@ void checkCameraBake() {
         checkNear(resolvedSubframeAimed.rotation_deg[axis], expectedSubframeAimed.rotation_deg[axis], 1e-3f,
                   "aimed runtime provider keeps look-at/roll parity at subframe time");
 
+    section("consumer shutter calendar resolves camera and nonlinear layer motion together");
+    MotionScene shutterScene("exact layer shutter", kFps);
+    auto& shutterLayer = shutterScene.addContent(7, "shutter card",
+        ContentRef::image("bake-canary", Vector2(64.f, 64.f)));
+    shutterLayer.is3D = true;
+    shutterLayer.lifetime = FrameRange::between(0, 2);
+    shutterLayer.tracks.position.add(0.f, Vector3{0.f, 0.f, 0.f}, Easing::easeInOut())
+        .add(2.f / kFps, Vector3{30.f, 10.f, -15.f});
+    shutterLayer.tracks.opacity.add(0.f, .2f, Easing::easeInOut()).add(2.f / kFps, .9f);
+    shutterScene.setShutter(ShutterSettings{180.f, 8});
+    CameraRig shutterRig(80, 50.f, 16.f / 9.f);
+    auto shutterOptions = options;
+    shutterOptions.cameraRig = &shutterRig;
+    const auto shutterPlan = lowerToRenderPlan(shutterScene, shutterOptions);
+    const auto calendar = chronon3d::render_plan::resolved_sample_frames(shutterPlan.canvas, shutterPlan.temporal_motion_blur);
+    check(calendar.size() == 27, "three frames include integer times plus eight shutter samples each");
+    check(shutterPlan.camera_samples && shutterPlan.camera_samples->size() == calendar.size(),
+          "camera bake consumes the renderer-owned shutter calendar");
+    const auto& resolvedLayer = shutterPlan.layers.front();
+    check(!resolvedLayer.animation && resolvedLayer.transform_samples.size() == calendar.size(),
+          "exact layer bake replaces approximate integer transform tracks");
+    for (std::size_t index = calendar.size(); index-- > 0;) {
+        const double time = calendar[index];
+        const int whole = static_cast<int>(std::floor(time));
+        shutterScene.evaluate(MotionTime{whole, kFps, static_cast<float>(time - whole)});
+        const auto expected = shutterScene.compile().transforms.front();
+        const auto& sample = resolvedLayer.transform_samples[index];
+        check(sample.frame == time, "layer shutter timestamp is not rounded");
+        checkNear(sample.position[0], expected.world.elements[12], kEps, "nonlinear layer X matches exact Motion evaluation");
+        checkNear(sample.position[2], -expected.world.elements[14], kEps, "layer Z keeps the renderer conversion at shutter times");
+        checkNear(sample.opacity, expected.visible ? expected.opacity : 0.f, kEps, "layer opacity matches exact Motion evaluation");
+    }
+    const auto shutterJson = nlohmann::json::parse(renderPlanToJson(shutterPlan));
+    check(shutterJson["layers"][0]["transform_samples"].size() == calendar.size(),
+          "resolved layer samples are emitted rather than silently dropped");
+    for (std::size_t index = 0; index < calendar.size(); ++index)
+        check(shutterJson["layers"][0]["transform_samples"][index]["frame"].get<double>() == calendar[index],
+              "layer timestamps preserve double precision through JSON");
     (void)layer;
 }
 

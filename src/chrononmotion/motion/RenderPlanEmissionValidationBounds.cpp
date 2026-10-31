@@ -1,4 +1,5 @@
 #include "RenderPlanEmissionInternal.hpp"
+#include <chronon3d/render_plan/camera_contract.hpp>
 
 #include <cmath>
 
@@ -8,6 +9,7 @@ using chronon3d::render_plan::RenderBudget;
 using chronon3d::render_plan::RenderPlan;
 
 std::string emissionCameraProblem(const CameraPlan& camera) {
+    if (const auto problem = chronon3d::render_plan::camera_contract_problem(camera)) return *problem;
 
     const auto finite = [](float value) { return std::isfinite(value); };
     for (const float value : camera.position)
