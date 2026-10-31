@@ -992,6 +992,10 @@ void testTypedChronon3dLowering() {
                     : ContentRef::image("primitive", {20.f, 20.f}));
             primitive.transform.position.set(4.f, 5.f, -12.f);
             primitive.lifetime = FrameRange::between(0, lastFrame);
+            if (lastFrame != 0) {
+                primitive.tracks.position.add(0.f, Vector3(4.f, 5.f, -12.f))
+                    .add(1.f / 30.f, Vector3(4.f, 5.f, -14.f));
+            }
             RenderPlanLoweringOptions primitiveOptions;
             primitiveOptions.width = 640;
             primitiveOptions.height = 360;
@@ -1008,6 +1012,11 @@ void testTypedChronon3dLowering() {
                           primitiveLayer.animation->tracks.front().keyframes.front().value[2] ==
                               primitiveLayer.position[2],
                       "primitive animated depth agrees with the static base depth");
+                if (primitiveLayer.animation && !primitiveLayer.animation->tracks.empty() &&
+                    !primitiveLayer.animation->tracks.front().keyframes.empty()) {
+                    checkNear(primitiveLayer.animation->tracks.front().keyframes.back().value[2],
+                              14.f, 1e-5f, "primitive animated depth preserves the mirrored Z change");
+                }
             }
         }
     }
@@ -1365,7 +1374,7 @@ void testTypedChronon3dLowering() {
           "camera lowering preserves physical f-stop and enables the RenderPlan physical DoF contract");
     cameraPose.irisBlades = 6;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
-          "camera lowering rejects unsupported iris shaping before emission");
+          "camera lowering rejects unsupported iris blades before emission");
     cameraPose.irisBlades = 0;
     cameraPose.highlightGain = 1.f;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),

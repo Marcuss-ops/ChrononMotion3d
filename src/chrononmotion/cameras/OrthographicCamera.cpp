@@ -77,10 +77,25 @@ void OrthographicCamera::updateProjectionMatrix() {
     this->projectionMatrixInverse.copy(this->projectionMatrix).invert();
 }
 
+// Adapted from threepp commit 61d02da6c5c00e7718216bdd89f98d437aab3c99 (MIT).
+void OrthographicCamera::copy(const Object3D& source, bool recursive) {
+    Camera::copy(source, recursive);
+    if (const auto* camera = source.as<OrthographicCamera>()) {
+        left = camera->left;
+        right = camera->right;
+        top = camera->top;
+        bottom = camera->bottom;
+    }
+}
+
 std::shared_ptr<OrthographicCamera> OrthographicCamera::create(
         float left, float right,
         float top, float bottom,
         float near, float far) {
 
     return std::make_shared<OrthographicCamera>(left, right, top, bottom, near, far);
+}
+
+std::shared_ptr<Object3D> OrthographicCamera::createDefault() {
+    return create();
 }

@@ -2,6 +2,7 @@
 
 - **Repository:** `https://github.com/markaren/threepp`
 - **Pinned audit revision:** `e2b165ece3904012d97a08029e0bd6cd5252892a` (the local `upstream/master` ref when this inventory was created).
+- **Selective camera-clone port revision:** `61d02da6c5c00e7718216bdd89f98d437aab3c99` (inspected in upstream HEAD `8518a6c22d051775c45dbd0c04a3ba92e92a5366`). This is a separate, limited port; it does not change the pinned audit revision for the rest of the fork.
 - **Upstream test framework:** Catch2 v3, linked by upstream's `tests/CMakeLists.txt` as `Catch2::Catch2WithMain`; each suite is a separate executable.
 - **Scope requested:** `tests/math`, `tests/core`, and `tests/animation` at the pinned revision. Their upstream file inventories are discoverable through the GitHub tree API and the revision is recorded above.
 
@@ -34,6 +35,7 @@ ChrononMotion has no third-party dependencies and its boundary test rejects conf
 | `tests/animation/Interpolants_test.cpp` | linear clamp/vector interpolation, discrete holds, cubic key hits, normalized quaternion slerp |
 | `tests/animation/KeyframeTrack_test.cpp` | malformed input rejection, sample stride, retained interpolation selection |
 | `tests/core/BufferAttribute_test.cpp` | strided vector access and independent clone storage |
+| `tests/objects/Clone_test.cpp` at `61d02da6c5c00e7718216bdd89f98d437aab3c99` | Camera, PerspectiveCamera and OrthographicCamera clone type and projection state; non-camera renderer classes excluded |
 
 Catch2's assertion vocabulary is translated to `motion_check.hpp`; `threepp` names map to the corresponding `chrononmotion` API. Runtime-specific assertions and APIs removed from this fork are excluded rather than stubbed. The `Object3D` assertions are restricted to retained graph semantics; they do not reintroduce renderer helper, culling, or Layer behavior. EventDispatcher mutation behavior is intentionally adapted: the fork snapshots subscription identities but checks liveness before each callback, so listeners removed earlier in the same dispatch are skipped; the upstream copied-list implementation invokes the already-copied listener. This regression pins the fork contract rather than asserting parity for that behavior.
 
