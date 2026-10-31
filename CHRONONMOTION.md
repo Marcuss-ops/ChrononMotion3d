@@ -671,3 +671,13 @@ Proven across four headless offscreen executables:
   image via mesh deformation (`RigProgram` + `PinWarp`/`Wave` +
   `MotionSceneBridge::applyRigFrame`) into PPM or MP4. See `render/README.md`.
 
+## Camera surface rule (2026-10-31)
+
+The camera boundary is one authority per side. `CameraRig` owns authoring and
+sampling; C3D owns projection, DoF and shutter implementation and consumes only
+resolved state. The anti-rigrow rule in `docs/BOUNDARY_C3D.md` (S0) makes a new
+motion `Camera*` header legal only as preset data or a registered geometric
+service; editorial moves are presets/packs, not mechanism headers. The consumer
+census and the blocked S2/S3 evidence live in
+`Chronon3d/docs/evidence/camera-surface-consolidation/`.
+

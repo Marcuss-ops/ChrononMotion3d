@@ -143,6 +143,36 @@
   Chiusura = aggiungere emissione `shadow_blur/shadow_opacity` al lowering
   quando C3D espone i relativi per-layer kernel; NON duplicare i campi altrove.
 
+### S0 — Guardrail anti-rigrow della superficie camera (2026-10-31)
+
+Regola vincolante per ogni nuova superficie camera. Non ridiscute le zone
+CHIUSE C1–C7: rende meccanico il criterio con cui si accetta un nuovo file o
+campo.
+
+- **Lato CM3D (`motion/`)**: un nuovo header `Camera*` è ammesso solo come
+  (a) preset-dato (`presets::`, tabella waypoint) o (b) servizio geometrico
+  registrato in questa doc. Una mossa editoriale (recipe, sequence,
+  trajectory, path, choreography, shot) è **contenuto**: entra in un preset o
+  in un pack `ChrononTemplate`, non in un header di meccanismo. La firma
+  `apply*(CameraRig&, ...)` fuori dal meccanismo unico non è ammessa.
+- **Lato C3D**: il renderer possiede l'implementazione di proiezione, DoF e
+  shutter; non possiede vocabolario editoriale (recipe/sequence/trajectory).
+  Un nuovo campo camera è ammesso solo se (1) cambia i pixel, (2) ha un
+  consumatore reale, (3) ha una sola unità authored sul confine. I dettagli
+  di proiezione `camera_projection_{matrix,clip,frustum}` vivono in
+  `math/detail/` e non sono API SDK.
+- **Doppia verità vietata**: ogni campo trasportato ha gamme fail-closed
+  identiche sui due lati (`camera_contract_problem` ↔ lowering validation),
+  un solo punto di ammissione (`camera_contract.hpp` +
+  `camera_projection_contract.hpp`) e un default che non arma kernel assenti.
+- **Gate**: `chrononmotion_boundary` verde; `tools/check_public_headers.py`
+  verde; evidenza consumer in
+  `Chronon3d/docs/evidence/camera-surface-consolidation/`.
+
+La regola non chiude S2/S3: il collasso degli applier resta subordinato al fix
+F3 (`planPosition` vs `planAnimationPosition`) e la dismissione di
+`dof_aperture` alla migrazione coordinata di schema, producer e consumer.
+
 ## Regola di manutenzione
 
 Ogni campo che passa il confine deve avere: (1) gamma fail-closed identica
