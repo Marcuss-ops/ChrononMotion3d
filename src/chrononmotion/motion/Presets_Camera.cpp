@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 // ChrononMotion — presets that move the camera rig.
 //
 // Every one of these samples the rig's *current* pose and keys the end of the
@@ -24,12 +25,14 @@ namespace chrononmotion::motion::presets {
 
     namespace {
         void cameraPushImpl(CameraRig& rig, int inFrame, int duration, float distance, float fps) {
+            CameraRigTrackBatch tracks(rig);
             const float t0 = frameToTime(inFrame, fps);
             const float t1 = frameToTime(inFrame + duration, fps);
             CameraPose start = rig.sample(t0);
             CameraPose end = start;
             CameraRig::dolly(end, distance);
-            keyVector3(rig.positionTrack(), t0, t1, start.position, end.position, Easing::easeInOut());
+            keyVector3(tracks.positionTrack(), t0, t1, start.position, end.position, Easing::easeInOut());
+            tracks.apply(rig);
         }
 
         void cameraOrbitImpl(CameraRig& rig, int inFrame, int duration, float yaw, float pitch, float fps) {
@@ -37,39 +40,44 @@ namespace chrononmotion::motion::presets {
             const float t1 = frameToTime(inFrame + duration, fps);
             const unsigned int steps = static_cast<unsigned int>(std::max(duration, 2));
             const CameraPose start = rig.sample(t0);
-            auto& position = rig.positionTrack();
+            CameraRigTrackBatch tracks(rig);
             for (unsigned int step = 0; step <= steps; ++step) {
                 const float progress = static_cast<float>(step) / static_cast<float>(steps);
                 CameraPose sample = start;
                 CameraRig::orbit(sample, yaw * progress, pitch * progress);
-                position.add(t0 + (t1 - t0) * progress, sample.position,
-                             step == steps ? Easing::linear() : Easing::easeInOut());
+                tracks.positionTrack().add(t0 + (t1 - t0) * progress, sample.position,
+                                           step == steps ? Easing::linear() : Easing::easeInOut());
+                if (tracks.size() >= 4096) tracks.applyAndClear(rig);
             }
+            tracks.apply(rig);
         }
 
         void cameraShakeImpl(CameraRig& rig, int inFrame, int duration, float amplitude, float fps) {
             const float t0 = frameToTime(inFrame, fps);
             const CameraPose base = rig.sample(t0);
             constexpr int steps = 16;
-            auto& track = rig.positionTrack();
+            CameraRigTrackBatch tracks(rig);
             for (int i = 0; i <= steps; ++i) {
                 const int frame = inFrame + (duration * i) / steps;
                 const float progress = static_cast<float>(i) / static_cast<float>(steps);
                 const float decay = 1.f - progress;
                 const float shakeX = std::sin(progress * math::TWO_PI * 2.f) * decay;
                 const float shakeY = std::sin(progress * math::TWO_PI * 3.f) * decay;
-                track.add(frameToTime(frame, fps),
+                tracks.positionTrack().add(frameToTime(frame, fps),
                     Vector3(base.position.x + amplitude * shakeX,
                             base.position.y - amplitude * 0.6f * shakeY, base.position.z),
                     Easing::linear());
             }
+            tracks.apply(rig);
         }
 
         void cameraFovImpl(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps) {
             const float t0 = frameToTime(inFrame, fps);
             const float t1 = frameToTime(inFrame + duration, fps);
-            rig.fovTrack().add(t0, fromFov, Easing::easeInOut());
-            rig.fovTrack().add(t1, toFov, Easing::linear());
+            CameraRigTrackBatch tracks(rig);
+            tracks.fovTrack().add(t0, fromFov, Easing::easeInOut());
+            tracks.fovTrack().add(t1, toFov, Easing::linear());
+            tracks.apply(rig);
         }
     }
 
@@ -93,7 +101,9 @@ namespace chrononmotion::motion::presets {
         CameraPose end = start;
         CameraRig::pan(end, delta);
 
-        keyVector3(rig.positionTrack(), t0, t1, start.position, end.position, Easing::easeInOut());
+        CameraRigTrackBatch tracks(rig);
+        keyVector3(tracks.positionTrack(), t0, t1, start.position, end.position, Easing::easeInOut());
+        tracks.apply(rig);
     }
 
     void orbitMild(CameraRig& rig, int inFrame, int duration, float fps) {
@@ -128,8 +138,10 @@ namespace chrononmotion::motion::presets {
         const float t0 = frameToTime(inFrame, fps);
         const float t1 = frameToTime(inFrame + duration, fps);
 
-        rig.focusDistanceTrack().add(t0, fromDistance, Easing::easeInOut());
-        rig.focusDistanceTrack().add(t1, toDistance, Easing::linear());
+        CameraRigTrackBatch tracks(rig);
+        tracks.focusDistanceTrack().add(t0, fromDistance, Easing::easeInOut());
+        tracks.focusDistanceTrack().add(t1, toDistance, Easing::linear());
+        tracks.apply(rig);
     }
 
     void cameraShake(CameraRig& rig, int inFrame, int duration, float amplitude, float fps) {
@@ -196,8 +208,7 @@ namespace chrononmotion::motion::presets {
             basePoses.push_back(rig.sample(time));
         }
 
-        auto& position = rig.positionTrack();
-        auto& roll = rig.rollTrack();
+        CameraRigTrackBatch tracks(rig);
         for (int i = 0; i <= intervals; ++i) {
             const float time = times[static_cast<std::size_t>(i)];
             const float progress = (time - start_s) / (end_s - start_s);
@@ -207,11 +218,13 @@ namespace chrononmotion::motion::presets {
             offset.multiplyScalar(window);
             Vector3 posePosition = basePoses[static_cast<std::size_t>(i)].position;
             posePosition.add(offset);
-            position.add(time, posePosition, Easing::linear());
+            tracks.positionTrack().add(time, posePosition, Easing::linear());
 
             const Vector3 rollOffset = evaluateDriverOffset(rollDriver, time, Vector3{});
-            roll.add(time, basePoses[static_cast<std::size_t>(i)].roll + rollOffset.z * window, Easing::linear());
+            tracks.rollTrack().add(time, basePoses[static_cast<std::size_t>(i)].roll + rollOffset.z * window, Easing::linear());
+            if (tracks.size() >= 4096) tracks.applyAndClear(rig);
         }
+        tracks.apply(rig);
     }
 
     void cameraFovBreath(CameraRig& rig, int inFrame, int duration, float fromFov, float toFov, float fps) {
@@ -241,9 +254,11 @@ namespace chrononmotion::motion::presets {
         // middle, then a long soft landing. That asymmetry is what the eye reads
         // as a dive, where the symmetric ease a plain push uses reads as a slide.
         const Easing slam = Easing::cubicBezier(0.72f, 0.f, 0.2f, 1.f);
-        keyVector3(rig.positionTrack(), t0, t1, start.position, end.position, slam);
-        rig.fovTrack().add(t0, fromFov, slam);
-        rig.fovTrack().add(t1, toFov, Easing::linear());
+        CameraRigTrackBatch tracks(rig);
+        keyVector3(tracks.positionTrack(), t0, t1, start.position, end.position, slam);
+        tracks.fovTrack().add(t0, fromFov, slam);
+        tracks.fovTrack().add(t1, toFov, Easing::linear());
+        tracks.apply(rig);
     }
 
     void cameraDrift(CameraRig& rig, int inFrame, int duration,
@@ -261,7 +276,7 @@ namespace chrononmotion::motion::presets {
         // step is what keeps the camera alive across the tail of the shot.
         const CameraPose base = rig.sample(t0);
         const int steps = std::max(2, static_cast<int>(std::round(span * fps / 6.f)));
-        auto& track = rig.positionTrack();
+        CameraRigTrackBatch tracks(rig);
         for (int i = 0; i <= steps; ++i) {
             const float time = i == steps
                                        ? t1
@@ -270,8 +285,10 @@ namespace chrononmotion::motion::presets {
             CameraPose pose = base;
             CameraRig::orbit(pose, math::degToRad(yawRateDegPerSec) * elapsed,
                              math::degToRad(pitchRateDegPerSec) * elapsed);
-            track.add(time, pose.position, Easing::linear());
+            tracks.positionTrack().add(time, pose.position, Easing::linear());
+            if (tracks.size() >= 4096) tracks.applyAndClear(rig);
         }
+        tracks.apply(rig);
     }
 
 }// namespace chrononmotion::motion::presets

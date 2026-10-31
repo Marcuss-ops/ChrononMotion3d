@@ -1,7 +1,6 @@
 #include "RenderPlanLoweringInternal.hpp"
 #include <chronon3d/render_plan/camera_sample_provider.hpp>
 #include <chronon3d/render_plan/camera_contract.hpp>
-#include "chrononmotion/math/Finite.hpp"
 #include "chrononmotion/motion/CompiledScene.hpp"
 #include "chrononmotion/motion/Layer.hpp"
 
@@ -26,49 +25,16 @@ using namespace chrononmotion::motion::lowering_detail;
 namespace chrononmotion::motion {
 
 CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPlane) {
-    ensureFinite(pose.position.x, "camera position");
-    ensureFinite(pose.position.y, "camera position");
-    ensureFinite(pose.position.z, "camera position");
-    ensureFinite(pose.fov, "camera FOV");
-    ensureFinite(nearPlane, "camera near plane");
-    ensureFinite(farPlane, "camera far plane");
     Quaternion orientation = pose.orientation;
     const float orientationLengthSq = orientation.lengthSq();
-    if (pose.fov < 10.f || pose.fov > 120.f || nearPlane <= 0.f || farPlane <= nearPlane ||
-        !std::isfinite(orientationLengthSq) || orientationLengthSq <= 1e-12f)
-        throw std::invalid_argument("lowerCameraPose: FOV, clipping planes, and orientation must be valid");
-    ensureFinite(pose.target.x, "camera target");
-    ensureFinite(pose.target.y, "camera target");
-    ensureFinite(pose.target.z, "camera target");
-    ensureFinite(pose.focalLength, "camera focal length");
-    ensureFinite(pose.sensorWidth, "camera sensor width");
-    ensureFinite(pose.lensShift.x, "camera lens shift x");
-    ensureFinite(pose.lensShift.y, "camera lens shift y");
-    ensureFinite(pose.focusDistance, "camera focus distance");
-    ensureFinite(pose.maxBlur, "camera maximum blur");
-    ensureFinite(pose.fStop, "camera f-stop");
-    ensureFinite(pose.highlightGain, "camera highlight gain");
-    ensureFinite(pose.roll, "camera roll");
+    if (!std::isfinite(orientationLengthSq) || orientationLengthSq <= 1e-12f)
+        throw std::invalid_argument("lowerCameraPose: orientation must be finite and non-degenerate");
     if (pose.hasTarget || pose.roll != 0.f)
         throw std::invalid_argument(
             "lowerCameraPose: resolve look-at and roll into orientation before lowering; RenderPlan has no target/roll metadata channels");
-    if (pose.sensorWidth < 1.f || pose.sensorWidth > 100.f ||
-        std::abs(pose.lensShift.x) > 1.f || std::abs(pose.lensShift.y) > 1.f ||
-        (pose.focalLength != 0.f && (pose.focalLength < 12.f || pose.focalLength > 200.f)) ||
-        (pose.fStop != 0.f && (pose.fStop < 0.7f || pose.fStop > 32.f)) ||
-        pose.irisBlades < 0 || pose.irisBlades > 12 ||
-        pose.highlightGain < 0.f || pose.highlightGain > 8.f)
-        throw std::invalid_argument("lowerCameraPose: physical lens/iris settings are outside the RenderPlan contract");
-    if (!std::isfinite(pose.focusDistance) || pose.focusDistance < 0.f || pose.focusDistance > 10'000'000.f ||
-        pose.maxBlur < 0.f || pose.maxBlur > 256.f)
-        throw std::invalid_argument(
-            "lowerCameraPose: depth-of-field values are outside the RenderPlan contract");
     const bool depthOfFieldAuthored = pose.focusDistance != 0.f || pose.maxBlur != 0.f ||
                                       pose.fStop != 0.f || pose.irisBlades != 0 || pose.highlightGain != 0.f;
     const bool depthOfFieldEnabled = pose.fStop > 0.f;
-    if (depthOfFieldEnabled && pose.focusDistance <= 0.f)
-        throw std::invalid_argument(
-            "lowerCameraPose: depth of field with an aperture requires a positive focus distance");
     // CameraRig sampling resolves look-at and roll into orientation. The public
     // pose helper rejects unresolved authoring metadata so direct calls cannot
     // silently drop those fields.
@@ -105,13 +71,11 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     camera.iris_blades = pose.irisBlades;
     if (depthOfFieldAuthored) {
         camera.dof_enabled = depthOfFieldEnabled;
-        // RenderPlan legacy transport field, gain domain: derived from the
-        // authored f/stop through the sanctioned bridge, never authored here.
-        camera.dof_aperture = blurGainFromFStop(pose.fStop);
-        if (pose.focusDistance > 0.f) camera.dof_focus_distance = pose.focusDistance;
-        if (pose.maxBlur > 0.f) camera.dof_max_blur = pose.maxBlur;
-        camera.dof_f_stop = pose.fStop;
-        camera.dof_iris_blades = pose.irisBlades;
+        // f-stop is the sole authored aperture value. Nested wire aliases are
+        // accepted by the C3D decoder only; Motion never emits them.
+        if (depthOfFieldEnabled || pose.focusDistance != 0.f)
+            camera.dof_focus_distance = pose.focusDistance;
+        if (pose.maxBlur != 0.f) camera.dof_max_blur = pose.maxBlur;
         camera.dof_highlight_gain = pose.highlightGain;
     }
     if (const auto problem = chronon3d::render_plan::camera_contract_problem(camera))
@@ -154,12 +118,10 @@ nlohmann::json cameraSamplesToJson(
             {"sensor_width_mm", camera.sensor_width_mm}, {"lens_shift", camera.lens_shift},
             {"dof", {{"enabled", camera.dof_enabled},
                      {"focus_distance", camera.dof_focus_distance},
-                     {"aperture", camera.dof_aperture}, {"max_blur", camera.dof_max_blur}}}};
+                     {"max_blur", camera.dof_max_blur}}}};
         if (camera.focal_length_mm > 0.f) value["focal_length_mm"] = camera.focal_length_mm;
         if (camera.f_stop > 0.f) value["f_stop"] = camera.f_stop;
         value["iris_blades"] = camera.iris_blades;
-        if (camera.dof_f_stop > 0.f) value["dof"]["f_stop"] = camera.dof_f_stop;
-        value["dof"]["iris_blades"] = camera.dof_iris_blades;
         value["dof"]["highlight_gain"] = camera.dof_highlight_gain;
         result.push_back({{"frame", sample.frame}, {"camera", std::move(value)}});
     }

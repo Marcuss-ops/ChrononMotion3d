@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 #include "chrononmotion/motion/CameraTrajectory.hpp"
 
 #include "chrononmotion/math/Finite.hpp"
@@ -243,12 +244,13 @@ void authorCameraTrajectory(CameraRig& rig, const CameraTrajectory& trajectory,
     Vector3 lastTangent{};
     Vector3 finalTarget = fallbackTarget;
     float finalRoll = 0.f;
+    CameraRigTrackBatch tracks(rig);
     for (unsigned long long i = 0; i <= sampleCount; ++i) {
         const float pathFrame = std::min(duration,
             static_cast<float>(i) / static_cast<float>(samplesPerFrame));
         const float time = (static_cast<float>(startFrame) + pathFrame) / fps;
         const auto pose = trajectory.sample(pathFrame);
-        rig.positionTrack().add(time, pose.position, Easing::linear());
+        tracks.position(time, pose.position, Easing::linear());
         if (options.orientAlongPath) {
             Vector3 direction = pose.tangent;
             if (direction.lengthSq() > 1e-12f) {
@@ -260,18 +262,20 @@ void authorCameraTrajectory(CameraRig& rig, const CameraTrajectory& trajectory,
             finalTarget = direction.lengthSq() > 1e-12f
                 ? Vector3{}.addVectors(pose.position, direction)
                 : pose.target.value_or(fallbackTarget);
-            rig.targetTrack().add(time, finalTarget, Easing::linear());
+            tracks.target(time, finalTarget, Easing::linear());
             finalRoll = options.keepHorizon ? 0.f :
                 pose.rollDegrees * 3.14159265358979323846f / 180.f;
-            rig.rollTrack().add(time, finalRoll, Easing::linear());
+            tracks.roll(time, finalRoll, Easing::linear());
         } else {
             finalTarget = pose.target.value_or(fallbackTarget);
             finalRoll = pose.rollDegrees * 3.14159265358979323846f / 180.f;
-            rig.rollTrack().add(time, finalRoll, Easing::linear());
+            tracks.roll(time, finalRoll, Easing::linear());
             if (hasTargetChannel)
-                rig.targetTrack().add(time, finalTarget, Easing::linear());
+                tracks.target(time, finalTarget, Easing::linear());
         }
+        if (tracks.size() >= 4096) tracks.applyAndClear(rig);
     }
+    tracks.apply(rig);
     const auto finalPose = trajectory.sample(duration);
     rig.setPosition(finalPose.position).setRoll(finalRoll);
     if (hasTargetChannel || options.orientAlongPath) rig.setTarget(finalTarget);

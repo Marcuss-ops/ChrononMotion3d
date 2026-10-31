@@ -67,6 +67,29 @@ bool sameLoweredPlan(const chronon3d::render_plan::RenderPlan& left,
 void testTypedChronon3dLowering() {
     using namespace chronon3d::render_plan;
     section("typed Chronon3D v2/v3 RenderPlan lowering");
+
+    MotionScene samplesOnlyScene("resolved_layer_samples_without_camera", 30.f);
+    auto& samplesOnlyLayer = samplesOnlyScene.addContent(
+        90, "samples only", ContentRef::image("samples-only.png", Vector2(32.f, 32.f)));
+    samplesOnlyLayer.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f))
+        .add(1.f, Vector3(30.f, 15.f, 0.f));
+    RenderPlanLoweringOptions samplesOnlyOptions;
+    samplesOnlyOptions.width = 64;
+    samplesOnlyOptions.height = 64;
+    samplesOnlyOptions.schema = kRenderPlanSchemaV3;
+    samplesOnlyOptions.contentLayers.emplace("90", LayerPlan{
+        .type = LayerType::Image, .asset = "samples-only.png",
+        .size = {32.f, 32.f}, .size_dimensions = 2});
+    samplesOnlyOptions.requireResolvedLayerSamples = true;
+    const auto samplesOnlyPlan = lowerToRenderPlan(samplesOnlyScene, samplesOnlyOptions);
+    check(!samplesOnlyPlan.camera && !samplesOnlyPlan.camera_samples,
+          "resolved layer transforms do not require authoring a camera");
+    check(samplesOnlyPlan.layers.size() == 1 &&
+              samplesOnlyPlan.layers.front().transform_samples.size() ==
+                  samplesOnlyPlan.canvas.duration.integral() &&
+              !samplesOnlyPlan.layers.front().animation,
+          "camera-free materialized V3 plans emit resolved transforms instead of integer TRS tracks");
+
     MotionScene scene("plan", 30.f);
     scene.addNull(10, "Controller");
     auto& layer = scene.addContent(11, "Promo", ContentRef::image("opaque-promo", Vector2(100.f, 50.f)), 10);
@@ -89,30 +112,30 @@ void testTypedChronon3dLowering() {
     auto plan = lowerToRenderPlan(scene, options);
     check(scene.lastEvaluatedFrame() == 0 && scene.state(11).local.position == priorPose,
           "lowering restores the original frame after dense offline sampling");
-    check(plan.layers.size() == 2 && plan.canvas.duration.integral() == 31,
-          "typed lowering emits controller/content and inclusive composition duration");
+    check(plan.layers.size() == 1 && plan.canvas.duration.integral() == 31,
+          "typed lowering emits only renderable content and the inclusive composition duration");
     check(plan.schema == chronon3d::render_plan::kRenderPlanSchemaV2,
           "typed lowering selects the canonical V2 schema");
-    check(!plan.layers[1].parent.has_value(), "world composition is flattened exactly once");
-    check(plan.layers[1].animation && plan.layers[1].animation->tracks.size() == 4,
+    check(!plan.layers[0].parent.has_value(), "world composition is flattened exactly once");
+    check(plan.layers[0].animation && plan.layers[0].animation->tracks.size() == 4,
           "world motion is baked into v2 transform and opacity tracks");
-    check(plan.layers[1].animation->tracks[0].property == "position" &&
-          plan.layers[1].animation->tracks[0].keyframes[30].value[0] == 40.f,
+    check(plan.layers[0].animation->tracks[0].property == "position" &&
+          plan.layers[0].animation->tracks[0].keyframes[30].value[0] == 40.f,
           "the final baked keyframe contains the evaluated world position");
-    check(plan.layers[1].animation->tracks.front().keyframes.size() == 31,
+    check(plan.layers[0].animation->tracks.front().keyframes.size() == 31,
           "dense lowering emits a frame-resolved key for every frame");
-    checkNear(plan.layers[1].position[0], 10.f, 1e-5f,
+    checkNear(plan.layers[0].position[0], 10.f, 1e-5f,
               "image plan position preserves authored world coordinates");
-    check(plan.layers[1].enable_3d,
+    check(plan.layers[0].enable_3d,
           "lowering explicitly opts three-component transform vectors into 3D projection");
-    checkNear(plan.layers[1].position[0], 10.f, 1e-6f,
+    checkNear(plan.layers[0].position[0], 10.f, 1e-6f,
               "fixed lowering golden: initial world X position");
-    checkNear(plan.layers[1].position[1], 20.f, 1e-6f,
+    checkNear(plan.layers[0].position[1], 20.f, 1e-6f,
               "fixed lowering golden: initial world Y position");
-    check(plan.layers[1].animation->tracks[0].keyframes.front().value ==
+    check(plan.layers[0].animation->tracks[0].keyframes.front().value ==
               std::vector<float>{10.f, 20.f, 0.f},
           "fixed lowering golden: first baked position key");
-    check(plan.layers[1].animation->tracks[0].keyframes.back().value ==
+    check(plan.layers[0].animation->tracks[0].keyframes.back().value ==
               std::vector<float>{40.f, 50.f, 0.f},
           "fixed lowering golden: final baked position key");
     const auto repeatedV2 = lowerToRenderPlan(scene, options);
@@ -126,6 +149,52 @@ void testTypedChronon3dLowering() {
     const auto repeatedV3 = lowerToRenderPlan(scene, options);
     check(sameLoweredPlan(v3, repeatedV3),
           "typed V3 lowering repeats every emitted transform and keyframe bit-exactly");
+
+    // Cross-repo F3 canary: an image card moves through another card in Z.
+    // The test executable can write this exact lowered plan for the C3D
+    // software compositor to verify near/far ordering at two sentinel frames.
+    if (const char* canaryPath = std::getenv("CHRONONMOTION_CAMERA_DEPTH_CANARY")) {
+        MotionScene depthScene("camera_f3_depth_canary", 30.f);
+        auto& blue = depthScene.addContent(1, "blue", ContentRef::image("blue.png", {150.f, 150.f}));
+        blue.is3D = true;
+        blue.transform.position.set(0.f, 0.f, -80.f);
+        auto& red = depthScene.addContent(2, "red", ContentRef::image("red.png", {150.f, 150.f}));
+        red.is3D = true;
+        red.transform.position.set(0.f, 0.f, -20.f);
+        red.tracks.position.add(0.f, Vector3(0.f, 0.f, -20.f))
+            .add(1.f / 30.f, Vector3(0.f, 0.f, -150.f));
+        CameraRig depthCamera(3, 50.f, 16.f / 9.f, 0.1f, 10000.f);
+        depthCamera.setPosition({0.f, 0.f, 1000.f});
+        RenderPlanLoweringOptions depthOptions;
+        depthOptions.width = 320;
+        depthOptions.height = 180;
+        depthOptions.schema = kRenderPlanSchemaV3;
+        depthOptions.jobId = "camera_f3_depth_canary";
+        depthOptions.outputPath = "camera_f3_depth_canary.mp4";
+        depthOptions.cameraRig = &depthCamera;
+        depthOptions.requireResolvedLayerSamples = true;
+        for (const auto& [id, asset] : {std::pair{"1", "blue.png"}, std::pair{"2", "red.png"}}) {
+            LayerPlan card;
+            card.type = LayerType::Image;
+            card.asset = asset;
+            card.size = {150.f, 150.f};
+            card.size_dimensions = 2;
+            depthOptions.contentLayers.emplace(id, std::move(card));
+        }
+        const auto depthPlan = lowerToRenderPlan(depthScene, depthOptions);
+        check(depthPlan.camera_samples && depthPlan.camera_samples->size() == 2 &&
+                  depthPlan.layers.size() == 2 &&
+                  depthPlan.layers[0].transform_samples.size() == 2 &&
+                  depthPlan.layers[1].transform_samples.size() == 2,
+              "F3 depth canary resolves camera and both card transforms at frames 0 and 1");
+        check(depthPlan.layers.size() == 2 &&
+                  depthPlan.layers[1].transform_samples[0].position[2] == 20.f &&
+                  depthPlan.layers[1].transform_samples[1].position[2] == 150.f,
+              "F3 depth canary mirrors the moving card's base and animated Z consistently");
+        std::ofstream canaryFile(canaryPath, std::ios::binary);
+        if (!canaryFile || !(canaryFile << renderPlanToJson(depthPlan)))
+            throw std::runtime_error("cannot write requested camera depth canary RenderPlan");
+    }
 
     MotionScene reflectedImageScene("reflected image plane", 30.f);
     auto& reflectedImage = reflectedImageScene.addContent(
@@ -885,7 +954,6 @@ void testTypedChronon3dLowering() {
     cameraDofPlan.camera = chronon3d::render_plan::CameraPlan{};
     cameraDofPlan.camera->dof_enabled = true;
     cameraDofPlan.camera->dof_focus_distance = 425.f;
-    cameraDofPlan.camera->dof_aperture = 0.035f;
     cameraDofPlan.camera->dof_max_blur = 18.f;
     check(renderPlanEmissionProblem(cameraDofPlan).empty(),
           "camera depth-of-field fields are part of the typed RenderPlan wire contract");
@@ -894,8 +962,8 @@ void testTypedChronon3dLowering() {
           "V2/V3 camera emission preserves the DoF enabled flag");
     checkNear(cameraDofJson.at("camera").at("dof").at("focus_distance").get<float>(),
               425.f, 1e-6f, "V2/V3 camera emission preserves the DoF focus distance");
-    checkNear(cameraDofJson.at("camera").at("dof").at("aperture").get<float>(),
-              0.035f, 1e-6f, "V2/V3 camera emission preserves the DoF aperture");
+    check(!cameraDofJson.at("camera").at("dof").contains("aperture"),
+          "the retired legacy aperture wire key is no longer emitted");
     checkNear(cameraDofJson.at("camera").at("dof").at("max_blur").get<float>(),
               18.f, 1e-6f, "V2/V3 camera emission preserves the DoF maximum blur");
     const std::string cameraDofText = renderPlanToJson(cameraDofPlan);
@@ -916,7 +984,7 @@ void testTypedChronon3dLowering() {
     check(!renderPlanEmissionProblem(legacyCameraBlurPlan).empty(),
           "global temporal motion blur is rejected for the V2 schema");
     auto invalidCameraDofPlan = cameraDofPlan;
-    invalidCameraDofPlan.camera->dof_aperture = 2.8f;
+    invalidCameraDofPlan.camera->dof_max_blur = 400.f;
     check(!renderPlanEmissionProblem(invalidCameraDofPlan).empty() &&
           throwsInvalid([&] { (void)renderPlanToJson(invalidCameraDofPlan); }),
           "camera depth-of-field values outside Chronon3D's contract fail closed");
@@ -1026,7 +1094,7 @@ void testTypedChronon3dLowering() {
     dofCameraOptions.cameraRig = &dofRig;
     const auto loweredDofCamera = lowerToRenderPlan(cameraScene, dofCameraOptions);
     check(loweredDofCamera.camera && loweredDofCamera.camera->dof_enabled &&
-          loweredDofCamera.camera->dof_f_stop == 19.2f &&
+          loweredDofCamera.camera->f_stop == 19.2f &&
           loweredDofCamera.camera->dof_focus_distance == 425.f,
           "CameraRig focus distance lowers to the RenderPlan camera-space focus distance unchanged");
     auto styledImagePlan = cameraPlan;
@@ -1346,7 +1414,7 @@ void testTypedChronon3dLowering() {
     cameraPose.fStop = 16.8f;
     cameraPose.focusDistance = 480.f;
     const auto dofCamera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
-    check(dofCamera.dof_enabled && dofCamera.dof_f_stop == 16.8f &&
+    check(dofCamera.dof_enabled && dofCamera.f_stop == 16.8f &&
           dofCamera.dof_focus_distance == 480.f,
           "camera pose lowering preserves the optical-axis focus distance in RenderPlan space");
     cameraPose.position = {0.f, 0.f, 480.00006f};
@@ -1369,8 +1437,7 @@ void testTypedChronon3dLowering() {
     cameraPose.focalLength = 0.f;
     cameraPose.fStop = 2.8f;
     const auto physicalDofCamera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
-    check(physicalDofCamera.f_stop == 2.8f && physicalDofCamera.dof_f_stop == 2.8f &&
-          physicalDofCamera.dof_enabled,
+    check(physicalDofCamera.f_stop == 2.8f && physicalDofCamera.dof_enabled,
           "camera lowering preserves physical f-stop and enables the RenderPlan physical DoF contract");
     cameraPose.irisBlades = 6;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
@@ -1417,11 +1484,23 @@ void testTypedChronon3dLowering() {
         const auto& first = animatedDofPlan.camera_samples->front().camera;
         const auto& last = animatedDofPlan.camera_samples->back().camera;
         check(first.dof_focus_distance == 480.f && last.dof_focus_distance == 720.f &&
-              first.dof_f_stop == 16.8f && last.dof_f_stop == 11.2f &&
+              first.f_stop == 16.8f && last.f_stop == 11.2f &&
               first.dof_max_blur == 12.f && last.dof_max_blur == 20.f,
               "resolved camera samples preserve focus, aperture, and blur over time");
     }
     const auto animatedDofJson = nlohmann::json::parse(renderPlanToJson(animatedDofPlan));
+    const auto& emittedCamera = animatedDofJson.at("camera");
+    check(std::abs(emittedCamera.at("f_stop").get<float>() - 16.8f) < 1e-4f &&
+          emittedCamera.at("iris_blades") == 0 &&
+          !emittedCamera.at("dof").contains("f_stop") &&
+          !emittedCamera.at("dof").contains("iris_blades"),
+          "Motion emits the canonical camera-level lens fields once");
+    const auto& emittedCameraSample = animatedDofJson.at("camera_samples").at(0).at("camera");
+    check(std::abs(emittedCameraSample.at("f_stop").get<float>() - 16.8f) < 1e-4f &&
+          emittedCameraSample.at("iris_blades") == 0 &&
+          !emittedCameraSample.at("dof").contains("f_stop") &&
+          !emittedCameraSample.at("dof").contains("iris_blades"),
+          "Motion camera samples emit the canonical lens fields once");
     check(animatedDofPlan.camera_samples->front().camera.sensor_width_mm == 32.f &&
           animatedDofPlan.camera_samples->front().camera.lens_shift == std::array<float, 2>{0.03f, -0.02f},
           "resolved camera samples preserve physical sensor width and normalized lens shift");
@@ -1454,10 +1533,10 @@ void testTypedChronon3dLowering() {
     const auto staticLensPlan = lowerToRenderPlan(cameraOnlyScene, staticLensOptions);
     check(staticLensPlan.camera && staticLensPlan.camera->dof_enabled,
           "a fully static lens still enables DOF in the lowered base camera");
-    check(staticLensPlan.camera && staticLensPlan.camera->dof_f_stop == 2.8f &&
+    check(staticLensPlan.camera && staticLensPlan.camera->f_stop == 2.8f &&
           staticLensPlan.camera->dof_focus_distance == 480.f &&
           staticLensPlan.camera->dof_max_blur == 30.f &&
-          staticLensPlan.camera->dof_iris_blades == 0 &&
+          staticLensPlan.camera->iris_blades == 0 &&
           staticLensPlan.camera->dof_highlight_gain == 0.f,
           "every statically authored lens field reaches the lowered base camera");
     (void)loweredCameraPoseDof;

@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 #include "chrononmotion/motion/CameraPanelChoreography.hpp"
 
 #include <cmath>
@@ -47,26 +48,28 @@ void applyPanelChoreography(CameraRig& rig, const CameraPanelChoreography& move,
 
     const auto at = [fps](int frame) { return static_cast<float>(frame) / fps; };
     const Easing smooth = Easing::easeInOut();
+    CameraRigTrackBatch tracks(rig);
     const float zoomT0 = at(move.zoomInFrame), zoomT1 = at(move.zoomInFrame + move.zoomDuration);
     const Vector3 zoomStart = rig.sample(zoomT0).position;
     Vector3 zoomEnd = zoomStart;
     zoomEnd.z -= move.zoomDolly;
-    rig.positionTrack().add(zoomT0, zoomStart, smooth);
-    rig.positionTrack().add(zoomT1, zoomEnd, smooth);
+    tracks.position(zoomT0, zoomStart, smooth);
+    tracks.position(zoomT1, zoomEnd, smooth);
 
     const float panT0 = at(move.panInFrame), panT1 = at(move.panInFrame + move.panDuration);
     const Vector3 panStart = rig.sample(panT0).position;
     const Vector3 panEnd = panStart + Vector3(move.panOffset.x, move.panOffset.y, 0.f);
-    rig.positionTrack().add(panT0, panStart, smooth);
-    rig.positionTrack().add(panT1, panEnd, smooth);
+    tracks.position(panT0, panStart, smooth);
+    tracks.position(panT1, panEnd, smooth);
     const Vector3 targetStart = rig.sample(panT0).target;
     const Vector3 targetEnd = targetStart + Vector3(move.panOffset.x, move.panOffset.y, 0.f);
-    rig.targetTrack().add(panT0, targetStart, smooth);
-    rig.targetTrack().add(panT1, targetEnd, smooth);
+    tracks.target(panT0, targetStart, smooth);
+    tracks.target(panT1, targetEnd, smooth);
 
     const float endT = at(move.totalFrames);
-    rig.positionTrack().add(endT, panEnd, smooth);
-    rig.targetTrack().add(endT, targetEnd, smooth);
+    tracks.position(endT, panEnd, smooth);
+    tracks.target(endT, targetEnd, smooth);
+    tracks.apply(rig);
 }
 
 } // namespace chrononmotion::motion::camera

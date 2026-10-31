@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 // ChrononMotion — presets for environments, 3D backgrounds, ground grids, and focus.
 //
 // Background plane fitting, horizon ground grids, ambient 3D floating fields,
@@ -126,6 +127,7 @@ namespace chrononmotion::motion::presets {
         const float t0 = frameToTime(inFrame, fps);
         const float t1 = frameToTime(inFrame + duration, fps);
         constexpr int kSamples = 6;
+        CameraRigTrackBatch tracks(rig);
 
         for (int i = 0; i <= kSamples; ++i) {
             const float progress = static_cast<float>(i) / static_cast<float>(kSamples);
@@ -133,8 +135,9 @@ namespace chrononmotion::motion::presets {
             const CameraPose camPose = rig.sample(t);
             const Transform targetPose = targetLayer.sample(t);
             const float dist = camPose.position.distanceTo(targetPose.position);
-            rig.focusDistanceTrack().add(t, dist, Easing::easeInOut());
+            tracks.focusDistanceTrack().add(t, dist, Easing::easeInOut());
         }
+        tracks.apply(rig);
     }
 
 }// namespace chrononmotion::motion::presets

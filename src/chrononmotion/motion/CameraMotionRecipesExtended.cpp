@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 // ChrononMotion — camera motion preset families.
 #include "chrononmotion/motion/CameraMotion.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
@@ -19,6 +20,7 @@ using presets::detail::keyVector3;
     void cameraFlyUnderReveal(CameraRig& rig, const ShotAnchor& foregroundObstacle, const ShotAnchor& heroTarget,
                               int inFrame, int duration, float subFloorDepth, float fps,
                               const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraFlyUnderReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraFlyUnderReveal: duration must be positive");
 
@@ -49,16 +51,18 @@ using presets::detail::keyVector3;
                 currentTarget.lerpVectors(pObstacle, pHero, 0.5f + pSeg * 0.5f);
             }
 
-            rig.positionTrack().add(time, currentPos, Easing::linear());
-            rig.targetTrack().add(time, currentTarget, Easing::linear());
-            rig.focusDistanceTrack().add(time, currentPos.distanceTo(currentTarget), Easing::linear());
+            tracks.positionTrack().add(time, currentPos, Easing::linear());
+            tracks.targetTrack().add(time, currentTarget, Easing::linear());
+            tracks.focusDistanceTrack().add(time, currentPos.distanceTo(currentTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 22. cameraAnamorphicBarrelSweep
     void cameraAnamorphicBarrelSweep(CameraRig& rig, const ShotAnchor& anchorLeft, const ShotAnchor& anchorRight,
                                      int inFrame, int duration, float sweepSpanX, float fps,
                                      const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraAnamorphicBarrelSweep", scene);
         if (duration <= 0) throw std::invalid_argument("cameraAnamorphicBarrelSweep: duration must be positive");
 
@@ -83,16 +87,18 @@ using presets::detail::keyVector3;
             Vector3 curTarget;
             curTarget.lerpVectors(pL, pR, eased);
 
-            rig.positionTrack().add(time, curPos, Easing::linear());
-            rig.targetTrack().add(time, curTarget, Easing::linear());
-            rig.focusDistanceTrack().add(time, curPos.distanceTo(curTarget), Easing::linear());
+            tracks.positionTrack().add(time, curPos, Easing::linear());
+            tracks.targetTrack().add(time, curTarget, Easing::linear());
+            tracks.focusDistanceTrack().add(time, curPos.distanceTo(curTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 23. cameraCorkscrewThroughRing
     void cameraCorkscrewThroughRing(CameraRig& rig, const ShotAnchor& ringCenter, const ShotAnchor& interiorCore,
                                     int inFrame, int duration, float plungeDistance, float fps,
                                     const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraCorkscrewThroughRing", scene);
         if (duration <= 0) throw std::invalid_argument("cameraCorkscrewThroughRing: duration must be positive");
 
@@ -118,17 +124,19 @@ using presets::detail::keyVector3;
 
             const float currentRoll = fullRoll * eased;
 
-            rig.positionTrack().add(time, curPos, Easing::linear());
-            rig.targetTrack().add(time, core, Easing::linear());
-            rig.rollTrack().add(time, currentRoll, Easing::linear());
-            rig.focusDistanceTrack().add(time, curPos.distanceTo(core), Easing::linear());
+            tracks.positionTrack().add(time, curPos, Easing::linear());
+            tracks.targetTrack().add(time, core, Easing::linear());
+            tracks.rollTrack().add(time, currentRoll, Easing::linear());
+            tracks.focusDistanceTrack().add(time, curPos.distanceTo(core), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 24. cameraPendulumSwingReveal
     void cameraPendulumSwingReveal(CameraRig& rig, const ShotAnchor& startAnchor, const ShotAnchor& endAnchor,
                                    int inFrame, int duration, float pendulumDrop, float fps,
                                    const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraPendulumSwingReveal", scene);
         if (duration <= 0) throw std::invalid_argument("cameraPendulumSwingReveal: duration must be positive");
 
@@ -153,16 +161,18 @@ using presets::detail::keyVector3;
             Vector3 curTarget;
             curTarget.lerpVectors(pA, pB, eased);
 
-            rig.positionTrack().add(time, curPos, Easing::linear());
-            rig.targetTrack().add(time, curTarget, Easing::linear());
-            rig.focusDistanceTrack().add(time, curPos.distanceTo(curTarget), Easing::linear());
+            tracks.positionTrack().add(time, curPos, Easing::linear());
+            tracks.targetTrack().add(time, curTarget, Easing::linear());
+            tracks.focusDistanceTrack().add(time, curPos.distanceTo(curTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 25. cameraCrashZoomSnap
     void cameraCrashZoomSnap(CameraRig& rig, const ShotAnchor& heroSubject, int inFrame, int duration,
                              float startDistance, float endDistance, float fps,
                              const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraCrashZoomSnap", scene);
         if (duration <= 0) throw std::invalid_argument("cameraCrashZoomSnap: duration must be positive");
 
@@ -191,16 +201,18 @@ using presets::detail::keyVector3;
             }
 
             Vector3 curPos(tgt.x, tgt.y, tgt.z + curDist);
-            rig.positionTrack().add(time, curPos, Easing::linear());
-            rig.targetTrack().add(time, tgt, Easing::linear());
-            rig.focusDistanceTrack().add(time, curDist, Easing::linear());
+            tracks.positionTrack().add(time, curPos, Easing::linear());
+            tracks.targetTrack().add(time, tgt, Easing::linear());
+            tracks.focusDistanceTrack().add(time, curDist, Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 26. cameraInfinityMirrorDive
     void cameraInfinityMirrorDive(CameraRig& rig, const std::vector<ShotAnchor>& portalFrames, int inFrame, int duration,
                                   float totalZTravel, float fps, const Easing& easing,
                                   const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraInfinityMirrorDive", scene);
         if (duration <= 0) throw std::invalid_argument("cameraInfinityMirrorDive: duration must be positive");
         if (portalFrames.empty()) throw std::invalid_argument("cameraInfinityMirrorDive: portalFrames cannot be empty");
@@ -223,16 +235,18 @@ using presets::detail::keyVector3;
 
             Vector3 lookAhead(curPos.x, curPos.y, curPos.z - 15.f);
 
-            rig.positionTrack().add(time, curPos, Easing::linear());
-            rig.targetTrack().add(time, lookAhead, Easing::linear());
-            rig.focusDistanceTrack().add(time, 8.f, Easing::linear());
+            tracks.positionTrack().add(time, curPos, Easing::linear());
+            tracks.targetTrack().add(time, lookAhead, Easing::linear());
+            tracks.focusDistanceTrack().add(time, 8.f, Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 27. cameraOverTheShoulderDialogue
     void cameraOverTheShoulderDialogue(CameraRig& rig, const ShotAnchor& subjectA, const ShotAnchor& subjectB,
                                        int inFrame, int duration, float shoulderOffset, float fps,
                                        const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraOverTheShoulderDialogue", scene);
         if (duration <= 0) throw std::invalid_argument("cameraOverTheShoulderDialogue: duration must be positive");
 
@@ -259,16 +273,18 @@ using presets::detail::keyVector3;
             Vector3 curTarget;
             curTarget.lerpVectors(pB, pA, eased);
 
-            rig.positionTrack().add(time, curPos, Easing::linear());
-            rig.targetTrack().add(time, curTarget, Easing::linear());
-            rig.focusDistanceTrack().add(time, curPos.distanceTo(curTarget), Easing::linear());
+            tracks.positionTrack().add(time, curPos, Easing::linear());
+            tracks.targetTrack().add(time, curTarget, Easing::linear());
+            tracks.focusDistanceTrack().add(time, curPos.distanceTo(curTarget), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 28. cameraBirdsEyeGodViewDescent
     void cameraBirdsEyeGodViewDescent(CameraRig& rig, const ShotAnchor& groundSubject, int inFrame, int duration,
                                       float godViewHeight, float eyeLevelDistance, float fps,
                                       const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraBirdsEyeGodViewDescent", scene);
         if (duration <= 0) throw std::invalid_argument("cameraBirdsEyeGodViewDescent: duration must be positive");
 
@@ -288,16 +304,18 @@ using presets::detail::keyVector3;
             Vector3 curPos;
             curPos.lerpVectors(startGod, endEye, eased);
 
-            rig.positionTrack().add(time, curPos, Easing::linear());
-            rig.targetTrack().add(time, subject, Easing::linear());
-            rig.focusDistanceTrack().add(time, curPos.distanceTo(subject), Easing::linear());
+            tracks.positionTrack().add(time, curPos, Easing::linear());
+            tracks.targetTrack().add(time, subject, Easing::linear());
+            tracks.focusDistanceTrack().add(time, curPos.distanceTo(subject), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 29. cameraSlalomCardWeave
     void cameraSlalomCardWeave(CameraRig& rig, const std::vector<ShotAnchor>& slalomGates, int inFrame, int duration,
                                float slalomAmplitude, float maxBankRollDeg, float fps,
                                const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraSlalomCardWeave", scene);
         if (duration <= 0) throw std::invalid_argument("cameraSlalomCardWeave: duration must be positive");
         if (slalomGates.empty()) throw std::invalid_argument("cameraSlalomCardWeave: slalomGates cannot be empty");
@@ -327,11 +345,12 @@ using presets::detail::keyVector3;
             Vector3 curPos(x, p0.y, z);
             Vector3 curTarget(x * 0.5f, p0.y, z - 8.f);
 
-            rig.positionTrack().add(time, curPos, Easing::linear());
-            rig.targetTrack().add(time, curTarget, Easing::linear());
-            rig.rollTrack().add(time, currentRoll, Easing::linear());
-            rig.focusDistanceTrack().add(time, 8.f, Easing::linear());
+            tracks.positionTrack().add(time, curPos, Easing::linear());
+            tracks.targetTrack().add(time, curTarget, Easing::linear());
+            tracks.rollTrack().add(time, currentRoll, Easing::linear());
+            tracks.focusDistanceTrack().add(time, 8.f, Easing::linear());
         }
+        tracks.apply(rig);
     }
 
     // 30. cameraHeroLowAngleMonolithOrbit
@@ -339,6 +358,7 @@ using presets::detail::keyVector3;
                                          float radius, float floorLevelY, float orbitSweepDeg,
                                          float upwardPitchDeg, float fps,
                                          const Easing& easing, const MotionScene* scene) {
+        CameraRigTrackBatch tracks(rig);
         authorizePresetForCamera(rig, "cameraHeroLowAngleMonolithOrbit", scene);
         if (duration <= 0) throw std::invalid_argument("cameraHeroLowAngleMonolithOrbit: duration must be positive");
 
@@ -370,10 +390,11 @@ using presets::detail::keyVector3;
                 curPos.y + horizontalDistance * std::tan(pitchRad),
                 mono.z);
 
-            rig.positionTrack().add(time, curPos, Easing::linear());
-            rig.targetTrack().add(time, aimPoint, Easing::linear());
-            rig.focusDistanceTrack().add(time, curPos.distanceTo(aimPoint), Easing::linear());
+            tracks.positionTrack().add(time, curPos, Easing::linear());
+            tracks.targetTrack().add(time, aimPoint, Easing::linear());
+            tracks.focusDistanceTrack().add(time, curPos.distanceTo(aimPoint), Easing::linear());
         }
+        tracks.apply(rig);
     }
 
 }

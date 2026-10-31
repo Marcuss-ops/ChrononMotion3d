@@ -163,9 +163,11 @@ int main(int argc, char** argv) {
         RenderPlanLoweringOptions options;
         options.width = kWidth;
         options.height = kHeight;
+        options.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
         options.jobId = "chrononmotion_showreel";
         options.outputPath = outputPath;
         options.contentLayers = reel.content;
+        options.requireResolvedLayerSamples = true;
 
         chronon3d::render_plan::RenderPlan plan = lowerToRenderPlan(reel.scene, options);
         // The lowering is format-agnostic and defaults to a still; the file we

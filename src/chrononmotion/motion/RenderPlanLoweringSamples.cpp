@@ -3,6 +3,7 @@
 #include "chrononmotion/math/MathUtils.hpp"
 
 #include <chronon3d/core/types/time.hpp>
+#include <chronon3d/render_plan/camera_contract.hpp>
 
 #include <algorithm>
 #include <array>
@@ -239,32 +240,16 @@ RenderPlan lowerSamplesToRenderPlan(
     plan.output.format = OutputFormat::Png;
     plan.layers.reserve(metadata.size());
     if (plan.camera) {
-        const auto& camera = *plan.camera;
-        ensureFinite(camera.position[0], "camera position");
-        ensureFinite(camera.position[1], "camera position");
-        ensureFinite(camera.position[2], "camera position");
-        ensureFinite(camera.rotation_deg[0], "camera rotation");
-        ensureFinite(camera.rotation_deg[1], "camera rotation");
-        ensureFinite(camera.rotation_deg[2], "camera rotation");
-        ensureFinite(camera.fov_deg, "camera FOV");
-        ensureFinite(camera.near, "camera near plane");
-        ensureFinite(camera.far, "camera far plane");
-        ensureFinite(camera.zoom, "camera zoom");
-        ensureFinite(camera.dof_focus_distance, "camera depth-of-field focus distance");
-        ensureFinite(camera.dof_aperture, "camera depth-of-field aperture");
-        ensureFinite(camera.dof_max_blur, "camera depth-of-field maximum blur");
-        const bool depthOfFieldEnabled = camera.dof_enabled && camera.dof_aperture > 0.f;
-        if (camera.fov_deg < 10.f || camera.fov_deg > 120.f || camera.near <= 0.f ||
-            camera.far <= camera.near || camera.zoom <= 0.f || camera.type != "perspective" ||
-            camera.dof_focus_distance < 0.f || (depthOfFieldEnabled && camera.dof_focus_distance <= 0.f) ||
-            camera.dof_focus_distance > 10'000'000.f ||
-            camera.dof_aperture < 0.f || camera.dof_aperture > 1.f ||
-            camera.dof_max_blur < 0.f || camera.dof_max_blur > 256.f)
-            throw std::invalid_argument("lowerToRenderPlan: camera projection values are invalid");
+        if (const auto problem = chronon3d::render_plan::camera_contract_problem(*plan.camera))
+            throw std::invalid_argument("lowerToRenderPlan: " + *problem);
     }
 
     for (std::size_t index = 0; index < metadata.size(); ++index) {
         const Layer& layer = metadata[index];
+        // Nulls are Motion controllers, never renderable RenderPlan layers.
+        // Their resolved world transforms have already been folded into
+        // content layers and/or camera samples during evaluation above.
+        if (layer.isNull()) continue;
         const std::string layerId = std::to_string(layer.id);
         LayerPlan output;
         if (!layer.isNull()) {

@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 #include "chrononmotion/motion/TitleCameraRecipe.hpp"
 #include "chrononmotion/math/Finite.hpp"
 
@@ -161,38 +162,51 @@ std::string_view titleMoveId(TitleMove move) noexcept {
         if (orbits) CameraRig::orbitAround(mid, anchor, (plan.yawStart + plan.yawEnd) * .5f, 0.f);
         CameraRig::dolly(mid, plan.dolly * .5f);
 
-        auto& position = rig.positionTrack();
-        auto& target = rig.targetTrack();
+        CameraRigTrackBatch tracks(rig);
         if (whip) {
-            position.add(t0, start.position, Easing::expoOut()).add(tMid, mid.position, Easing::easeInOut())
-                .add(t1, finish.position, Easing::easeInOut());
-            target.add(t0, anchor, Easing::easeInOut()).add(t1, anchor, Easing::linear());
+            tracks.position(t0, start.position, Easing::expoOut());
+            tracks.position(tMid, mid.position, Easing::easeInOut());
+            tracks.position(t1, finish.position, Easing::easeInOut());
+            tracks.target(t0, anchor, Easing::easeInOut());
+            tracks.target(t1, anchor, Easing::linear());
         } else if (plan.arcBow != 0.f || orbits) {
-            position.add(t0, start.position, Easing::easeIn()).add(tMid, mid.position, Easing::easeOut())
-                .add(t1, finish.position, Easing::easeInOut());
-            target.add(t0, anchor, Easing::easeInOut()).add(t1, anchor, Easing::linear());
+            tracks.position(t0, start.position, Easing::easeIn());
+            tracks.position(tMid, mid.position, Easing::easeOut());
+            tracks.position(t1, finish.position, Easing::easeInOut());
+            tracks.target(t0, anchor, Easing::easeInOut());
+            tracks.target(t1, anchor, Easing::linear());
         } else {
-            position.add(t0, start.position, Easing::easeInOut()).add(t1, finish.position, Easing::easeInOut());
-            target.add(t0, anchor, Easing::easeInOut()).add(t1, anchor, Easing::linear());
+            tracks.position(t0, start.position, Easing::easeInOut());
+            tracks.position(t1, finish.position, Easing::easeInOut());
+            tracks.target(t0, anchor, Easing::easeInOut());
+            tracks.target(t1, anchor, Easing::linear());
         }
-        position.add(t2, finish.position, Easing::linear());
-        target.add(t2, anchor, Easing::linear());
+        tracks.position(t2, finish.position, Easing::linear());
+        tracks.target(t2, anchor, Easing::linear());
 
         if (hasRoll) {
-            auto& roll = rig.rollTrack();
-            roll.add(t0, plan.rollStart, Easing::easeInOut());
-            if (plan.rollPeak != 0.f) roll.add(tMid, plan.rollPeak, Easing::easeInOut());
-            roll.add(t1, plan.rollEnd, Easing::easeInOut()).add(t2, plan.rollEnd, Easing::linear());
+            tracks.roll(t0, plan.rollStart, Easing::easeInOut());
+            if (plan.rollPeak != 0.f) tracks.roll(tMid, plan.rollPeak, Easing::easeInOut());
+            tracks.roll(t1, plan.rollEnd, Easing::easeInOut());
+            tracks.roll(t2, plan.rollEnd, Easing::linear());
         }
-        if (hasFov) rig.fovTrack().add(t0, plan.fov, Easing::easeInOut())
-            .add(t1, plan.fovEnd, Easing::easeInOut()).add(t2, plan.fovEnd, Easing::linear());
-        if (hasFocus) rig.focusDistanceTrack().add(t0, plan.distance, Easing::easeInOut())
-            .add(t1, plan.distance - plan.focusPull, Easing::easeInOut())
-            .add(t2, plan.distance - plan.focusPull, Easing::linear());
-        if (plan.fStop != 0.f) rig.fStopTrack().add(t1, plan.fStop, Easing::easeInOut())
-            .add(t2, plan.fStop, Easing::linear());
+        if (hasFov) {
+            tracks.fov(t0, plan.fov, Easing::easeInOut());
+            tracks.fov(t1, plan.fovEnd, Easing::easeInOut());
+            tracks.fov(t2, plan.fovEnd, Easing::linear());
+        }
+        if (hasFocus) {
+            tracks.focusDistance(t0, plan.distance, Easing::easeInOut());
+            tracks.focusDistance(t1, plan.distance - plan.focusPull, Easing::easeInOut());
+            tracks.focusDistance(t2, plan.distance - plan.focusPull, Easing::linear());
+        }
+        if (plan.fStop != 0.f) {
+            tracks.fStop(t1, plan.fStop, Easing::easeInOut());
+            tracks.fStop(t2, plan.fStop, Easing::linear());
+        }
 
         rig.setTarget(anchor).setPosition(finish.position).setFov(hasFov ? plan.fovEnd : plan.fov);
+        tracks.apply(rig);
         ScreenCameraIntrinsics intrinsics;
         intrinsics.viewport = request.viewport;
         for (int frame = in; frame <= end; ++frame) {
@@ -240,15 +254,17 @@ std::string_view titleMoveId(TitleMove move) noexcept {
         const float tSettle = static_cast<float>(plan.inFrame + plan.duration - plan.settleFrames) / fps;
         const float t1 = static_cast<float>(plan.inFrame + plan.duration) / fps;
         const float midDistance = plan.startDistance + (plan.endDistance - plan.startDistance) * 0.85f;
-        rig.positionTrack().add(t0, Vector3(0.f, 0.f, plan.startDistance), Easing::easeInOut())
-            .add(tSettle, Vector3(0.f, 0.f, midDistance), Easing::easeOut())
-            .add(t1, Vector3(0.f, 0.f, plan.endDistance), Easing::linear());
+        CameraRigTrackBatch tracks(rig);
+        tracks.position(t0, Vector3(0.f, 0.f, plan.startDistance), Easing::easeInOut());
+        tracks.position(tSettle, Vector3(0.f, 0.f, midDistance), Easing::easeOut());
+        tracks.position(t1, Vector3(0.f, 0.f, plan.endDistance), Easing::linear());
         if (std::fabs(plan.startYawDegrees - plan.endYawDegrees) > 0.0001f) {
             Quaternion start, end;
             start.setFromAxisAngle(Vector3(0.f, 1.f, 0.f), math::degToRad(plan.startYawDegrees));
             end.setFromAxisAngle(Vector3(0.f, 1.f, 0.f), math::degToRad(plan.endYawDegrees));
-            rig.orientationTrack().add(t0, start, Easing::easeOut())
-                .add(t1, end, Easing::linear());
+            tracks.orientation(t0, start, Easing::easeOut());
+            tracks.orientation(t1, end, Easing::linear());
         }
+        tracks.apply(rig);
     }
 }

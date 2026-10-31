@@ -1,3 +1,4 @@
+#include "CameraRigTrackBatch.hpp"
 // ChrononMotion — Camera Motion V1: authoritative shot-to-shot system implementation.
 
 #include "chrononmotion/motion/CameraMotion.hpp"
@@ -164,6 +165,7 @@ namespace chrononmotion::motion {
         const unsigned int steps = static_cast<unsigned int>(std::max(duration, 4));
 
         rig.setTarget(p0.target);
+        CameraRigTrackBatch tracks(rig);
 
         for (unsigned int i = 0; i <= steps; ++i) {
             const float alpha = static_cast<float>(i) / static_cast<float>(steps);
@@ -241,7 +243,7 @@ namespace chrononmotion::motion {
                 pos.lerpVectors(p0.position, p1.position, u);
             }
 
-            rig.positionTrack().add(time, pos, Easing::linear());
+            tracks.position(time, pos, Easing::linear());
 
             Vector3 curTarget;
             if (orientationMode == OrientationMode::DetachReacquire) {
@@ -257,7 +259,7 @@ namespace chrononmotion::motion {
             } else {
                 curTarget.lerpVectors(p0.target, p1.target, u);
             }
-            rig.targetTrack().add(time, curTarget, Easing::linear());
+            tracks.target(time, curTarget, Easing::linear());
 
             CameraPose samplePose;
             samplePose.position = pos;
@@ -278,20 +280,22 @@ namespace chrononmotion::motion {
             if (curRoll != 0.f) {
                 CameraRig::roll(samplePose, curRoll);
             }
-            rig.orientationTrack().add(time, samplePose.orientation, Easing::linear());
-            rig.rollTrack().add(time, curRoll, Easing::linear());
+            tracks.orientation(time, samplePose.orientation, Easing::linear());
+            tracks.roll(time, curRoll, Easing::linear());
 
             const float curFov = p0.fov + (p1.fov - p0.fov) * u;
-            rig.fovTrack().add(time, curFov, Easing::linear());
+            tracks.fov(time, curFov, Easing::linear());
 
             const float curFStop = p0.fStop + (p1.fStop - p0.fStop) * u;
-            rig.fStopTrack().add(time, curFStop, Easing::linear());
+            tracks.fStop(time, curFStop, Easing::linear());
 
             const float curFocus = CameraFocusResolver::resolveFocus(
                 focusMode, samplePose, p0.target, p1.target, u,
                 p0.focusDistance + (p1.focusDistance - p0.focusDistance) * u
             );
-            rig.focusDistanceTrack().add(time, curFocus, Easing::linear());
+            tracks.focusDistance(time, curFocus, Easing::linear());
+            if (tracks.size() >= 4096) tracks.applyAndClear(rig);
         }
+        tracks.apply(rig);
     }
 }

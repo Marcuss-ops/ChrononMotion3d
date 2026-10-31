@@ -180,6 +180,7 @@ int main(int argc, char** argv) {
         options.outputPath = renderOutput;
         options.contentLayers = content;
         options.cameraRig = &rig;
+        options.requireResolvedLayerSamples = true;
 
         chronon3d::render_plan::RenderPlan plan = lowerToRenderPlan(scene, options);
         plan.output.format = chronon3d::render_plan::OutputFormat::Mp4;

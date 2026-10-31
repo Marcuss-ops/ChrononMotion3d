@@ -3,6 +3,7 @@
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
 #include <chronon3d/render_plan/render_plan.hpp>
 #include <chronon3d/math/camera_pose.hpp>
+#include <algorithm>
 namespace motion_geospatial_test {
 using namespace chrononmotion;
 using namespace chrononmotion::geospatial;
@@ -265,6 +266,7 @@ void testCameraBackedPlatePlan() {
         motion::RenderPlanLoweringOptions options;
         options.width = 1920;
         options.height = 1080;
+        options.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
         options.jobId = "camera_backed_map";
         options.outputPath = "camera_backed_map.mp4";
         for (const Layer& layer : scene.layers()) {
@@ -285,6 +287,7 @@ void testCameraBackedPlatePlan() {
             options.contentLayers.emplace(std::to_string(layer.id), content);
         }
         options.cameraRig = &rig;
+        options.requireResolvedLayerSamples = true;
         const auto plan = motion::lowerToRenderPlan(scene, options);
         check(plan.camera.has_value(), "the emitted map plan carries a perspective camera");
         if (plan.camera) {
@@ -307,17 +310,12 @@ void testCameraBackedPlatePlan() {
         });
         check(plateLayer != plan.layers.end() && plateLayer->enable_3d,
               "the georeferenced raster reaches the plan as a camera-visible 3D layer");
-        if (plateLayer != plan.layers.end() && plateLayer->animation) {
-            const auto tilt = std::find_if(plateLayer->animation->tracks.begin(),
-                                           plateLayer->animation->tracks.end(), [](const auto& track) {
-                return track.property == "rotation";
-            });
-            check(tilt != plateLayer->animation->tracks.end() && !tilt->keyframes.empty() &&
-                      std::abs(tilt->keyframes.back().value[0]) > 1.f,
-                  "the map plate carries the authored camera-angle tilt through lowering");
-        } else {
-            check(false, "the map plate carries the authored camera-angle tilt through lowering");
-        }
+        const bool plateResolved = plateLayer != plan.layers.end() && plan.camera_samples &&
+            plateLayer->transform_samples.size() == plan.camera_samples->size() && !plateLayer->animation;
+        check(plateResolved,
+              "the camera-backed map plate uses the resolved camera sample calendar");
+        check(plateResolved && std::abs(plateLayer->transform_samples.back().rotation_deg[0]) > 1.f,
+              "the resolved map plate carries the authored camera-angle tilt");
         check(motion::renderPlanEmissionProblem(plan).empty(),
               "the camera-backed map stays on the canonical render-plan path");
 

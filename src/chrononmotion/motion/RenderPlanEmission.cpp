@@ -320,8 +320,7 @@ namespace chrononmotion::motion {
             writer.integer(camera.iris_blades);
             const CameraPlan defaults{};
             if (camera.dof_enabled || camera.dof_focus_distance != defaults.dof_focus_distance ||
-                camera.dof_aperture != defaults.dof_aperture || camera.dof_max_blur != defaults.dof_max_blur ||
-                camera.dof_f_stop != defaults.dof_f_stop || camera.dof_iris_blades != defaults.dof_iris_blades ||
+                camera.dof_max_blur != defaults.dof_max_blur ||
                 camera.dof_highlight_gain != defaults.dof_highlight_gain) {
                 writer.key("dof");
                 writer.beginObject();
@@ -329,16 +328,8 @@ namespace chrononmotion::motion {
                 writer.boolean(camera.dof_enabled);
                 writer.key("focus_distance");
                 writer.number(camera.dof_focus_distance);
-                writer.key("aperture");
-                writer.number(camera.dof_aperture);
                 writer.key("max_blur");
                 writer.number(camera.dof_max_blur);
-                if (camera.dof_f_stop > 0.f) {
-                    writer.key("f_stop");
-                    writer.number(camera.dof_f_stop);
-                }
-                writer.key("iris_blades");
-                writer.integer(camera.dof_iris_blades);
                 writer.key("highlight_gain");
                 writer.number(camera.dof_highlight_gain);
                 writer.endObject();

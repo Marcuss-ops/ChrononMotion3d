@@ -49,11 +49,17 @@ namespace chrononmotion::motion {
         /// Keep the rig's initial pose in `camera`, but leave time-varying camera
         /// evaluation to a runtime CameraSampleProvider instead of serializing resolved samples.
         bool bakeResolvedCameraSamples{true};
+        /// Require resolved layer transform samples. This can be used without
+        /// a camera rig; with shutter or explicit cameraSampleFrames, the
+        /// renderer's resolved calendar is used, otherwise presentation frames
+        /// are baked. Materialized V3 producers set this; legacy integer TRS
+        /// keyframes remain available only to migration/tests that leave it false.
+        bool requireResolvedLayerSamples{false};
         /// Optional strictly increasing absolute fractional frame times supplied
         /// by the renderer's schedule. With shutter enabled, an empty list uses
         /// the canonical shutter calendar and an explicit list must include it.
-        /// Without shutter, empty retains the integer frame bake; times not in
-        /// an explicit list interpolate and may approximate nonlinear motion.
+        /// Without shutter, empty retains the integer camera bake; requiring
+        /// resolved layer samples fills all presentation-frame timestamps.
         std::vector<double> cameraSampleFrames{};
     };
 
