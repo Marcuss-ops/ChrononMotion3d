@@ -304,6 +304,10 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_hdri tests/motion_hdri.cpp)
     target_link_libraries(chrononmotion_hdri PRIVATE chrononmotion)
     target_compile_options(chrononmotion_hdri PRIVATE -Wall -Wextra -Werror)
+    # Quantitative specular golden: SH coefficients, cubemap radiance probes and
+    # per-mip mean energy of the analytic linear-gradient fixture.
+    target_compile_definitions(chrononmotion_hdri PRIVATE
+        CHRONONMOTION_HDRI_SPECULAR_GOLDEN="${CMAKE_CURRENT_SOURCE_DIR}/tests/hdri_specular_golden.json")
     add_test(NAME chrononmotion_hdri COMMAND chrononmotion_hdri)
 
     if(TARGET chrononmotion_chronon3d_adapter)

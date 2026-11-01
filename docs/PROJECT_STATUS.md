@@ -47,6 +47,13 @@ Updated 2026-11-01 from local source and Release test evidence.
   the Chronon3D renderer core test. The
   `attachHdriEnvironmentToRenderPlan` helper copies the decoded probe's
   reference, intensity, rotation and SH together.
+  The producer-side quantitative specular golden is committed:
+  `tests/hdri_specular_golden.json` pins the payload digest, the 27 SH
+  coefficients, cubemap radiance probes on all six faces and the mip tail, and
+  the mean radiance of every mip level; the test also verifies the SH against
+  the closed form of the analytic linear-gradient fixture, so the golden is
+  checked for correctness, not only for stability. Visible CLI rendering
+  against it remains open.
 - `TICKET-PBR-MATERIALS-V1`: static `loadGltf` imports metallic-roughness
   factors, base/emissive color, alpha and double-sided state into
   `PbrMaterial`; an external base-color image URI passes through
@@ -62,7 +69,11 @@ Updated 2026-11-01 from local source and Release test evidence.
 ## Open feature tickets
 
 - `TICKET-HDRI-ENV-V1`: reader and deterministic producer/consumer schema
-  bridge implemented; local visible CLI output remains.
+  bridge implemented, and the quantitative specular golden is now closed
+  locally (`tests/hdri_specular_golden.json`: SH, cubemap radiance per texel
+  and per mip, mean energy per level, verified against the closed form of an
+  analytic fixture by `chrononmotion_hdri`, 244 checks). Remaining: the
+  visible CLI round-trip rendered against that golden and GPU parity.
 - No remaining local PBR V1 implementation item; embedded images and
   unsupported sampler modes remain intentionally rejected.
 
