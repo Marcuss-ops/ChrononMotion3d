@@ -40,8 +40,11 @@ consumption is now connected to Chronon3D's software diffuse SH lighting.
 Software specular mip lookup is implemented downstream in Chronon3D. A
 current-source software raw-sink probe shows a visible diffuse-SH change on all
 20,000 opaque mesh pixels and the producer plan/asset validate successfully.
-Quantitative specular mip golden coverage and strict-native GPU sampling/parity
-remain open. Details are in
+Quantitative specular mip golden coverage is now closed on the producer side
+(2026-11-01): an analytic linear-gradient fixture pins the SH, the cubemap
+radiance per texel and the per-mip mean energy, and the SH is additionally
+checked against its closed form. The visible CLI round-trip against that golden
+and strict-native GPU sampling/parity remain open. Details are in
 [`ticket-roundtrip-current-source-20261029`](../evidence/ticket-roundtrip-current-source-20261029/README.md).
 
 ## TODO — cosa manca (agg. 2026-10-28)
@@ -54,10 +57,20 @@ remain open. Details are in
       consumer decoder, asset resolution e software diffuse SH evaluation.
 - [x] Decoder C3D del payload binario `HDRIENV1` con limiti e rifiuto dei
       payload troncati, non finiti, fuori ordine o con byte residui.
+- [x] Golden quantitativo speculare (2026-11-01): fixture analitico
+      `linear-gradient-radiance` (L = base + slope·d), `tests/hdri_specular_golden.json`
+      con digest del payload, 27 coefficienti SH, 13 sonde di radianza cubemap su
+      tutte e sei le facce e il fondo della catena mip, media per mip come
+      invariante di energia. `chrononmotion_hdri` 244 check / 0 failure, due run
+      e due `--dump-golden` byte-identici. La chiusura include la verifica in
+      forma chiusa: DC SH misurato 6.107/7.220/8.334 contro 6.125/7.239/8.353
+      analitici, bande L1 1.501/1.290/0.858 contro 1.500/1.286/0.857 e bande
+      superiori a zero entro 5e-3, cioè il probe contiene solo l'asse del
+      proprio canale.
 - [ ] Ripetere il round-trip CLI visibile con un binario Chronon3D compilato
-      dal source corrente e confrontare SH/specular con golden; il raw probe
-      esistente è diagnostico. SH diffusa e lookup speculare sono già consumate
-      dal renderer software downstream.
+      dal source corrente e confrontare SH/specular **con la golden qui sopra**;
+      il raw probe esistente è diagnostico. Manca solo il lato renderer: il
+      riferimento numerico del probe ora è committato in questa repo.
 - [ ] Vulkan strict-native sampling e parità hardware (ticket downstream).
 
 ## Goal
@@ -125,11 +138,27 @@ produzione finché la CI non è verde sullo SHA esatto (`docs/stato/README.md`).
 - [x] Campo V3 emesso, decoder/fingerprint consumer testati, asset binario
       validato e SH diffusa collegata al lighting software.
 - [ ] CLI runtime render dell'asset dopo supporto renderer.
+- [x] Golden quantitativo speculare: radianza cubemap per texel e per mip,
+      energia media per livello e SH contro la forma chiusa del fixture.
 - [x] Suite ChrononMotion3D showcase invariata, con il nuovo caso HDRI.
 
 ## Dipendenze
 
 - Nessuna a monte. A valle: `TICKET-ENVIRONMENT-LIGHT-IBL.md` (Chronon3d).
+
+## Evidenza locale (2026-11-01, golden speculare)
+
+- `cmake --build build/release-fast --target chrononmotion_hdri -j4` — PASS
+  (`-Wall -Wextra -Werror`).
+- `./build/release-fast/chrononmotion_hdri` — **PASS: 244 HDRI_ENV_V1 checks**,
+  due run consecutive identiche.
+- `./build/release-fast/chrononmotion_hdri --dump-golden` — due run
+  byte-identiche e identiche a `tests/hdri_specular_golden.json`
+  (digest fixture `6abbdbb00f6e6498`, 8239 byte, face 16, 5 mip).
+- Controllo negativo: alterare di 1e-2 una radianza o un coefficiente SH nel
+  golden fa fallire il test con il messaggio dedicato; il file ripristinato
+  torna verde. La golden non è quindi vacua.
+- `ctest -j4` completa: **66/66 PASS** (incluso `chrononmotion_hdri`).
 
 ## Evidenza locale (2026-10-28)
 
