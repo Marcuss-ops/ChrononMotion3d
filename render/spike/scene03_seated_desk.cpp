@@ -525,6 +525,7 @@ int renderScene(const fs::path& roomPath, const fs::path& output, const fs::path
     cameraRig.focusDistanceTrack().add(6.3f, 1.56f, Easing::easeInOut());
     cameraRig.focusDistanceTrack().add(8.4f, 1.18f, Easing::easeInOut());
     cameraRig.focusDistanceTrack().add(10.f, 1.18f);
+    if (variant != 1) cameraRig.setFStop(2.8f).setMaxBlur(4.f);
     threepp::motion::applyCameraPose(cameraRig.sample(0.f), *camera, nullptr, 0.1f, 100.f);
     scene->updateMatrixWorld(true);
     EffectComposer::Options composerOptions;
@@ -533,9 +534,9 @@ int renderScene(const fs::path& roomPath, const fs::path& output, const fs::path
     composer.renderToScreen = true;
     composer.setSize(width, height);
     composer.addPass(std::make_shared<RenderPass>(*scene, *camera));
-    auto bokeh = std::make_shared<BokehPass>(*scene, *camera, 2.55f,
-                                             variant == 1 ? 0.f : 0.009f,
-                                             variant == 1 ? 0.f : 0.008f);
+    auto bokehParams = chrononmotion::motion::bokehParams(cameraRig.sample(0.f), float(height));
+    auto bokeh = std::make_shared<BokehPass>(*scene, *camera,
+                                             bokehParams.focus, bokehParams.aperture, bokehParams.maxBlur);
     composer.addPass(bokeh);
     const int frameCount = durationSeconds > 0.f ? int(std::lround(durationSeconds * fps)) : 1;
     if (durationSeconds > 0.f) fs::create_directories(output);
@@ -544,7 +545,10 @@ int renderScene(const fs::path& roomPath, const fs::path& output, const fs::path
         if (durationSeconds > 0.f) {
             threepp::motion::applyCameraPose(cameraRig.sample(time), *camera, nullptr, 0.1f, 100.f);
             const auto pose = cameraRig.sample(time);
-            bokeh->focus = pose.focusDistance;
+            bokehParams = chrononmotion::motion::bokehParams(pose, float(height));
+            bokeh->focus = bokehParams.focus;
+            bokeh->aperture = bokehParams.aperture;
+            bokeh->maxblur = bokehParams.maxBlur;
             if (characterAnimation.chained) {
                 // Play the authored clip chain, wrapping like a loop so short
                 // gesture sequences can fill a longer shot.

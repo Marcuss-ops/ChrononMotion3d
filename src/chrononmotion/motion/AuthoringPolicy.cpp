@@ -76,7 +76,7 @@ const std::vector<std::string_view>& catalog() {
         "scene_camera_arc_carry", "scene_camera_orbit_handoff",
         "scene_camera_rise_and_land", "scene_camera_focus_rack",
         "scene_camera_pull_back_reveal", "scene_camera_whip_reframe",
-        "cardTurn", "crosshairLock", "drift", "extrudeRise", "fadeIn", "fadeOut", "fadeScale", "fadeSlide",
+        "cameraPanelChoreography", "cardTurn", "crosshairLock", "drift", "extrudeRise", "fadeIn", "fadeOut", "fadeScale", "fadeSlide",
         "flip", "flipX", "flipY", "floatDrift", "floatHover", "focusPush", "followThrough",
         "groundTravel", "handheldShake", "horizonGrid", "lifetimeSlide", "lineDraw", "orbitMild",
         "orbitalSlamZoom", "parallaxEntrance", "parentGroupReveal", "pathMotion", "pullOutZ", "pulse",

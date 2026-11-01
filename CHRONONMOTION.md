@@ -1,7 +1,9 @@
-# ChrononMotion — the Linux-only motion-engine fork of threepp
+# ChrononMotion — the cross-platform motion-engine fork of threepp
 
-Linux is the only supported deployment target. Platform-specific compatibility
-branches for other operating systems are intentionally not part of this tree.
+The dependency-free motion core and optional Chronon3D RenderPlan adapter build
+on Linux and Windows. The Windows GPU-adapter preset consumes the sibling
+`Chronon3d-mainfix` `win-gpu` dependency install. The preview renderer and
+certification tools remain platform-specific.
 
 This tree is a **cut**, not a rewrite. threepp's value for a motion system is its
 scene graph, its transform math, its cameras, its curve library and its keyframe
@@ -335,8 +337,9 @@ the base pose, with no pop at either end.)
 
 ## Build
 
-Linux is the only supported deployment target; CMake rejects other system names
-at configure time. The build has no Windows toolchain branch or platform shim.
+The motion core is dependency-free; the offline RenderPlan adapter optionally
+uses the sibling Chronon3D headers and dependencies. The OpenGL preview remains
+a separate platform-specific target.
 
 ```shell
 cmake --preset dev        # Debug + tests

@@ -5,6 +5,8 @@
 #include "chrononmotion/motion/RenderPlanLowering.hpp"
 #include <chronon3d/render_plan/render_plan.hpp>
 
+#include <array>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -16,23 +18,32 @@ using namespace chrononmotion;
 using namespace chrononmotion::motion;
 
 int main(int argc, char** argv) try {
-    if (argc < 3 || argc > 6) {
-        std::cerr << "usage: plan_optical_studio OUTPUT_PLAN ASSET_PREFIX [WIDTH] [dof|sharp|shutter] [offline|provider]\n";
+    if (argc < 3 || argc > 9) {
+        std::cerr << "usage: plan_optical_studio OUTPUT_PLAN ASSET_PREFIX [WIDTH] [dof|sharp|shutter|diagnostic] [offline|provider] [PLATE_COUNT] [ANIMATED] [BACKGROUND_SCALE]\n";
         return 2;
     }
     const int width = argc >= 4 ? std::atoi(argv[3]) : 1920;
     const std::string mode = argc >= 5 ? argv[4] : "dof";
-    const std::string source = argc == 6 ? argv[5] : "offline";
+    const std::string source = argc >= 6 ? argv[5] : "offline";
+    const bool plane_diagnostic = mode == "diagnostic";
+    const int plate_count = plane_diagnostic && argc >= 7 ? std::atoi(argv[6]) : 4;
+    const bool animated_diagnostic = plane_diagnostic && argc >= 8 && std::atoi(argv[7]) != 0;
+    const float background_scale = plane_diagnostic && argc >= 9
+        ? std::strtof(argv[8], nullptr) : 1.f;
     if (source != "offline" && source != "provider")
         throw std::invalid_argument("source must be offline or provider");
-    if (mode != "dof" && mode != "sharp" && mode != "shutter")
-        throw std::invalid_argument("mode must be dof, sharp or shutter");
+    if (mode != "dof" && mode != "sharp" && mode != "shutter" && !plane_diagnostic)
+        throw std::invalid_argument("mode must be dof, sharp, shutter or diagnostic");
     if (width < 320 || width > 3840 || width % 16 != 0)
         throw std::invalid_argument("width must be a multiple of 16 in [320, 3840]");
+    if (plate_count < 2 || plate_count > 4)
+        throw std::invalid_argument("plate count must be 2, 3, or 4");
+    if (!std::isfinite(background_scale) || background_scale < 0.25f || background_scale > 10.f)
+        throw std::invalid_argument("background scale must be finite and in [0.25, 10]");
     const int height = width * 9 / 16;
     const float s = static_cast<float>(width) / 1920.f;
     constexpr float fps = 30.f;
-    constexpr int last = 149;
+    const int last = plane_diagnostic && !animated_diagnostic ? 0 : 149;
     const std::string prefix = argv[2];
     MotionScene scene("optical_studio", fps);
     std::unordered_map<std::string, chronon3d::render_plan::LayerPlan> content;
@@ -51,28 +62,74 @@ int main(int argc, char** argv) try {
         plan.fit = chronon3d::render_plan::FitMode::Contain;
         content.emplace(std::to_string(id), std::move(plan));
     };
-    addPlate(1, "background", 0, 0, -1000, 8400, 4725);
+    addPlate(1, "background", 0, 0, -1000,
+             8400.f * background_scale, 4725.f * background_scale);
     addPlate(2, "far", 505, 35, -380, 730, 830);
-    addPlate(3, "middle", 0, 0, 0, 570, 650);
-    addPlate(4, "near", -420, -30, 180, 460, 525);
-    auto* entering = scene.findLayer(4);
-    entering->tracks.position.add(0.f, Vector3{-540*s, -30*s, 180*s}, Easing::easeInOut())
-        .add(.8f, Vector3{-420*s, -30*s, 180*s});
-    entering->tracks.opacity.add(0.f, .15f, Easing::easeInOut()).add(.8f, 1.f);
+    if (plate_count >= 3) addPlate(3, "middle", 0, 0, 0, 570, 650);
+    if (plate_count >= 4) addPlate(4, "near", -420, -30, 180, 460, 525);
+    if (!plane_diagnostic) {
+        auto* entering = scene.findLayer(4);
+        entering->tracks.position.add(0.f, Vector3{-540*s, -30*s, 180*s}, Easing::easeInOut())
+            .add(.8f, Vector3{-420*s, -30*s, 180*s});
+        entering->tracks.opacity.add(0.f, .15f, Easing::easeInOut()).add(.8f, 1.f);
+    }
     if (mode == "shutter") scene.setShutter(ShutterSettings{180.f, 8});
+
+    // Rendered semantic text and a separate shape sit in front of the middle
+    // plate. Keeping both at negative authored Z exercises the planPosition
+    // convention on the actual camera characterization scene, rather than
+    // relying only on the lowering unit test.
+    const std::string font = prefix + "/Inter-Bold.ttf";
+    auto& label = scene.addContent(5, "z_depth_label",
+        ContentRef::text("Z DEPTH", Vector2(430.f*s, 115.f*s)));
+    label.is3D = true;
+    label.transform.position.set(-215.f*s, 115.f*s, -30.f*s);
+    label.lifetime = FrameRange::between(0, last);
+    chronon3d::render_plan::LayerPlan labelPlan;
+    labelPlan.type = chronon3d::render_plan::LayerType::Text;
+    labelPlan.text = "Z DEPTH";
+    chronon3d::render_plan::LayerStylePlan labelStyle;
+    labelStyle.font = font;
+    labelStyle.font_size = 76.f*s;
+    labelStyle.fill = "#F4F6F2";
+    labelPlan.style = labelStyle;
+    content.emplace("5", std::move(labelPlan));
+
+    auto& highlighter = scene.addContent(6, "z_depth_highlighter",
+        ContentRef::image("z_depth_highlighter", Vector2(350.f*s, 24.f*s)));
+    highlighter.is3D = true;
+    // Share the label's left anchor; place the bar a little behind the glyphs
+    // and keep both in front of the middle image plane.
+    highlighter.transform.position.set(-215.f*s, 52.f*s, -24.f*s);
+    highlighter.lifetime = FrameRange::between(0, last);
+    chronon3d::render_plan::LayerPlan highlighterPlan;
+    highlighterPlan.type = chronon3d::render_plan::LayerType::Shape;
+    highlighterPlan.size = {350.f*s, 24.f*s};
+    highlighterPlan.size_dimensions = 2;
+    chronon3d::render_plan::ShapeContentPlan highlighterShape;
+    highlighterShape.type = chronon3d::render_plan::ShapeContentTypePlan::Rect;
+    highlighterShape.fill_color = std::array<float, 4>{0.f, .66f, 1.f, .86f};
+    highlighterPlan.shape = highlighterShape;
+    content.emplace("6", std::move(highlighterPlan));
 
     auto& parent = scene.addNull(90, "camera_dolly");
     parent.is3D = true;
-    parent.tracks.position.add(0.f, Vector3{-95*s, 0, 0}, Easing::easeInOut())
-        .add(149.f/fps, Vector3{95*s, 0, 0});
+    parent.tracks.position.add(0.f,
+        Vector3{plane_diagnostic && !animated_diagnostic ? 0.f : -95*s, 0, 0},
+        Easing::easeInOut());
+    if (!plane_diagnostic || animated_diagnostic)
+        parent.tracks.position.add(149.f/fps, Vector3{95*s, 0, 0});
     CameraRig rig(100, 50.f, float(width)/height, 1.f*s, 10000.f*s);
     rig.setParent(90).setPosition({0, 0, 1000*s});
-    rig.setFStop(mode == "sharp" ? 0.f : 1.4f).setMaxBlur(28*s).setFocusDistance(820*s);
-    rig.focusDistanceTrack().add(0.f, 820*s)
-        .add(1.2f, 820*s, Easing::easeInOut())
-        .add(2.5f, 1000*s, Easing::easeInOut())
-        .add(4.f, 1380*s)
-        .add(149.f/fps, 1380*s);
+    rig.setFStop(plane_diagnostic || mode == "sharp" ? 0.f : 1.4f)
+        .setMaxBlur(plane_diagnostic ? 0.f : 28*s).setFocusDistance(820*s);
+    if (!plane_diagnostic) {
+        rig.focusDistanceTrack().add(0.f, 820*s)
+            .add(1.2f, 820*s, Easing::easeInOut())
+            .add(2.5f, 1000*s, Easing::easeInOut())
+            .add(4.f, 1380*s)
+            .add(149.f/fps, 1380*s);
+    }
 
     RenderPlanLoweringOptions options;
     options.width = width;
@@ -108,7 +165,10 @@ int main(int argc, char** argv) try {
     out << renderPlanToJson(plan) << '\n';
     if (!out) throw std::runtime_error("cannot write output plan");
     std::cout << "optical studio: " << width << 'x' << height << ", "
-              << plan.canvas.duration.integral() << " frames\n";
+              << plan.canvas.duration.integral() << " frames"
+              << (plane_diagnostic ? ", DoF off, " + std::to_string(plate_count) + " plates" : "")
+              << (plane_diagnostic ? ", background scale " + std::to_string(background_scale) : "")
+              << '\n';
     return 0;
 } catch (const std::exception& e) {
     std::cerr << "optical studio: " << e.what() << '\n';
