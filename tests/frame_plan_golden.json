@@ -1,0 +1,808 @@
+{
+  "schema": "chrononmotion.resolved-frame-plan.v1",
+  "space": "chrononmotion-world/right-handed/y-up/-z-forward/motion-units",
+  "plan_id": "frame-plan-fixture",
+  "canvas": {
+    "width": 1920,
+    "height": 1080
+  },
+  "fps": {
+    "numerator": 24,
+    "denominator": 1
+  },
+  "frames": {
+    "first": 0,
+    "count": 5
+  },
+  "timeline": [
+    {
+      "frame": 0,
+      "sub_frame_units": 0,
+      "seconds": 0
+    },
+    {
+      "frame": 1,
+      "sub_frame_units": 0,
+      "seconds": 0.041666666666666664
+    },
+    {
+      "frame": 2,
+      "sub_frame_units": 0,
+      "seconds": 0.08333333333333333
+    },
+    {
+      "frame": 3,
+      "sub_frame_units": 0,
+      "seconds": 0.125
+    },
+    {
+      "frame": 4,
+      "sub_frame_units": 0,
+      "seconds": 0.16666666666666666
+    }
+  ],
+  "shutter": {
+    "angle_deg": 180,
+    "offset_units": [
+      -250000,
+      -204546,
+      -159091,
+      -113637,
+      -68182,
+      -22728,
+      22727,
+      68181,
+      113636,
+      159090,
+      204545,
+      250000
+    ]
+  },
+  "camera": [
+    {
+      "time": {
+        "frame": 0,
+        "sub_frame_units": 0,
+        "seconds": 0
+      },
+      "position": [
+        1.5,
+        2.5,
+        9
+      ],
+      "orientation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "fov_deg": 50,
+      "lens": {
+        "focal_length_mm": 0,
+        "sensor_width_mm": 36,
+        "sensor_height_mm": 24,
+        "lens_shift": [
+          0,
+          0
+        ],
+        "f_stop": 2.8,
+        "focus_distance": 6.5
+      }
+    },
+    {
+      "time": {
+        "frame": 1,
+        "sub_frame_units": 0,
+        "seconds": 0.041666666666666664
+      },
+      "position": [
+        1.5,
+        2.5,
+        9
+      ],
+      "orientation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "fov_deg": 50,
+      "lens": {
+        "focal_length_mm": 0,
+        "sensor_width_mm": 36,
+        "sensor_height_mm": 24,
+        "lens_shift": [
+          0,
+          0
+        ],
+        "f_stop": 2.8,
+        "focus_distance": 6.5
+      }
+    },
+    {
+      "time": {
+        "frame": 2,
+        "sub_frame_units": 0,
+        "seconds": 0.08333333333333333
+      },
+      "position": [
+        1.5,
+        2.5,
+        9
+      ],
+      "orientation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "fov_deg": 50,
+      "lens": {
+        "focal_length_mm": 0,
+        "sensor_width_mm": 36,
+        "sensor_height_mm": 24,
+        "lens_shift": [
+          0,
+          0
+        ],
+        "f_stop": 2.8,
+        "focus_distance": 6.5
+      }
+    },
+    {
+      "time": {
+        "frame": 3,
+        "sub_frame_units": 0,
+        "seconds": 0.125
+      },
+      "position": [
+        1.5,
+        2.5,
+        9
+      ],
+      "orientation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "fov_deg": 50,
+      "lens": {
+        "focal_length_mm": 0,
+        "sensor_width_mm": 36,
+        "sensor_height_mm": 24,
+        "lens_shift": [
+          0,
+          0
+        ],
+        "f_stop": 2.8,
+        "focus_distance": 6.5
+      }
+    },
+    {
+      "time": {
+        "frame": 4,
+        "sub_frame_units": 0,
+        "seconds": 0.16666666666666666
+      },
+      "position": [
+        1.5,
+        2.5,
+        9
+      ],
+      "orientation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "fov_deg": 50,
+      "lens": {
+        "focal_length_mm": 0,
+        "sensor_width_mm": 36,
+        "sensor_height_mm": 24,
+        "lens_shift": [
+          0,
+          0
+        ],
+        "f_stop": 2.8,
+        "focus_distance": 6.5
+      }
+    }
+  ],
+  "layers": [
+    {
+      "id": 10,
+      "name": "rig",
+      "kind": "null",
+      "asset": "",
+      "fingerprint": "",
+      "base_color_texture": "",
+      "metallic_roughness_texture": "",
+      "parent": 0,
+      "order": 0,
+      "samples": [
+        {
+          "time": {
+            "frame": 0,
+            "sub_frame_units": 0,
+            "seconds": 0
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 1,
+            "sub_frame_units": 0,
+            "seconds": 0.041666666666666664
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 2,
+            "sub_frame_units": 0,
+            "seconds": 0.08333333333333333
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 3,
+            "sub_frame_units": 0,
+            "seconds": 0.125
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 1,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 4,
+            "sub_frame_units": 0,
+            "seconds": 0.16666666666666666
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 1,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "name": "plate",
+      "kind": "image",
+      "asset": "assets/plate.png",
+      "fingerprint": "",
+      "base_color_texture": "",
+      "metallic_roughness_texture": "",
+      "parent": 10,
+      "order": 1,
+      "samples": [
+        {
+          "time": {
+            "frame": 0,
+            "sub_frame_units": 0,
+            "seconds": 0
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.5,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 1,
+            "sub_frame_units": 0,
+            "seconds": 0.041666666666666664
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.5,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 2,
+            "sub_frame_units": 0,
+            "seconds": 0.08333333333333333
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.5,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 3,
+            "sub_frame_units": 0,
+            "seconds": 0.125
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.5,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 4,
+            "sub_frame_units": 0,
+            "seconds": 0.16666666666666666
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.5,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "title",
+      "kind": "text",
+      "asset": "assets/title",
+      "fingerprint": "",
+      "base_color_texture": "",
+      "metallic_roughness_texture": "",
+      "parent": 1,
+      "order": 2,
+      "samples": [
+        {
+          "time": {
+            "frame": 0,
+            "sub_frame_units": 0,
+            "seconds": 0
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 1,
+            "sub_frame_units": 0,
+            "seconds": 0.041666666666666664
+          },
+          "world": [
+            1,
+            0,
+            0,
+            4.166667,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 2,
+            "sub_frame_units": 0,
+            "seconds": 0.08333333333333333
+          },
+          "world": [
+            1,
+            0,
+            0,
+            8.333334,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 3,
+            "sub_frame_units": 0,
+            "seconds": 0.125
+          },
+          "world": [
+            1,
+            0,
+            0,
+            12.5,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 4,
+            "sub_frame_units": 0,
+            "seconds": 0.16666666666666666
+          },
+          "world": [
+            1,
+            0,
+            0,
+            16.666668,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "box",
+      "kind": "mesh",
+      "asset": "models/box.glb",
+      "fingerprint": "",
+      "base_color_texture": "",
+      "metallic_roughness_texture": "",
+      "parent": 2,
+      "order": 3,
+      "samples": [
+        {
+          "time": {
+            "frame": 0,
+            "sub_frame_units": 0,
+            "seconds": 0
+          },
+          "world": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 1,
+            "sub_frame_units": 0,
+            "seconds": 0.041666666666666664
+          },
+          "world": [
+            1,
+            0,
+            0,
+            4.166667,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 2,
+            "sub_frame_units": 0,
+            "seconds": 0.08333333333333333
+          },
+          "world": [
+            1,
+            0,
+            0,
+            8.333334,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 3,
+            "sub_frame_units": 0,
+            "seconds": 0.125
+          },
+          "world": [
+            1,
+            0,
+            0,
+            12.5,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        },
+        {
+          "time": {
+            "frame": 4,
+            "sub_frame_units": 0,
+            "seconds": 0.16666666666666666
+          },
+          "world": [
+            1,
+            0,
+            0,
+            16.666668,
+            0,
+            1,
+            0,
+            300,
+            0,
+            0,
+            1,
+            -8,
+            0,
+            0,
+            0,
+            1
+          ],
+          "opacity": 0.25,
+          "visible": true
+        }
+      ]
+    }
+  ],
+  "digest": 15754410251503441791
+}

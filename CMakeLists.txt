@@ -140,6 +140,11 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/Presets_Motion.cpp
         src/chrononmotion/motion/Presets_Camera.cpp
         src/chrononmotion/motion/Presets_Environment.cpp
+        # plan — the resolved frame plan (ADR-CAMERA-PIPELINE-OWNERSHIP gate 1)
+        src/chrononmotion/plan/ResolvedFramePlan.cpp
+        src/chrononmotion/plan/FramePlanJson.cpp
+        src/chrononmotion/plan/FramePlanDigest.cpp
+        src/chrononmotion/plan/FramePlanValidation.cpp
         # curves
         src/chrononmotion/extras/core/Curve.cpp
         src/chrononmotion/extras/core/CurvePath.cpp
@@ -300,6 +305,17 @@ if(CHRONONMOTION_BUILD_TESTS)
         target_compile_options(chrononmotion_rig_pipeline PRIVATE -Werror)
     endif()
     add_test(NAME chrononmotion_rig_pipeline COMMAND chrononmotion_rig_pipeline)
+
+    # The resolved frame plan: contract, JSON/digest determinism, and refusal of
+    # every rule the plan declares (one negative case per rule).
+    add_executable(chrononmotion_frame_plan tests/motion_frame_plan.cpp)
+    target_link_libraries(chrononmotion_frame_plan PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_frame_plan PRIVATE -Wall -Wextra -Werror)
+    # The committed wire document of the fixture plan: regenerate with
+    # `chrononmotion_frame_plan --dump-golden`, never by editing the JSON.
+    target_compile_definitions(chrononmotion_frame_plan PRIVATE
+        CHRONONMOTION_FRAME_PLAN_GOLDEN="${CMAKE_CURRENT_SOURCE_DIR}/tests/frame_plan_golden.json")
+    add_test(NAME chrononmotion_frame_plan COMMAND chrononmotion_frame_plan)
 
     add_executable(chrononmotion_hdri tests/motion_hdri.cpp)
     target_link_libraries(chrononmotion_hdri PRIVATE chrononmotion)

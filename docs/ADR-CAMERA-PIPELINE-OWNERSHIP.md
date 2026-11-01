@@ -67,6 +67,17 @@ la sola build come accettazione.
 1. **Contratto unico:** definire il frame plan versionato e togliere dal
    contratto ogni stato/callback runtime; Motion produce camera e layer agli
    stessi timestamp esatti, inclusi i campioni shutter.
+   **Fatto (2026-11-01):** `chrononmotion::plan::ResolvedFramePlan`,
+   schema `chrononmotion.resolved-frame-plan.v1`, prodotto da
+   `resolveFramePlan()` e verificato da `verifyFramePlan()`. Contratto in
+   `docs/RESOLVED_FRAME_PLAN.md` e
+   `contracts/chrononmotion.resolved-frame-plan.v1.json`; il documento del
+   fixture è committato in `tests/frame_plan_golden.json`.
+   Calendario unico: `frame` (anche negativo) piu' `sub_frame_units` interi in
+   milionesimi di frame; `seconds` è derivato e verificato. Il test
+   `chrononmotion_frame_plan` (179 check) confronta ogni campione layer, bit per
+   bit, con `scene.evaluate(N)` allo stesso frame, quindi un piano spostato di
+   mezzo frame fallisce. Restano fuori da questo gate i gate 2-6.
 2. **Backend sottile:** C3D consuma soltanto il piano risolto. Spostare in
    Motion validazione, policy e calendario che oggi sono duplicati o decisi
    dal consumer; lasciare in C3D kernel, risorse e sincronizzazione GPU.
@@ -85,6 +96,9 @@ la sola build come accettazione.
    permanente.
 
 ## Stato e lavoro aperto
+
+Il gate 1 (contratto del piano risolto) è chiuso e verificato localmente; i gate
+2-6 no.
 
 Questa decisione sposta la proprietà semantica, ma non finge che il codice sia
 già migrato. I fix e i test presenti nel working tree restano evidenza locale

@@ -1,0 +1,196 @@
+{
+  "contract": "chrononmotion.resolved-frame-plan",
+  "version": 1,
+  "schema": "chrononmotion.resolved-frame-plan.v1",
+  "space": "chrononmotion-world/right-handed/y-up/-z-forward/motion-units",
+  "producer": "chrononmotion::plan::resolveFramePlan",
+  "verifier": "chrononmotion::plan::verifyFramePlan",
+  "documentation": "docs/RESOLVED_FRAME_PLAN.md",
+  "golden": "tests/frame_plan_golden.json",
+  "time": {
+    "sub_frame_units_per_frame": 1000000,
+    "seconds_formula": "(frame + sub_frame_units / 1000000) * fps.denominator / fps.numerator",
+    "seconds_is_derived": true,
+    "frame_may_be_negative": true,
+    "timeline_must_be_strictly_ascending": true
+  },
+  "matrix_layout": {
+    "storage": "row-major",
+    "translation_indices": [3, 7, 11],
+    "note": "ChrononMotion stores column-major internally; the producer transposes once."
+  },
+  "root": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["schema", "space", "plan_id", "canvas", "fps", "frames", "timeline", "shutter", "camera", "layers", "digest"],
+    "properties": {
+      "schema": { "const": "chrononmotion.resolved-frame-plan.v1" },
+      "space": { "const": "chrononmotion-world/right-handed/y-up/-z-forward/motion-units" },
+      "plan_id": { "type": "string", "maxLength": 256 },
+      "canvas": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["width", "height"],
+        "properties": {
+          "width": { "type": "integer", "minimum": 1, "maximum": 65536 },
+          "height": { "type": "integer", "minimum": 1, "maximum": 65536 }
+        }
+      },
+      "fps": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["numerator", "denominator"],
+        "properties": {
+          "numerator": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+          "denominator": { "type": "integer", "minimum": 1, "maximum": 1001 },
+          "note": "numerator / denominator must be in (0, 1000] and must be the scene rate within 1e-4 relative."
+        }
+      },
+      "frames": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["first", "count"],
+        "properties": {
+          "first": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+          "count": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "timeline": {
+        "type": "array",
+        "minItems": 1,
+        "description": "Exactly frames.count entries; entry i carries frame == frames.first + i.",
+        "items": { "$ref": "#/definitions/timestamp" }
+      },
+      "shutter": {
+        "oneOf": [
+          { "type": "null" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["angle_deg", "offset_units"],
+            "properties": {
+              "angle_deg": { "type": "number", "exclusiveMinimum": 0, "maximum": 360 },
+              "offset_units": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 64,
+                "items": { "type": "integer", "minimum": -500000, "maximum": 500000 },
+                "description": "Strictly ascending and symmetric about the frame: the first offset is negative, the last positive, and every offset is within +/- angle_deg/720 frames."
+              }
+            }
+          }
+        ]
+      },
+      "camera": {
+        "type": "array",
+        "description": "Exactly one sample per timeline entry, in the same order.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["time", "position", "orientation", "fov_deg", "lens"],
+          "properties": {
+            "time": { "$ref": "#/definitions/timestamp" },
+            "position": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": { "type": "number" }
+            },
+            "orientation": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": { "type": "number" },
+              "description": "Unit quaternion (x, y, z, w) with look-at and roll already applied; |q| within 1e-4 of 1."
+            },
+            "fov_deg": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 180 },
+            "lens": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["focal_length_mm", "sensor_width_mm", "sensor_height_mm", "lens_shift", "f_stop", "focus_distance"],
+              "properties": {
+                "focal_length_mm": { "type": "number", "minimum": 0, "maximum": 1000, "description": "0 means not authored: fov_deg is the cone." },
+                "sensor_width_mm": { "type": "number", "minimum": 0, "maximum": 200 },
+                "sensor_height_mm": { "type": "number", "minimum": 0, "maximum": 200 },
+                "lens_shift": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": { "type": "number", "minimum": -1, "maximum": 1 }
+                },
+                "f_stop": { "type": "number", "description": "0 (not authored) or [0.7, 32]; the single authored aperture truth." },
+                "focus_distance": { "type": "number", "minimum": 0 }
+              }
+            }
+          }
+        }
+      },
+      "layers": {
+        "type": "array",
+        "description": "Parents first. order equals the list position; parent is either 0 (scene root) or an earlier layer id.",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name", "kind", "asset", "fingerprint", "base_color_texture", "metallic_roughness_texture", "parent", "order", "samples"],
+          "properties": {
+            "id": { "type": "integer", "minimum": 1 },
+            "name": { "type": "string" },
+            "kind": { "enum": ["null", "text", "image", "video", "mesh"] },
+            "asset": { "type": "string", "description": "Opaque id; empty only for a null layer or an inline-geometry mesh." },
+            "fingerprint": { "type": "string", "description": "Digest of the measured content rectangle; empty means hand-authored numbers." },
+            "base_color_texture": { "type": "string" },
+            "metallic_roughness_texture": { "type": "string" },
+            "parent": { "type": "integer", "minimum": 0 },
+            "order": { "type": "integer", "minimum": 0 },
+            "samples": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Exactly one sample per timeline entry, in the same order.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["time", "world", "opacity", "visible"],
+                "properties": {
+                  "time": { "$ref": "#/definitions/timestamp" },
+                  "world": {
+                    "type": "array",
+                    "minItems": 16,
+                    "maxItems": 16,
+                    "items": { "type": "number" }
+                  },
+                  "opacity": { "type": "number", "minimum": 0, "maximum": 1, "description": "Composed through the parent chain." },
+                  "visible": { "type": "boolean", "description": "Lifetime resolved at this timestamp. A false layer stays in the plan." }
+                }
+              }
+            }
+          }
+        }
+      },
+      "digest": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "FNV-1a-64 over the canonical form (indent 0, digest field omitted). A consumer recomputes it."
+      }
+    }
+  },
+  "definitions": {
+    "timestamp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame", "sub_frame_units", "seconds"],
+      "properties": {
+        "frame": { "type": "integer" },
+        "sub_frame_units": { "type": "integer", "minimum": 0, "maximum": 999999 },
+        "seconds": { "type": "number" }
+      }
+    }
+  },
+  "rejections": [
+    "schema", "space", "canvas", "frame_rate", "timeline_empty", "timeline_size",
+    "timeline_order", "timeline_sub_frame", "timeline_seconds", "shutter_shape",
+    "shutter_offsets", "shutter_coverage", "camera_count", "camera_time",
+    "camera_pose", "camera_optics", "layer_order", "layer_parent", "layer_kind",
+    "layer_asset", "layer_samples", "layer_timestamp", "layer_transform",
+    "layer_opacity", "digest"
+  ]
+}
