@@ -98,5 +98,32 @@ Updated 2026-11-01 from local source and Release test evidence.
   **66/66 PASS** (66 registered in this configuration), `chrononmotion_authoring`
   381 checks / 0 failures.
 
+## Resolved frame plan — ADR-CAMERA-PIPELINE-OWNERSHIP gate 1 (2026-11-01)
+
+- The versioned resolved frame plan exists as a value type:
+  `chrononmotion::plan::ResolvedFramePlan`, produced by one function
+  (`resolveFramePlan`) from a scene and a camera rig. It carries canvas, a
+  rational frame rate, the single timeline, the shutter window in sub-frame
+  units, one camera sample per frame and one world matrix per layer per frame.
+  No pointer to a `MotionScene`, no track, no callback and no policy crosses it.
+- Calendar: `frame` (may be negative) plus integer `sub_frame_units` in
+  millionths of a frame; `seconds` is derived and verified against
+  `(frame + units/1e6) * den/num`. Evaluation uses the same `(frame, fraction)`
+  pair, so a whole-frame plan is bit-for-bit `scene.evaluate(N)`.
+- Contract: `docs/RESOLVED_FRAME_PLAN.md`,
+  `contracts/chrononmotion.resolved-frame-plan.v1.json`, golden
+  `tests/frame_plan_golden.json` (regenerated with `--dump-golden`).
+- Fail-closed verifier with 25 typed rejection codes; composed opacity outside
+  [0, 1] is a rejection, not a clamp, and a layer past its lifetime stays in the
+  plan as `visible: false`. The producer holds itself to the consumer's rules
+  and the JSON writer refuses an invalid plan.
+- Local evidence: `chrononmotion_frame_plan` **179 checks / 0 failures**,
+  including bit-exact frame-grid comparison against `scene.evaluate(N)`,
+  row-major matrix layout verified independently, shutter endpoints, byte-level
+  determinism, a tampered-golden check and 29 negative cases.
+- Gates 2-6 (thin C3D consumer, alpha/depth compositing with DoF, GPU shutter,
+  product acceptance at 1080p with same-SHA CI, legacy removal) remain open and
+  are not claimed here.
+
 GPU and CI certification are external gates and are not reported as locally
 verified in this status file.
