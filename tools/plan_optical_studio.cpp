@@ -51,13 +51,19 @@ int main(int argc, char** argv) try {
         plan.fit = chronon3d::render_plan::FitMode::Contain;
         content.emplace(std::to_string(id), std::move(plan));
     };
-    addPlate(1, "background", 0, 0, -1000, 8400, 4725);
+    // At the 50° camera FOV and 2000-unit camera-to-plane distance, the
+    // visible field is about 3316×1865. A 3840×2160 plate gives a modest
+    // overscan without allocating an 8400×4725 software source surface.
+    addPlate(1, "background", 0, 0, -1000, 3840, 2160);
     addPlate(2, "far", 505, 35, -380, 730, 830);
     addPlate(3, "middle", 0, 0, 0, 570, 650);
-    addPlate(4, "near", -420, -30, 180, 460, 525);
+    // Keep the authored near target centered in the frozen left-side ROI after
+    // perspective projection (world X is magnified by the camera). At -420 it
+    // was nearly outside the canvas; at -200 the chart still missed the ROI.
+    addPlate(4, "near", -175, -30, 180, 460, 525);
     auto* entering = scene.findLayer(4);
-    entering->tracks.position.add(0.f, Vector3{-540*s, -30*s, 180*s}, Easing::easeInOut())
-        .add(.8f, Vector3{-420*s, -30*s, 180*s});
+    entering->tracks.position.add(0.f, Vector3{-295*s, -30*s, 180*s}, Easing::easeInOut())
+        .add(.8f, Vector3{-175*s, -30*s, 180*s});
     entering->tracks.opacity.add(0.f, .15f, Easing::easeInOut()).add(.8f, 1.f);
     if (mode == "shutter") scene.setShutter(ShutterSettings{180.f, 8});
 
@@ -67,7 +73,7 @@ int main(int argc, char** argv) try {
         .add(149.f/fps, Vector3{95*s, 0, 0});
     CameraRig rig(100, 50.f, float(width)/height, 1.f*s, 10000.f*s);
     rig.setParent(90).setPosition({0, 0, 1000*s});
-    rig.setFStop(mode == "sharp" ? 0.f : 1.4f).setMaxBlur(28*s).setFocusDistance(820*s);
+    rig.setFStop(mode == "sharp" ? 0.f : 1.0f).setMaxBlur(28*s).setFocusDistance(820*s);
     rig.focusDistanceTrack().add(0.f, 820*s)
         .add(1.2f, 820*s, Easing::easeInOut())
         .add(2.5f, 1000*s, Easing::easeInOut())

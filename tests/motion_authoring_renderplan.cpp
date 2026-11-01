@@ -1025,7 +1025,7 @@ void testTypedChronon3dLowering() {
     cameraContent.transform.position.set(4.f, 5.f, -12.f);
     cameraScene.evaluate(0);
     CameraRig animatedRig(23, 50.f, 16.f / 9.f, 0.1f, 2000.f);
-    animatedRig.setPosition({1.f, 2.f, -8.f});
+    animatedRig.setPosition({1.f, 2.f, -8.f}).setSensorHeight(18.f);
     animatedRig.positionTrack().add(0.f, Vector3(1.f, 2.f, -8.f));
     animatedRig.positionTrack().add(3.f / 30.f, Vector3(3.f, 2.f, -8.f));
     RenderPlanLoweringOptions cameraOptions;
@@ -1039,6 +1039,24 @@ void testTypedChronon3dLowering() {
     const auto cameraPlan = lowerToRenderPlan(cameraScene, cameraOptions);
     check(cameraPlan.camera && cameraPlan.camera_samples && cameraPlan.camera_samples->size() == 4,
           "camera rig lowers to a typed base projection and resolved frame samples");
+    check(cameraPlan.camera->fov_deg == 50.f && cameraPlan.camera->sensor_height_mm == 18.f &&
+          cameraPlan.camera_samples->front().camera.sensor_height_mm == 18.f,
+          "canonical FOV and authored sensor height survive Motion-to-RenderPlan lowering");
+    // The physical sensor gate is an authored channel, so its range must be
+    // refused at authoring time instead of surfacing later as a lowering
+    // contract error on a lens the author never saw.
+    CameraRig sensorGateRig(24);
+    for (float bad : {0.5f, 100.5f, -1.f, std::numeric_limits<float>::quiet_NaN(),
+                      std::numeric_limits<float>::infinity()}) {
+        check(throwsInvalid([&] { sensorGateRig.setSensorHeight(bad); }),
+              "CameraRig rejects sensor heights outside the [1, 100] mm physical gate");
+    }
+    check(sensorGateRig.setSensorHeight(1.f).sample(0.f).sensorHeight == 1.f &&
+          sensorGateRig.setSensorHeight(100.f).sample(0.f).sensorHeight == 100.f &&
+          sensorGateRig.setSensorHeight(13.5f).sample(0.f).sensorHeight == 13.5f,
+          "CameraRig carries authored sensor height into sampled poses at both gate endpoints");
+    check(CameraRig(25).sample(0.f).fov == 50.f,
+          "CameraRig default vertical FOV stays the documented 50 degrees");
     const auto* cameraPositionZ = &cameraPlan.camera_samples->back().camera;
     const auto& loweredContent = cameraPlan.layers.front();
     const auto& loweredPositionTrack = loweredContent.animation->tracks.front();

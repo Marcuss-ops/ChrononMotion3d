@@ -53,6 +53,16 @@ def main():
             d.ellipse((cx-r, cy-r, cx+r, cy+r), outline=(*accent, 210 if r == 174 else 125), width=3)
         d.line((cx-202, cy, cx+202, cy), fill=(*pale, 130), width=2)
         d.line((cx, cy-202, cx, cy+202), fill=(*pale, 130), width=2)
+        # Deterministic focus target: high-contrast line pairs fill the center
+        # of the chart so ROI sharpness is measured on actual texture rather
+        # than mostly empty card/background. Keep it inset from the rings.
+        for i in range(24):
+            x0 = cx - 96 + i * 8
+            color = (*pale, 245) if i % 2 == 0 else (8, 13, 20, 245)
+            d.rectangle((x0, cy - 30, x0 + 7, cy + 30), fill=color)
+        for i in range(8):
+            y0 = cy - 28 + i * 8
+            d.line((cx - 99, y0, cx + 99, y0), fill=(*accent, 230 if i % 2 == 0 else 90), width=1)
         d.ellipse((cx-12, cy-12, cx+12, cy+12), fill=(*accent, 255))
         for i in range(11):
             xx = 85 + i * 55

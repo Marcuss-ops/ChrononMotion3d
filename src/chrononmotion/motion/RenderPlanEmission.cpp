@@ -310,6 +310,8 @@ namespace chrononmotion::motion {
             }
             writer.key("sensor_width_mm");
             writer.number(camera.sensor_width_mm);
+            writer.key("sensor_height_mm");
+            writer.number(camera.sensor_height_mm);
             writer.key("lens_shift");
             writeFloats(writer, camera.lens_shift, camera.lens_shift.size());
             if (camera.f_stop > 0.f) {
