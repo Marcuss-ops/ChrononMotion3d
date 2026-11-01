@@ -12,16 +12,26 @@ project(ChrononMotion
         DESCRIPTION "Deterministic motion/transform engine for Chronon"
         LANGUAGES CXX)
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(FATAL_ERROR "ChrononMotion is Linux-only")
-endif()
-
 option(CHRONONMOTION_BUILD_TESTS "Build the ChrononMotion smoke tests" ${PROJECT_IS_TOP_LEVEL})
 option(CHRONONMOTION_BUILD_BENCHMARKS "Build the standalone evaluation benchmark" OFF)
 option(CHRONONMOTION_WERROR "Turn compiler warnings into errors" OFF)
 option(CHRONONMOTION_BUILD_RENDER "Build the offscreen GL render module (explicit opt-in; headless core is the default)" OFF)
 set(CHRONON3D_INCLUDE_DIR "" CACHE PATH "Optional sibling Chronon3D include root for building the offline RenderPlan adapter")
 set(CHRONON3D_DEPENDENCY_INCLUDE_DIR "" CACHE PATH "Optional Chronon3D dependency include root")
+
+function(chrononmotion_set_target_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+        if(CHRONONMOTION_WERROR)
+            target_compile_options(${target} PRIVATE /WX)
+        endif()
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra)
+        if(CHRONONMOTION_WERROR)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif()
+    endif()
+endfunction()
 
 if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -112,7 +122,6 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/CameraMotionRecipeRegistry.cpp
         src/chrononmotion/motion/CameraSequence.cpp
         src/chrononmotion/motion/DocumentaryCameraPath.cpp
-        src/chrononmotion/motion/CameraPanelChoreography.cpp
         src/chrononmotion/motion/CameraFocusSequence.cpp
         src/chrononmotion/motion/TitleCameraRecipe.cpp
         src/chrononmotion/motion/CameraShake.cpp
@@ -193,11 +202,8 @@ if(CHRONON3D_INCLUDE_DIR)
         target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_DEPENDENCY_INCLUDE_DIR}")
     endif()
     target_compile_features(chrononmotion_chronon3d_adapter PUBLIC cxx_std_20)
-    target_compile_options(chrononmotion_chronon3d_adapter PRIVATE -Wall -Wextra)
+    chrononmotion_set_target_warnings(chrononmotion_chronon3d_adapter)
     target_compile_definitions(chrononmotion_chronon3d_adapter PUBLIC CHRONONMOTION_HAS_CHRONON3D_ADAPTER=1)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_chronon3d_adapter PRIVATE -Werror)
-    endif()
 
     # The showreel generator: the one place in this tree that turns a Motion
     # scene into a renderable `chronon.render-plan.v2` file. A tool, never part
@@ -205,48 +211,33 @@ if(CHRONON3D_INCLUDE_DIR)
     add_executable(chrononmotion_plan_showreel tools/plan_showreel.cpp)
     target_link_libraries(chrononmotion_plan_showreel PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
     target_compile_features(chrononmotion_plan_showreel PRIVATE cxx_std_20)
-    target_compile_options(chrononmotion_plan_showreel PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_plan_showreel PRIVATE -Werror)
-    endif()
+    chrononmotion_set_target_warnings(chrononmotion_plan_showreel)
 
     # The word rack-focus generator: the reference Screenrecording proof of
     # item 3, one place authors the united camera+DoF scene and lowers it V3.
     add_executable(chrononmotion_plan_word_rack_focus tools/plan_word_rack_focus.cpp)
     target_link_libraries(chrononmotion_plan_word_rack_focus PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
     target_compile_features(chrononmotion_plan_word_rack_focus PRIVATE cxx_std_20)
-    target_compile_options(chrononmotion_plan_word_rack_focus PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_plan_word_rack_focus PRIVATE -Werror)
-    endif()
+    chrononmotion_set_target_warnings(chrononmotion_plan_word_rack_focus)
 
     # The map flyover generator: the geospatial counterpart of the showreel, and
     # the only place a georeferenced Motion scene becomes a renderable plan.
     add_executable(chrononmotion_map_flyover tools/plan_map_flyover.cpp)
     target_link_libraries(chrononmotion_map_flyover PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
     target_compile_features(chrononmotion_map_flyover PRIVATE cxx_std_20)
-    target_compile_options(chrononmotion_map_flyover PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_map_flyover PRIVATE -Werror)
-    endif()
+    chrononmotion_set_target_warnings(chrononmotion_map_flyover)
 
     # Original three-plane camera and focus acceptance candidate.
     add_executable(chrononmotion_plan_optical_studio tools/plan_optical_studio.cpp)
     target_link_libraries(chrononmotion_plan_optical_studio PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
     target_compile_features(chrononmotion_plan_optical_studio PRIVATE cxx_std_20)
-    target_compile_options(chrononmotion_plan_optical_studio PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_plan_optical_studio PRIVATE -Werror)
-    endif()
+    chrononmotion_set_target_warnings(chrononmotion_plan_optical_studio)
 
     # The definitive 4-stage documentary showcase generator.
     add_executable(chrononmotion_plan_documentary_showcase tools/plan_documentary_showcase.cpp)
     target_link_libraries(chrononmotion_plan_documentary_showcase PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
     target_compile_features(chrononmotion_plan_documentary_showcase PRIVATE cxx_std_20)
-    target_compile_options(chrononmotion_plan_documentary_showcase PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_plan_documentary_showcase PRIVATE -Werror)
-    endif()
+    chrononmotion_set_target_warnings(chrononmotion_plan_documentary_showcase)
 endif()
 
 if(CHRONONMOTION_BUILD_BENCHMARKS)
@@ -265,7 +256,11 @@ target_include_directories(chrononmotion PRIVATE
 
 target_compile_features(chrononmotion PUBLIC cxx_std_20)
 
-target_compile_options(chrononmotion PRIVATE -Wall -Wextra)
+if(MSVC)
+    target_compile_options(chrononmotion PRIVATE /W4)
+else()
+    target_compile_options(chrononmotion PRIVATE -Wall -Wextra)
+endif()
 if(CHRONONMOTION_WERROR)
     target_compile_options(chrononmotion PRIVATE -Werror)
 endif()

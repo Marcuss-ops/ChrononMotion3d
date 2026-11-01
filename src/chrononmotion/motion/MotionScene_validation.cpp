@@ -49,7 +49,7 @@ using scene_detail::saturatedAdd;
                     std::find(policy_.allowedGeometryTypes.begin(), policy_.allowedGeometryTypes.end(), geometryType) ==
                         policy_.allowedGeometryTypes.end())
                     problems.push_back("layer " + std::to_string(layer.id) + ": geometry type is not allowlisted: " + geometryType);
-                if (const auto* positions = layer.mesh.geometry->getAttribute<FloatBufferAttribute>("position"))
+                if (const auto* positions = layer.mesh.geometry->getAttribute<float>("position"))
                     totalGeometryVertices = saturatedAdd(totalGeometryVertices,
                         static_cast<std::size_t>(positions->count()));
             }

@@ -261,6 +261,21 @@ namespace chrononmotion::motion {
         return pose.maxBlur / canvasHeight;
     }
 
+    struct BokehPreviewParams {
+        float focus;
+        float aperture;
+        float maxBlur;
+    };
+
+    /// Complete threepp BokehPass parameter set derived from one sampled rig
+    /// pose. `canvasHeight` is in pixels, matching the authored maxBlur unit.
+    [[nodiscard]] inline BokehPreviewParams bokehParams(const CameraPose& pose,
+                                                         float canvasHeight) {
+        return {pose.focusDistance,
+                bokehPreviewAperture(pose, canvasHeight),
+                bokehPreviewMaxBlur(pose, canvasHeight)};
+    }
+
 }// namespace chrononmotion::motion
 
 #endif//CHRONONMOTION_MOTION_CAMERARIG_HPP
