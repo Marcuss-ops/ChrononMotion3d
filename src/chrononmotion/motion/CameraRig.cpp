@@ -80,6 +80,13 @@ namespace chrononmotion::motion {
         return *this;
     }
 
+    CameraRig& CameraRig::setSensorHeight(float millimetres) {
+        if (!std::isfinite(millimetres) || millimetres < 1.f || millimetres > 100.f)
+            throw std::invalid_argument("CameraRig::setSensorHeight: sensor height must be in [1, 100] mm");
+        sensorHeight_ = millimetres;
+        return *this;
+    }
+
     CameraRig& CameraRig::setLensShift(const Vector2& shift) {
         if (!math::isFinite(shift) ||
             std::abs(shift.x) > 1.f || std::abs(shift.y) > 1.f)
@@ -372,6 +379,7 @@ namespace chrononmotion::motion {
         pose.fov = fovTrack_.empty() ? fov_ : fovTrack_.sample(seconds);
         pose.focalLength = focalTrack_.empty() ? focalLength_ : focalTrack_.sample(seconds);
         pose.sensorWidth = sensorWidth_;
+        pose.sensorHeight = sensorHeight_;
         pose.lensShift = lensShift_;
         pose.roll = rollTrack_.empty() ? roll_ : rollTrack_.sample(seconds);
         pose.focusDistance = focusDistanceTrack_.empty() ? focusDistance_ : focusDistanceTrack_.sample(seconds);

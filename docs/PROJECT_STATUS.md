@@ -1,6 +1,6 @@
 # ChrononMotion3D ticket status
 
-Updated 2026-10-29 from local source and Release test evidence.
+Updated 2026-11-01 from local source and Release test evidence.
 
 ## Complete feature tickets
 
@@ -65,6 +65,27 @@ Updated 2026-10-29 from local source and Release test evidence.
   bridge implemented; local visible CLI output remains.
 - No remaining local PBR V1 implementation item; embedded images and
   unsupported sampler modes remain intentionally rejected.
+
+## Camera pipeline — sensor gate, default FOV, DoF admission (2026-11-01)
+
+- `CameraRig` authors a physical sensor gate: `setSensorHeight` accepts
+  [1, 100] mm and rejects non-finite values; the height reaches both
+  `camera.sensor_height_mm` and every `camera_samples[*].camera` in the
+  RenderPlan. Pinned in `tests/motion_authoring_renderplan.cpp` (setter range
+  and non-finite rejection, both gate endpoints, default FOV).
+- The default vertical FOV is **50°**, not 60°: `CameraPose::fov`,
+  `CameraRig::fov_` and the `CameraRig` constructor parameter were split
+  between the two values and are now 50 everywhere. Showcase goldens do not
+  move because every case pins its own FOV.
+- DoF admission is fail-closed at the producer again. The shared C3D
+  `camera_contract_problem()` admits `dof.highlight_gain` for the native
+  disk-bokeh path while `dof_shape_unsupported()` still rejects it at every
+  render boundary; Motion now calls that same predicate in `lowerCameraPose`
+  and in `emissionCameraProblem`, so an authored gain fails in authoring
+  instead of during rendering. The rule keeps a single seat.
+- Local evidence: `cmake --build build/release-fast -j4` clean, then CTest
+  **66/66 PASS** (66 registered in this configuration), `chrononmotion_authoring`
+  381 checks / 0 failures.
 
 GPU and CI certification are external gates and are not reported as locally
 verified in this status file.

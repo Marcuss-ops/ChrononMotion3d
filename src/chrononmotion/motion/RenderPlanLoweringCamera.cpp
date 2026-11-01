@@ -66,6 +66,7 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     camera.far = farPlane;
     camera.focal_length_mm = pose.focalLength;
     camera.sensor_width_mm = pose.sensorWidth;
+    camera.sensor_height_mm = pose.sensorHeight;
     camera.lens_shift = {pose.lensShift.x, pose.lensShift.y};
     camera.f_stop = pose.fStop;
     camera.iris_blades = pose.irisBlades;
@@ -80,6 +81,15 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     }
     if (const auto problem = chronon3d::render_plan::camera_contract_problem(camera))
         throw std::invalid_argument("lowerCameraPose: " + *problem);
+    // The shared camera contract admits highlight weighting because the native
+    // disk-bokeh path may carry it, while every DOF kernel Motion can reach
+    // still fails closed on it at the render boundary. Producer and boundary
+    // must agree, so the plan is rejected here instead of dying mid-render.
+    // `dof_shape_unsupported` stays the single seat of the shaped-bokeh rule.
+    if (chronon3d::dof_shape_unsupported(camera.iris_blades, camera.dof_highlight_gain))
+        throw std::invalid_argument(
+            "lowerCameraPose: the Chronon3D DOF kernels implement constant circular bokeh only; "
+            "keep camera.iris_blades and dof.highlight_gain at zero until shaped kernels land");
     return camera;
 }
 
@@ -115,7 +125,8 @@ nlohmann::json cameraSamplesToJson(
             {"type", camera.type}, {"position", camera.position},
             {"rotation_deg", camera.rotation_deg}, {"fov_deg", camera.fov_deg},
             {"near", camera.near}, {"far", camera.far}, {"zoom", camera.zoom},
-            {"sensor_width_mm", camera.sensor_width_mm}, {"lens_shift", camera.lens_shift},
+            {"sensor_width_mm", camera.sensor_width_mm},
+            {"sensor_height_mm", camera.sensor_height_mm}, {"lens_shift", camera.lens_shift},
             {"dof", {{"enabled", camera.dof_enabled},
                      {"focus_distance", camera.dof_focus_distance},
                      {"max_blur", camera.dof_max_blur}}}};

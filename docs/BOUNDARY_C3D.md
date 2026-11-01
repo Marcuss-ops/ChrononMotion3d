@@ -6,6 +6,11 @@
 > 2026-10-28. Le zone **CHIUSE** sono implementate e verificate; le zone
 > **FUTURE-SCOPE** sono dichiarate e NON vanno reimplementate in parallelo.
 
+> **Direzione aggiornata 2026-11-01:** per la pipeline camera, compositing,
+> DoF e shutter fa fede [`ADR-CAMERA-PIPELINE-OWNERSHIP.md`](ADR-CAMERA-PIPELINE-OWNERSHIP.md).
+> Questo documento descrive in quelle sezioni il confine legacy ancora presente
+> nel codice; non è più la regola target. Migrazione e acceptance sono aperte.
+
 ## Ruoli (perché non c'è duplicazione di renderer)
 
 | | CM3D | Chronon3d |
@@ -34,6 +39,22 @@
   `iris_blades`/`highlight_gain` > 0 (software + Vulkan `dof_blur.comp`,
   bokeh circolare separabile solo).
 - Call site: `per_pixel_dof_node.cpp:342`.
+- **Drift chiuso 2026-11-01:** `camera_contract_problem()` non rifiuta più
+  `dof_highlight_gain` (lo ammette per il percorso disk-bokeh nativo), mentre
+  il boundary render continua a rifiutarlo: un piano con gain non zero
+  passava l'admission e moriva a metà render. Il producer Motion ora chiama lo
+  stesso predicato `chronon3d::dof_shape_unsupported` in `lowerCameraPose` e in
+  `emissionCameraProblem`, quindi l'autoring di un gain non zero fallisce
+  subito. Il predicato resta l'unica sede della regola: quando il kernel
+  shaped esisterà, cambia lì e Motion lo segue senza patch.
+- **FOV di default:** `CameraRig` e `CameraPose` partono da **50°** verticali
+  (era 60), allineati al piano optical studio; il costruttore e i default dei
+  membri erano disallineati (60 vs 50) e sono stati riuniti. Pin:
+  `tests/motion_authoring_renderplan.cpp` (default FOV 50).
+- **Gate sensore fisico:** `CameraRig::setSensorHeight` accetta [1, 100] mm,
+  rifiuta non-finiti; il campo arriva a `camera.sensor_height_mm` sia nel
+  piano base sia in ogni `camera_samples`. Pin: setter (range e non-finiti),
+  propagazione a entrambi gli endpoint e FOV di default.
 
 ### C4 — Default di sequenza coerenti col contratto (fix 2026-10-28)
 - `CameraFocusSequence.hpp`: `highlightGain` default **0.f** (era 1.f — un
@@ -89,6 +110,27 @@
   dell'altro.
 
 ## Zone FUTURE-SCOPE (NON reimplementare in parallelo)
+
+### Closeout camera — checkpoint 2026-11-01
+
+- **Stato implementato (legacy):** Motion risolve gerarchia/world e bake dei
+  campioni camera/layer nel RenderPlan; C3D esegue projection, depth,
+  compositing, DoF e shutter. Questa descrive il codice corrente, non
+  l'ownership target stabilita nell'ADR collegato in testa al documento.
+- L'adapter esistente è il valico legacy. La migrazione deve introdurre un
+  piano risolto con semantica posseduta da Motion, mantenendo il backend C3D
+  privo di scena authored, layer model editoriale e callback runtime verso
+  Motion.
+- Motion authoring, camera bake roundtrip e parity RenderPlan camera passano
+  localmente (3/3); `chrononmotion_boundary` passa (1/1). Queste prove locali
+  non certificano il pair CI same-SHA.
+- Il fix di trasferimento depth e il compositing CPU per-pixel sono
+  implementazioni backend locali, non ownership semantica definitiva. Canary
+  mesh/piano: 46/46 asserzioni; suite renderer-core: 204/204 casi.
+- Shutter GPU, layout/lifecycle Vulkan e accettazione video restano gate backend
+  aperti nel
+  [`ticket camera di C3D`](../../Chronon3d/docs/tickets/TICKET-CAMERA-DEFINITIVE-CLOSURE.md).
+  Non duplicare queste implementazioni in Motion per aggirare i gate.
 
 ### Contratto camera/layer risolti — aggiornamento 2026-10-30
 

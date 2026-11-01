@@ -33,11 +33,12 @@ namespace chrononmotion::motion {
         Vector3 target{0.f, 0.f, 0.f};
         bool hasTarget{false};
 
-        float fov{60.f};
+        float fov{50.f};
 
         /// Focal length in millimetres. 0 means "not authored": `fov` wins.
         float focalLength{0.f};
         float sensorWidth{36.f}; ///< Sensor gate width in millimetres.
+        float sensorHeight{24.f}; ///< Sensor gate height in millimetres.
         Vector2 lensShift{0.f, 0.f}; ///< Normalized output viewport shift; +X right, +Y down.
 
         /// Lens data for depth of field. Each 0 means "not authored": the motion
@@ -75,7 +76,7 @@ namespace chrononmotion::motion {
         using Id = Layer::Id;
 
         explicit CameraRig(Id id = 1,
-                           float fov = 60.f,
+                           float fov = 50.f,
                            float aspect = 16.f / 9.f,
                            float nearPlane = 0.1f,
                            float farPlane = 2000.f);
@@ -93,6 +94,7 @@ namespace chrononmotion::motion {
         CameraRig& setAspect(float widthOverHeight);
         CameraRig& setFocalLength(float millimetres);
         CameraRig& setSensorWidth(float millimetres);
+        CameraRig& setSensorHeight(float millimetres);
         CameraRig& setLensShift(const Vector2& normalizedViewportShift);
         CameraRig& setRoll(float radians);
         CameraRig& setFocusDistance(float distance);
@@ -192,9 +194,10 @@ namespace chrononmotion::motion {
         Layer layer_;
         Vector3 target_{0.f, 0.f, 0.f};
         bool hasTarget_{false};
-        float fov_{60.f};
+        float fov_{50.f};
         float focalLength_{0.f};
         float sensorWidth_{36.f};
+        float sensorHeight_{24.f};
         Vector2 lensShift_{0.f, 0.f};
         float roll_{0.f};
         Track<Vector3> targetTrack_;
