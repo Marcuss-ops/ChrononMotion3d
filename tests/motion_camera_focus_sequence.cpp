@@ -22,7 +22,7 @@ int main() try {
     CameraRig rig(1, 48.f, 16.f / 9.f, 0.1f, 5000.f);
     FocusSequence sequence;
     check(near(sequence.highlightGain, 0.f) && sequence.irisBlades == 0,
-          "default focus sequence does not request unsupported shaped bokeh");
+          "default focus sequence keeps supported highlight weighting off and iris circular");
     sequence.subjects = {
             {{620.f, 390.f, 0.f}, 12.f, 6},
             {{1310.f, 645.f, 0.f}, 80.f, 48},
@@ -33,6 +33,7 @@ int main() try {
     sequence.focusFov = 38.f;
     sequence.fStop = 5.6f;
     sequence.maxBlur = 10.f;
+    sequence.highlightGain = 1.25f;
     sequence.focusTravelFrames = 24;
 
     applyFocusSequence(rig, sequence, 30.f);
@@ -50,8 +51,8 @@ int main() try {
     check(near(farWord.focusDistance, 1160.f), "rack focus reaches the far subject's axial plane");
     check(near(farWord.fov, 38.f), "the focus FOV is authored at the destination");
     check(near(farWord.fStop, 5.6f) && farWord.irisBlades == 0 &&
-                  near(farWord.maxBlur, 10.f) && near(farWord.highlightGain, 0.f),
-          "focus sequence emits only the circular-bokeh lens contract supported by C3D");
+                  near(farWord.maxBlur, 10.f) && near(farWord.highlightGain, 1.25f),
+          "focus sequence preserves supported highlight weighting and circular bokeh");
 
     FocusSequence unsupportedShape = sequence;
     unsupportedShape.irisBlades = 8;
@@ -62,9 +63,9 @@ int main() try {
     } catch (const std::invalid_argument&) {
         rejectedShape = true;
     }
-    check(rejectedShape, "focus sequence rejects unsupported shaped bokeh before authoring rig keys");
+    check(rejectedShape, "focus sequence rejects unsupported polygonal iris before authoring rig keys");
     unsupportedShape.irisBlades = 0;
-    unsupportedShape.highlightGain = 1.25f;
+    unsupportedShape.highlightGain = 8.1f;
     rejectedShape = false;
     try {
         CameraRig rejectedRig;
@@ -72,7 +73,7 @@ int main() try {
     } catch (const std::invalid_argument&) {
         rejectedShape = true;
     }
-    check(rejectedShape, "focus sequence rejects unsupported highlight gain before authoring rig keys");
+    check(rejectedShape, "focus sequence rejects highlight gain outside the CameraRig contract");
 
     CameraRig focusTrackRig;
     focusTrackRig.setPosition({0.f, 0.f, 10.f}).setTarget({0.f, 0.f, 0.f});
@@ -86,20 +87,18 @@ int main() try {
                   near(planeFocusRig.sample(10.f / 30.f).focusDistance, 15.f),
           "CM3D resolves a world-plane rack focus along the optical axis");
 
-    // Boundary contract (CM3D <-> Chronon3d DOF unification): the default
-    // FocusSequence must not arm shaped bokeh — every consumer DOF kernel
-    // implements plain circular bokeh only, and the render boundary rejects
-    // highlight_gain/iris-blade authoring fail-closed. The default sequence
-    // therefore lowers to highlightGain == 0 (irisBlades already defaults 0).
+    // Boundary contract (CM3D <-> Chronon3d DOF unification): highlight gain
+    // is supported for circular bokeh; polygonal iris shaping remains rejected.
+    // The default sequence leaves gain off and iris blades unset.
     check(near(FocusSequence{}.highlightGain, 0.f) && FocusSequence{}.irisBlades == 0,
-          "default FocusSequence leaves shaped-bokeh channels unauthored (fail-closed consumer contract)");
+          "default FocusSequence leaves optional highlight weighting off and iris unset");
     CameraRig defaultSeqRig(1, 48.f, 16.f / 9.f, 0.1f, 5000.f);
     FocusSequence defaultSequence;
     defaultSequence.subjects = {{{620.f, 390.f, 0.f}, 12.f, 6}}; // the only required authoring
     applyFocusSequence(defaultSeqRig, defaultSequence, 30.f);
     const CameraPose defaultPose = defaultSeqRig.sample(6.f / 30.f);
     check(near(defaultPose.highlightGain, 0.f) && defaultPose.irisBlades == 0,
-          "applyFocusSequence with default sequence values keeps highlight gain and iris blades unauthored");
+          "applyFocusSequence preserves the default circular-bokeh settings");
 
     std::cout << "Camera focus sequence checks passed\n";
     return 0;

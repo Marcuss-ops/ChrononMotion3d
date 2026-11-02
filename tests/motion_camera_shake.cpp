@@ -1,4 +1,4 @@
-#include "chrononmotion/motion/CameraShake.hpp"
+#include "chrononmotion/motion/CameraMotion.hpp"
 #include "chrononmotion/math/MathUtils.hpp"
 
 #include <cmath>

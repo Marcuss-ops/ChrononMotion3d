@@ -1,5 +1,5 @@
 #include "CameraRigTrackBatch.hpp"
-#include "chrononmotion/motion/CameraSequence.hpp"
+#include "chrononmotion/motion/CameraMotion.hpp"
 
 #include <cmath>
 #include <stdexcept>

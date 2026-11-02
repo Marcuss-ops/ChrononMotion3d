@@ -35,7 +35,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace chrononmotion::motion {
@@ -518,6 +520,70 @@ namespace chrononmotion::motion {
     inline void camera_hero_low_angle_monolith_orbit(CameraRig& r, const ShotAnchor& m, int f, int d, float rad = 6.5f, float fy = -2.8f, float sw = 65.f, float pitch = 26.f, float fps = 30.f, const Easing& e = Easing::easeInOut(), const MotionScene* sc = nullptr) {
         cameraHeroLowAngleMonolithOrbit(r, m, f, d, rad, fy, sw, pitch, fps, e, sc);
     }
+
+    // Reusable handoff sequence data belongs with the camera motion authority;
+    // keep its distinct transition semantics without a separate public header.
+    namespace camera {
+
+        enum class Handoff {
+            PushThrough, LateralSwipe, ArcCarry, OrbitHandoff,
+            RiseAndLand, FocusRack, PullBackReveal, WhipReframe
+        };
+
+        [[nodiscard]] std::span<const Handoff> cameraHandoffs() noexcept;
+        [[nodiscard]] std::string_view cameraHandoffId(Handoff handoff) noexcept;
+
+        struct SequenceSubject {
+            Vector3 center{0.f, 0.f, 0.f};
+            float halfWidth{480.f};
+            float halfHeight{270.f};
+            float fov{55.f};
+        };
+
+        struct SequenceBeat {
+            SequenceSubject subject{};
+            int hold{90};
+        };
+
+        struct CameraSequence {
+            std::vector<SequenceBeat> beats{};
+            Handoff handoff{Handoff::PushThrough};
+            float intensity{1.f};
+            int travelFrames{24};
+            int inFrame{0};
+        };
+
+        [[nodiscard]] float framingDistance(const SequenceSubject& subject,
+                                            const Vector2& viewport, float fill = 0.62f);
+        void applySequence(CameraRig& rig, const CameraSequence& sequence,
+                           float fps, const Vector2& viewport);
+
+        /// Deterministic procedural shake data and sampler used by camera recipes.
+        struct CameraShakeSpec {
+            float positionFrequency{3.f}, positionAmplitude{15.f};
+            float rotationFrequency{2.5f}, rotationAmplitudeDegrees{2.f};
+            float zoomFrequency{1.f}, zoomAmplitude{0.f};
+            std::uint32_t seed{42};
+            float fadeInFrames{0.f}, fadeOutFrames{0.f};
+        };
+
+        struct CameraShakeSample {
+            Vector3 position{0.f, 0.f, 0.f};
+            Vector3 rotationRadians{0.f, 0.f, 0.f};
+            float zoom{0.f};
+        };
+
+        [[nodiscard]] CameraShakeSample sampleCameraShake(const CameraShakeSpec& spec,
+                                                           float frame, float durationFrames);
+        [[nodiscard]] CameraShakeSpec handheldShake(float intensity = 1.f);
+        [[nodiscard]] CameraShakeSpec earthquakeShake(float intensity = 1.f);
+        [[nodiscard]] CameraShakeSpec driftShake(float intensity = 1.f);
+        [[nodiscard]] CameraShakeSpec walkingShake(float intensity = 1.f);
+        [[nodiscard]] CameraShakeSpec breathingShake(float intensity = 1.f);
+        [[nodiscard]] CameraShakeSpec explosionShake(float intensity = 1.f);
+        [[nodiscard]] CameraShakeSpec cinematicShake(float intensity = 1.f);
+
+    } // namespace camera
 
     namespace presets {
         using motion::cameraFocusPush;

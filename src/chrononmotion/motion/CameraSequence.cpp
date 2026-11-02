@@ -1,5 +1,4 @@
 #include "CameraRigTrackBatch.hpp"
-#include "chrononmotion/motion/CameraSequence.hpp"
 #include "chrononmotion/math/Finite.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
