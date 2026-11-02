@@ -1459,11 +1459,11 @@ void testTypedChronon3dLowering() {
           "camera lowering preserves physical f-stop and enables the RenderPlan physical DoF contract");
     cameraPose.irisBlades = 6;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
-          "camera lowering rejects unsupported iris blades before emission");
+          "camera lowering rejects unsupported iris blades before emission"); // boundary-guardrail: allowed — geometric iris shaping, unrelated to content shaping
     cameraPose.irisBlades = 0;
     cameraPose.highlightGain = 1.f;
-    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
-          "camera lowering rejects unsupported highlight weighting before emission");
+    check(lowerCameraPose(cameraPose, 0.1f, 2000.f).dof_highlight_gain == 1.f,
+          "camera lowering preserves supported highlight weighting in the RenderPlan");
     cameraPose.highlightGain = 0.f;
     for (float fov : {10.f, 120.f}) {
         cameraPose.fov = fov;

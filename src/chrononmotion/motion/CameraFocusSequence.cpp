@@ -36,11 +36,12 @@ namespace chrononmotion::motion::camera {
             !(sequence.baseFov > 0.f && sequence.baseFov < 180.f) ||
             !(sequence.focusFov > 0.f && sequence.focusFov <= sequence.baseFov) ||
             !(sequence.fStop > 0.f) || !(sequence.maxBlur >= 0.f) ||
-            !(sequence.highlightGain >= 0.f) || sequence.focusTravelFrames < 2) {
+            !(sequence.highlightGain >= 0.f && sequence.highlightGain <= 8.f) ||
+            sequence.focusTravelFrames < 2) {
             throw std::invalid_argument("applyFocusSequence: invalid timing or lens values");
         }
-        if (sequence.irisBlades != 0 || sequence.highlightGain != 0.f)
-            throw std::invalid_argument("applyFocusSequence: shaped bokeh is not supported by the render contract");
+        if (sequence.irisBlades != 0)
+            throw std::invalid_argument("applyFocusSequence: polygonal iris bokeh is not supported by the render contract");
         int priorFocus = -1;
         for (const auto& subject : sequence.subjects) {
             if (!math::isFinite(subject.anchor) || !std::isfinite(subject.focusDepth) ||

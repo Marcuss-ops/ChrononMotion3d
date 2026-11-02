@@ -34,10 +34,10 @@
   gain [0, 8], DOF con aperture ⇒ focus distance > 0) e decoder C3D
   `render_plan_decoder_support.cpp:244-257` valida le stesse gamme.
 
-### C3 — Kernel shaped-bokeh: fail-closed su TUTTI i percorsi render
-- `dof.hpp:14-40`: `reject_unsupported_dof_shape` lanciano su
-  `iris_blades`/`highlight_gain` > 0 (software + Vulkan `dof_blur.comp`,
-  bokeh circolare separabile solo).
+### C3 — Iris poligonale fail-closed; highlight weighting supportato
+- `dof.hpp`: `validate_dof_render_capabilities` rifiuta `iris_blades` nonzero
+  e highlight gain fuori da [0, 8]; il gain nell'intervallo è supportato dai
+  kernel software e Vulkan per il bokeh circolare.
 - Call site: `per_pixel_dof_node.cpp:342`.
 - **Drift chiuso 2026-11-01:** `camera_contract_problem()` non rifiuta più
   `dof_highlight_gain` (lo ammette per il percorso disk-bokeh nativo), mentre
@@ -61,8 +61,8 @@
   preset di default produceva un piano che il renderer rifiuta);
   `irisBlades` già 0. Pin di contratto nel test
   `tests/motion_camera_focus_sequence.cpp` (default FocusSequence → pose
-  highlightGain == 0; the applier rejects unsupported shaped-bokeh inputs
-  before writing any rig channels).
+  highlightGain == 0; il test verifica il passaggio del gain supportato e il
+  rifiuto delle iris poligonali prima di mutare i canali del rig).
 
 ### C5 — Legacy DoF wire gain rimosso (migrazione coordinata 2026-10-31)
 - `CameraPlan::dof_aperture` e `camera.dof.aperture` sono stati rimossi dal
@@ -143,7 +143,8 @@
   focus distance è distanza positiva lungo l'asse ottico nelle unità scena.
   Il wire non trasporta un gain aperture: il consumer deriva il parametro
   interno del kernel da f-stop.
-  Iris blades e highlight gain diversi da zero sono rifiutati prima del render.
+  Iris blades nonzero sono rifiutati prima del render; highlight gain in [0, 8]
+  viene conservato nel lowering e consumato dai kernel circolari.
 - `resolved_sample_frames(canvas, blur)` usa lo scheduler temporale C3D, include
   frame interi e tutti i sottocampioni shutter (180°/8 nella acceptance).
   Il lowering Motion valuta camera e TRS/opacity dei layer agli stessi istanti.
@@ -234,6 +235,15 @@ dietro al frame 1 dopo l'attraversamento Z. S2 può quindi iniziare. La rimozion
 wire S3 è implementata e i frame DoF raw software 30/75/149 sono byte-identici
 al baseline; le due evidenze sono in
 `Chronon3d/docs/evidence/camera-surface-consolidation/`.
+
+Aggiornamento S2 (2026-11-02): `CameraSequence.hpp` e `CameraShake.hpp` sono
+stati assorbiti in `CameraMotion.hpp`; handoff e shake mantengono i propri dati
+e semantica sotto `motion::camera`, senza header pubblici separati. I consumer
+implementation/test includono ora l'autorità camera consolidata. Passano
+`chrononmotion_camera_sequence`, `chrononmotion_camera_shake`, authoring e
+camera-bake (373 check authoring, 832 bake). La conta estesa 15→13 comprende
+`AspectReframe` ed `EyeTrace`; il target ticket 13→≤6 e gli altri applier
+restano aperti.
 
 Per ogni piano materializzato V3, impostare
 `RenderPlanLoweringOptions::requireResolvedLayerSamples`: usa il calendario

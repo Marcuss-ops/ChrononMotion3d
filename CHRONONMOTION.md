@@ -684,3 +684,11 @@ service; editorial moves are presets/packs, not mechanism headers. The consumer
 census and the blocked S2/S3 evidence live in
 `Chronon3d/docs/evidence/camera-surface-consolidation/`.
 
+S2 progress (2026-11-02): the standalone public `CameraSequence.hpp` and
+`CameraShake.hpp` declaration headers were folded into `CameraMotion.hpp`,
+retaining handoff/shake data and behavior under `motion::camera`. The focused
+sequence and shake tests, authoring suite (373 checks), and camera bake
+roundtrip (832 checks) pass. This reduces the extended inventory from 15 to 13
+headers (the ticket's 13-header target inventory excludes `AspectReframe` and
+`EyeTrace`); the applier-to-typed-preset migration and target of ≤6 remain open.
+
