@@ -1,6 +1,19 @@
 # ChrononMotion3D ticket status
 
-Updated 2026-10-29 from local source and Release test evidence.
+Updated 2026-11-01 from local source and recorded Release test evidence.
+
+## Camera checkpoint (2026-10-31)
+
+- The shared camera capability contract is integrated at Motion's RenderPlan
+  lowering boundary (`a67934e`); unsupported iris/highlight optics fail with a
+  typed diagnostic. Camera and layer transforms are baked against the shared
+  shutter calendar, and explicit camera samples must cover that calendar
+  (`24758af`). Camera cloning now preserves projection state for perspective
+  and orthographic cameras (`e2d0213`), with upstream regression coverage.
+- The associated Chronon3D camera-closure ticket remains PARTIAL: local
+  implementation checkpoints landed, while full end-to-end camera/video
+  parity and same-SHA certification remain open. See
+  `../../Chronon3d/docs/tickets/TICKET-CAMERA-DEFINITIVE-CLOSURE.md`.
 
 ## Complete feature tickets
 
