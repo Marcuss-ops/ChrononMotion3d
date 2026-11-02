@@ -32,8 +32,10 @@ int main(int argc, char** argv) try {
         ? std::strtof(argv[8], nullptr) : 1.f;
     if (source != "offline" && source != "provider")
         throw std::invalid_argument("source must be offline or provider");
-    if (mode != "dof" && mode != "sharp" && mode != "shutter" && !plane_diagnostic)
-        throw std::invalid_argument("mode must be dof, sharp, shutter or diagnostic");
+    if (mode != "dof" && mode != "sharp" && mode != "shutter" &&
+        mode != "dolly_in" && mode != "orbit" && mode != "vertigo" &&
+        mode != "breakdown" && mode != "cards_breakdown" && !plane_diagnostic)
+        throw std::invalid_argument("mode must be dof, sharp, shutter, dolly_in, orbit, vertigo, breakdown, cards_breakdown or diagnostic");
     if (width < 320 || width > 3840 || width % 16 != 0)
         throw std::invalid_argument("width must be a multiple of 16 in [320, 3840]");
     if (plate_count < 2 || plate_count > 4)
@@ -43,7 +45,7 @@ int main(int argc, char** argv) try {
     const int height = width * 9 / 16;
     const float s = static_cast<float>(width) / 1920.f;
     constexpr float fps = 30.f;
-    const int last = plane_diagnostic && !animated_diagnostic ? 0 : 149;
+    const int last = (mode == "breakdown" || mode == "cards_breakdown") ? 179 : (plane_diagnostic && !animated_diagnostic ? 0 : 149);
     const std::string prefix = argv[2];
     MotionScene scene("optical_studio", fps);
     std::unordered_map<std::string, chronon3d::render_plan::LayerPlan> content;
@@ -62,79 +64,199 @@ int main(int argc, char** argv) try {
         plan.fit = chronon3d::render_plan::FitMode::Contain;
         content.emplace(std::to_string(id), std::move(plan));
     };
-    // At the 50° camera FOV and 2000-unit camera-to-plane distance, the
-    // visible field is about 3316×1865. A 3840×2160 plate gives a modest
-    // overscan without allocating an 8400×4725 software source surface.
-    addPlate(1, "background", 0, 0, -1000,
-             3840.f * background_scale, 2160.f * background_scale);
-    addPlate(2, "far", 505, 35, -380, 730, 830);
-    if (plate_count >= 3) addPlate(3, "middle", 0, 0, 0, 570, 650);
-    // Keep the authored near target centered in the frozen left-side ROI after
-    // perspective projection (world X is magnified by the camera). At -420 it
-    // was nearly outside the canvas; at -200 the chart still missed the ROI.
-    if (plate_count >= 4) addPlate(4, "near", -175, -30, 180, 460, 525);
-    if (!plane_diagnostic && plate_count >= 4) {
-        auto* entering = scene.findLayer(4);
-        entering->tracks.position.add(0.f, Vector3{-295*s, -30*s, 180*s}, Easing::easeInOut())
-            .add(.8f, Vector3{-175*s, -30*s, 180*s});
-        entering->tracks.opacity.add(0.f, .15f, Easing::easeInOut()).add(.8f, 1.f);
-    }
-    if (mode == "shutter") scene.setShutter(ShutterSettings{180.f, 8});
-
-    // Rendered semantic text and a separate shape sit in front of the middle
-    // plate. Keeping both at negative authored Z exercises the planPosition
-    // convention on the actual camera characterization scene, rather than
-    // relying only on the lowering unit test.
     const std::string font = prefix + "/Inter-Bold.ttf";
-    auto& label = scene.addContent(5, "z_depth_label",
-        ContentRef::text("Z DEPTH", Vector2(430.f*s, 115.f*s)));
-    label.is3D = true;
-    label.transform.position.set(-215.f*s, 115.f*s, -30.f*s);
-    label.lifetime = FrameRange::between(0, last);
-    chronon3d::render_plan::LayerPlan labelPlan;
-    labelPlan.type = chronon3d::render_plan::LayerType::Text;
-    labelPlan.text = "Z DEPTH";
-    chronon3d::render_plan::LayerStylePlan labelStyle;
-    labelStyle.font = font;
-    labelStyle.font_size = 76.f*s;
-    labelStyle.fill = "#F4F6F2";
-    labelPlan.style = labelStyle;
-    content.emplace("5", std::move(labelPlan));
+    if (mode == "cards_breakdown") {
+        addPlate(1, "card_tower", 520, 60, -1000, 900, 1260);
+        addPlate(2, "card_city", -420, 280, -500, 1050, 590);
+        addPlate(3, "card_supercar", 140, -180, 0, 850, 580);
+        addPlate(4, "card_drone", -320, -120, 350, 540, 420);
 
-    auto& highlighter = scene.addContent(6, "z_depth_highlighter",
-        ContentRef::image("z_depth_highlighter", Vector2(350.f*s, 24.f*s)));
-    highlighter.is3D = true;
-    // Share the label's left anchor; place the bar a little behind the glyphs
-    // and keep both in front of the middle image plane.
-    highlighter.transform.position.set(-215.f*s, 52.f*s, -24.f*s);
-    highlighter.lifetime = FrameRange::between(0, last);
-    chronon3d::render_plan::LayerPlan highlighterPlan;
-    highlighterPlan.type = chronon3d::render_plan::LayerType::Shape;
-    highlighterPlan.size = {350.f*s, 24.f*s};
-    highlighterPlan.size_dimensions = 2;
-    chronon3d::render_plan::ShapeContentPlan highlighterShape;
-    highlighterShape.type = chronon3d::render_plan::ShapeContentTypePlan::Rect;
-    highlighterShape.fill_color = std::array<float, 4>{0.f, .66f, 1.f, .86f};
-    highlighterPlan.shape = highlighterShape;
-    content.emplace("6", std::move(highlighterPlan));
+        auto addBadge = [&](int id, const std::string& name, const std::string& text,
+                            float x, float y, float z, float fontSize, const std::string& color) {
+            auto& badge = scene.addContent(id, name, ContentRef::text(text, Vector2(700.f*s, 90.f*s)));
+            badge.is3D = true;
+            badge.transform.position.set(x*s, y*s, z*s);
+            badge.lifetime = FrameRange::between(0, last);
+            badge.tracks.opacity.add(0.f, 0.f, Easing::easeInOut())
+                .add(1.5f, 0.f, Easing::easeInOut())
+                .add(2.4f, 1.f);
+            chronon3d::render_plan::LayerPlan plan;
+            plan.type = chronon3d::render_plan::LayerType::Text;
+            plan.text = text;
+            chronon3d::render_plan::LayerStylePlan style;
+            style.font = font;
+            style.font_size = fontSize*s;
+            style.fill = color;
+            plan.style = style;
+            content.emplace(std::to_string(id), std::move(plan));
+        };
+
+        addBadge(11, "badge_c1", "CARD 01 // TOWER (DEEP Z: -1000)", 160.f, 750.f, -980.f, 44.f, "#818CF8");
+        addBadge(12, "badge_c2", "CARD 02 // SKYLINE (Z: -500)", -780.f, 620.f, -480.f, 40.f, "#38BDF8");
+        addBadge(13, "badge_c3", "CARD 03 // SUPERCAR (Z: 0)", -220.f, 150.f, 20.f, 38.f, "#F43F5E");
+        addBadge(14, "badge_c4", "CARD 04 // DRONE (FOREGROUND Z: +350)", -520.f, 130.f, 370.f, 36.f, "#34D399");
+    } else {
+        // At the 50° camera FOV and 2000-unit camera-to-plane distance, the
+        // visible field is about 3316×1865. A 3840×2160 plate gives a modest
+        // overscan without allocating an 8400×4725 software source surface.
+        addPlate(1, "background", 0, 0, -1000,
+                 3840.f * background_scale, 2160.f * background_scale);
+        addPlate(2, "far", 505, 35, -380, 730, 830);
+        if (plate_count >= 3) addPlate(3, "middle", 0, 0, 0, 570, 650);
+        // Keep the authored near target centered in the frozen left-side ROI after
+        // perspective projection (world X is magnified by the camera). At -420 it
+        // was nearly outside the canvas; at -200 the chart still missed the ROI.
+        if (plate_count >= 4) addPlate(4, "near", -175, -30, 180, 460, 525);
+        if (!plane_diagnostic && plate_count >= 4) {
+            auto* entering = scene.findLayer(4);
+            if (mode == "breakdown") {
+                entering->tracks.position.add(0.f, Vector3{-175*s, -30*s, 180*s}, Easing::easeInOut())
+                    .add(1.5f, Vector3{-175*s, -30*s, 180*s}, Easing::easeInOut())
+                    .add(3.5f, Vector3{-165*s, -15*s, 180*s}, Easing::easeInOut())
+                    .add(179.f/fps, Vector3{-180*s, -35*s, 180*s});
+                entering->tracks.opacity.add(0.f, 1.f);
+            } else {
+                entering->tracks.position.add(0.f, Vector3{-295*s, -30*s, 180*s}, Easing::easeInOut())
+                    .add(.8f, Vector3{-175*s, -30*s, 180*s});
+                entering->tracks.opacity.add(0.f, .15f, Easing::easeInOut()).add(.8f, 1.f);
+                if (mode == "dolly_in" || mode == "orbit" || mode == "vertigo") {
+                    entering->tracks.position.add(2.5f, Vector3{-165*s, -15*s, 180*s}, Easing::easeInOut())
+                        .add(149.f/fps, Vector3{-185*s, -35*s, 180*s});
+                }
+            }
+        }
+        if (mode == "shutter") scene.setShutter(ShutterSettings{180.f, 8});
+
+        auto& label = scene.addContent(5, "z_depth_label",
+            ContentRef::text("Z DEPTH", Vector2(430.f*s, 115.f*s)));
+        label.is3D = true;
+        label.transform.position.set(-215.f*s, 115.f*s, -30.f*s);
+        label.lifetime = FrameRange::between(0, last);
+        chronon3d::render_plan::LayerPlan labelPlan;
+        labelPlan.type = chronon3d::render_plan::LayerType::Text;
+        labelPlan.text = "Z DEPTH";
+        chronon3d::render_plan::LayerStylePlan labelStyle;
+        labelStyle.font = font;
+        labelStyle.font_size = 76.f*s;
+        labelStyle.fill = "#F4F6F2";
+        labelPlan.style = labelStyle;
+        content.emplace("5", std::move(labelPlan));
+
+        auto& highlighter = scene.addContent(6, "z_depth_highlighter",
+            ContentRef::image("z_depth_highlighter", Vector2(350.f*s, 24.f*s)));
+        highlighter.is3D = true;
+        highlighter.transform.position.set(-215.f*s, 52.f*s, -24.f*s);
+        highlighter.lifetime = FrameRange::between(0, last);
+        chronon3d::render_plan::LayerPlan highlighterPlan;
+        highlighterPlan.type = chronon3d::render_plan::LayerType::Shape;
+        highlighterPlan.size = {350.f*s, 24.f*s};
+        highlighterPlan.size_dimensions = 2;
+        chronon3d::render_plan::ShapeContentPlan highlighterShape;
+        highlighterShape.type = chronon3d::render_plan::ShapeContentTypePlan::Rect;
+        highlighterShape.fill_color = std::array<float, 4>{0.f, .66f, 1.f, .86f};
+        highlighterPlan.shape = highlighterShape;
+        content.emplace("6", std::move(highlighterPlan));
+
+        if (mode == "breakdown") {
+            auto addBadge = [&](int id, const std::string& name, const std::string& text,
+                                float x, float y, float z, float fontSize, const std::string& color) {
+                auto& badge = scene.addContent(id, name, ContentRef::text(text, Vector2(700.f*s, 90.f*s)));
+                badge.is3D = true;
+                badge.transform.position.set(x*s, y*s, z*s);
+                badge.lifetime = FrameRange::between(0, last);
+                badge.tracks.opacity.add(0.f, 0.f, Easing::easeInOut())
+                    .add(1.5f, 0.f, Easing::easeInOut())
+                    .add(2.4f, 1.f);
+                chronon3d::render_plan::LayerPlan plan;
+                plan.type = chronon3d::render_plan::LayerType::Text;
+                plan.text = text;
+                chronon3d::render_plan::LayerStylePlan style;
+                style.font = font;
+                style.font_size = fontSize*s;
+                style.fill = color;
+                plan.style = style;
+                content.emplace(std::to_string(id), std::move(plan));
+            };
+
+            addBadge(11, "badge_l1", "LAYER 1 // BACKGROUND (Z: -1000)", -420.f, 420.f, -950.f, 48.f, "#38BDF8");
+            addBadge(12, "badge_l2", "LAYER 2 // LANDMARK TOWER (Z: -380)", 380.f, 380.f, -340.f, 42.f, "#818CF8");
+            addBadge(13, "badge_l3", "LAYER 3 // SUPERCAR (Z: 0)", -240.f, -220.f, 40.f, 40.f, "#F43F5E");
+            addBadge(14, "badge_l4", "LAYER 4 // DRONE (Z: +180)", -340.f, 180.f, 210.f, 40.f, "#34D399");
+        }
+    }
 
     auto& parent = scene.addNull(90, "camera_dolly");
     parent.is3D = true;
-    parent.tracks.position.add(0.f,
-        Vector3{plane_diagnostic && !animated_diagnostic ? 0.f : -95*s, 0, 0},
-        Easing::easeInOut());
-    if (!plane_diagnostic || animated_diagnostic)
-        parent.tracks.position.add(149.f/fps, Vector3{95*s, 0, 0});
     CameraRig rig(100, 50.f, float(width)/height, 1.f*s, 10000.f*s);
-    rig.setParent(90).setPosition({0, 0, 1000*s});
-    rig.setFStop(plane_diagnostic || mode == "sharp" ? 0.f : 1.0f)
-        .setMaxBlur(plane_diagnostic ? 0.f : 28*s).setFocusDistance(820*s);
-    if (!plane_diagnostic) {
-        rig.focusDistanceTrack().add(0.f, 820*s)
-            .add(1.2f, 820*s, Easing::easeInOut())
-            .add(2.5f, 1000*s, Easing::easeInOut())
-            .add(4.f, 1380*s)
-            .add(149.f/fps, 1380*s);
+
+    if (mode == "dolly_in") {
+        rig.positionTrack().add(0.f, Vector3{-120*s, 50*s, 1350*s}, Easing::easeInOut())
+            .add(149.f/fps, Vector3{40*s, -20*s, 520*s});
+        rig.setTarget(Vector3{0.f, 0.f, 0.f});
+        rig.setFStop(1.2f).setMaxBlur(28*s).setFocusDistance(1170*s);
+        rig.focusDistanceTrack().add(0.f, 1170*s)
+            .add(1.2f, 1170*s, Easing::easeInOut())
+            .add(3.0f, 650*s, Easing::easeInOut())
+            .add(149.f/fps, 520*s);
+    } else if (mode == "orbit") {
+        rig.positionTrack().add(0.f, Vector3{-280*s, 60*s, 950*s}, Easing::easeInOut())
+            .add(75.f/fps, Vector3{0*s, 90*s, 780*s}, Easing::easeInOut())
+            .add(149.f/fps, Vector3{280*s, 40*s, 950*s});
+        rig.setTarget(Vector3{0.f, 0.f, 0.f});
+        rig.rollTrack().add(0.f, -0.04f, Easing::easeInOut())
+            .add(75.f/fps, 0.03f, Easing::easeInOut())
+            .add(149.f/fps, -0.02f);
+        rig.setFStop(1.2f).setMaxBlur(28*s).setFocusDistance(950*s);
+        rig.focusDistanceTrack().add(0.f, 950*s)
+            .add(75.f/fps, 780*s, Easing::easeInOut())
+            .add(149.f/fps, 950*s);
+    } else if (mode == "vertigo") {
+        rig.positionTrack().add(0.f, Vector3{0.f, 0.f, 650*s}, Easing::easeInOut())
+            .add(149.f/fps, Vector3{0.f, 0.f, 1300*s});
+        rig.setTarget(Vector3{0.f, 0.f, 0.f});
+        rig.fovTrack().add(0.f, 65.f, Easing::easeInOut())
+            .add(149.f/fps, 34.f);
+        rig.setFStop(1.4f).setMaxBlur(24*s).setFocusDistance(650*s);
+        rig.focusDistanceTrack().add(0.f, 650*s, Easing::easeInOut())
+            .add(149.f/fps, 1300*s);
+    } else if (mode == "breakdown") {
+        rig.positionTrack().add(0.f, Vector3{0.f, 0.f, 1050.f*s}, Easing::easeInOut())
+            .add(1.5f, Vector3{0.f, 0.f, 1050.f*s}, Easing::easeInOut())
+            .add(5.2f, Vector3{1120.f*s, 180.f*s, 260.f*s}, Easing::easeInOut())
+            .add(179.f/fps, Vector3{1150.f*s, 190.f*s, 240.f*s});
+        rig.setTarget(Vector3{20.f*s, 0.f, -80.f*s});
+        rig.setFStop(5.6f).setMaxBlur(6.f*s).setFocusDistance(1050.f*s);
+        rig.focusDistanceTrack().add(0.f, 1050.f*s, Easing::easeInOut())
+            .add(1.5f, 1050.f*s, Easing::easeInOut())
+            .add(5.2f, 1165.f*s, Easing::easeInOut())
+            .add(179.f/fps, 1175.f*s);
+    } else if (mode == "cards_breakdown") {
+        rig.positionTrack().add(0.f, Vector3{0.f, 0.f, 1000.f*s}, Easing::easeInOut())
+            .add(1.5f, Vector3{0.f, 0.f, 1000.f*s}, Easing::easeInOut())
+            .add(5.2f, Vector3{1200.f*s, 200.f*s, 220.f*s}, Easing::easeInOut())
+            .add(179.f/fps, Vector3{1220.f*s, 205.f*s, 210.f*s});
+        rig.setTarget(Vector3{20.f*s, 0.f, -250.f*s});
+        rig.setFStop(5.6f).setMaxBlur(4.f*s).setFocusDistance(1000.f*s);
+        rig.focusDistanceTrack().add(0.f, 1000.f*s, Easing::easeInOut())
+            .add(1.5f, 1000.f*s, Easing::easeInOut())
+            .add(5.2f, 1250.f*s, Easing::easeInOut())
+            .add(179.f/fps, 1260.f*s);
+    } else {
+        parent.tracks.position.add(0.f,
+            Vector3{plane_diagnostic && !animated_diagnostic ? 0.f : -95*s, 0, 0},
+            Easing::easeInOut());
+        if (!plane_diagnostic || animated_diagnostic)
+            parent.tracks.position.add(149.f/fps, Vector3{95*s, 0, 0});
+        rig.setParent(90).setPosition({0, 0, 1000*s});
+        rig.setFStop(plane_diagnostic || mode == "sharp" ? 0.f : 1.0f)
+            .setMaxBlur(plane_diagnostic ? 0.f : 28*s).setFocusDistance(820*s);
+        if (!plane_diagnostic) {
+            rig.focusDistanceTrack().add(0.f, 820*s)
+                .add(1.2f, 820*s, Easing::easeInOut())
+                .add(2.5f, 1000*s, Easing::easeInOut())
+                .add(4.f, 1380*s)
+                .add(149.f/fps, 1380*s);
+        }
     }
 
     RenderPlanLoweringOptions options;

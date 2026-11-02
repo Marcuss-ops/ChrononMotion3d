@@ -1546,8 +1546,14 @@ void testTypedChronon3dLowering() {
     auto staticLensOptions = animatedDofOptions;
     staticLensOptions.cameraRig = &staticLensRig;
     check(throwsInvalid([&] { (void)lowerToRenderPlan(cameraOnlyScene, staticLensOptions); }),
-          "a static unsupported iris/highlight lens is rejected before renderer admission");
-    staticLensRig.setIrisBlades(0).setHighlightGain(0.f);
+          "a static unsupported iris lens is rejected before renderer admission");
+    // Highlight weighting is the supported shaped axis: clearing the blades must
+    // let the authored gain through the whole lowering path instead of failing.
+    staticLensRig.setIrisBlades(0);
+    const auto highlightLensPlan = lowerToRenderPlan(cameraOnlyScene, staticLensOptions);
+    check(highlightLensPlan.camera && highlightLensPlan.camera->dof_highlight_gain == 1.5f,
+          "a statically authored highlight gain reaches the lowered base camera");
+    staticLensRig.setHighlightGain(0.f);
     const auto staticLensPlan = lowerToRenderPlan(cameraOnlyScene, staticLensOptions);
     check(staticLensPlan.camera && staticLensPlan.camera->dof_enabled,
           "a fully static lens still enables DOF in the lowered base camera");

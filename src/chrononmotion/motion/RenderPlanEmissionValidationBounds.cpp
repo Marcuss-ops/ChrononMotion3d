@@ -8,13 +8,13 @@ using chronon3d::render_plan::RenderPlan;
 
 std::string emissionCameraProblem(const CameraPlan& camera) {
     if (const auto problem = chronon3d::render_plan::camera_contract_problem(camera)) return *problem;
-    // Contract admission is broader than kernel support: the shared contract
-    // accepts highlight weighting for the native disk-bokeh path while every
-    // kernel Motion reaches rejects it. Refuse to serialize a lens no render
+    // `dof_shape_unsupported` is the shared seat of the shaped-bokeh rule: it
+    // rejects iris-blade authoring only, because highlight weighting is
+    // implemented by every DOF kernel. Refuse to serialize a lens no render
     // boundary can execute.
     if (chronon3d::dof_shape_unsupported(camera.iris_blades, camera.dof_highlight_gain))
-        return "camera asks for shaped bokeh (iris_blades or dof.highlight_gain) that no "
-               "DOF kernel implements; keep both at zero";
+        return "camera asks for iris-shaped bokeh (iris_blades) that no DOF kernel "
+               "implements; keep iris_blades at zero";
     return {};
 }
 

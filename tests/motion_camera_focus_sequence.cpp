@@ -74,6 +74,15 @@ int main() try {
         rejectedShape = true;
     }
     check(rejectedShape, "focus sequence rejects highlight gain outside the CameraRig contract");
+    // Highlight weighting is implemented by every Chronon3D DOF kernel, so the
+    // sequence carries it: the authored gain must reach the rig and every
+    // sampled pose unchanged instead of failing at the render boundary.
+    unsupportedShape.highlightGain = 1.25f;
+    CameraRig highlightRig;
+    applyFocusSequence(highlightRig, unsupportedShape, 30.f);
+    check(near(highlightRig.highlightGain(), 1.25f) &&
+                  near(highlightRig.sample(0.f).highlightGain, 1.25f),
+          "focus sequence carries authored highlight gain into the rig and its samples");
 
     CameraRig focusTrackRig;
     focusTrackRig.setPosition({0.f, 0.f, 10.f}).setTarget({0.f, 0.f, 0.f});
