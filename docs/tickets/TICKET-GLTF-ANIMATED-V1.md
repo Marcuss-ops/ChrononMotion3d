@@ -34,7 +34,7 @@
 
 ## Stato
 
-PARTIAL (updated 2026-10-29). The motion-only JSON reader, rig bake bridge, regression
+PARTIAL (updated 2026-11-02). The motion-only JSON reader, rig bake bridge, regression
 fixture, and showcase coverage are implemented and pass locally. CUBICSPLINE
 Hermite interpolation for TRS, morph weights, and normalized quaternion output
 is now implemented with tangent fixtures. A named `GltfMotionClipLibrary`
@@ -58,6 +58,30 @@ local CAM-04 image gate (foreground RGB MAE 1.492, p99 8, max 17). The
 cross-repository implementation and hardware proof pass locally; same-SHA CI
 remains external. See Chronon3D's
 [`inline-mesh-vulkan-20261029` evidence](../../Chronon3d/docs/evidence/inline-mesh-vulkan-20261029/README.md).
+
+## Checkpoint 2026-11-02 — rerun CLI current-source (BLOCKED downstream)
+
+Rerun della fixture documentata con il CLI costruito dal source corrente.
+
+- Pair: Chronon3D `9fc4b7003` (dirty, 53 file), ChrononMotion3D `5b9aa97`
+  (dirty). CLI `linux-video-release` del 2026-11-02 16:14 (più recente di ogni
+  sorgente in `src/`, `apps/`, `include/`).
+- Piano `gltf/animated-gltf.plan.json` così com'è (senza `camera`): render raw
+  640×360 su `--backend software` → **0 pixel opachi**, come per la fixture
+  HDRI. Il piano supera `validate`.
+- Aggiungendo una camera prospettica: 31 frame, **950 pixel opachi per frame**,
+  ma **1 solo hash distinto** (`dc30243bb860…` per i frame 0, 15 e 30).
+- Gli 31 campioni `inline_mesh.animation` sono decodificati, validati
+  (`render_plan_decoder_layer_geometry.cpp`) e fingerprintati
+  (`fingerprint_layer_identity.cpp`), e il flag `inline_mesh_animated` è
+  impostato dai due materializer, ma **nessun consumer applica le posizioni per
+  frame**: nel renderer corrente l'animazione non arriva ai pixel.
+
+Verdetto: la prova "31/31 frame distinti" del 2026-10-29 **non è
+riproducibile** sul source corrente. Il criterio visivo resta aperto e
+bloccato a valle: serve un consumer che applichi i campioni per frame, oltre
+alla camera obbligatoria nel piano. La parte producer (reader, bake, clip
+library, serializzazione deterministica) resta verificata localmente.
 
 ## Consegnato
 

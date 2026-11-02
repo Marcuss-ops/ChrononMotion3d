@@ -58,7 +58,7 @@
     "unit": "positive camera-space optical depth, same depth as camera_space_contract.depth",
     "unset_sentinel": 1e18,
     "semantics": "kUnsetDofDepth is stored in the per-pixel DOF depth plane when no visible surface contributed to a pixel. Zero is NOT a valid positive camera-space optical depth and must never be reused to mean unset.",
-    "shaped_bokeh": "iris_blades and highlight_gain remain fail-closed on every render path (BOUNDARY_C3D.md C3); this contract does not extend them."
+    "shaped_bokeh": "iris_blades remains fail-closed on every render path because no DOF kernel builds a polygon aperture (BOUNDARY_C3D.md C3); highlight_gain is implemented by both the software and the Vulkan kernels and is carried unchanged."
   },
   "convergence_rules": [
     "The authored unit is unique: CM3D owns plane authoring (MotionPlane, Layer::flat()); C3D owns projection and DOF depth semantics. No second model is created on the other side.",

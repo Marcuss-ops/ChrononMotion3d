@@ -32,7 +32,7 @@
 <!-- /protocollo-chiusura-completa:2026-10-29:v1 -->
 
 ## Stato
-PARTIAL (updated 2026-10-29). The bounded in-memory Radiance RGBE reader, cubemap
+PARTIAL (updated 2026-11-02). The bounded in-memory Radiance RGBE reader, cubemap
 mips, Lambert SH probe, deterministic binary asset, regression fixture, and
 showcase golden are implemented. The payload format, V3 RenderPlan producer,
 Chronon3D decoder, and focused producer/consumer tests are aligned. CLI runtime
@@ -46,6 +46,39 @@ radiance per texel and the per-mip mean energy, and the SH is additionally
 checked against its closed form. The visible CLI round-trip against that golden
 and strict-native GPU sampling/parity remain open. Details are in
 [`ticket-roundtrip-current-source-20261029`](../evidence/ticket-roundtrip-current-source-20261029/README.md).
+
+## Checkpoint 2026-11-02 — rerun CLI current-source (BLOCKED downstream)
+
+Prova eseguita con il binario costruito dal source corrente, non con un CLI
+stale come nel probe di ottobre.
+
+- Pair: Chronon3D `9fc4b7003` (working tree dirty, 53 file), ChrononMotion3D
+  `5b9aa97` (dirty). CLI:
+  `Chronon3d/build/chronon/linux-video-release/apps/chronon3d_cli/chronon3d_cli`
+  (2026-11-02 16:14, più recente di ogni sorgente in `src/`, `apps/`,
+  `include/`).
+- Producer: `./build/release-fast/chrononmotion_hdri` → **PASS 244 check**.
+- `chronon3d_cli validate --plan .../hdri/hdri.plan.json --assets-root ...` →
+  `status=PASS, valid=true`, `request_digest=272a36ea…`.
+- Render raw 4 frame, con e senza `environment_light`, su `--backend
+  software`, `vulkan` e `auto`, route program e legacy: **tutti identici e
+  vuoti** — SHA-256 `0c660f2b…913a5f`, 0 pixel opachi.
+- Causa 1 (prerequisito di piano): il piano fixture **non contiene `camera`**.
+  Aggiungendo una camera prospettica il soggetto compare (2.965 pixel
+  opachi). Quindi un piano 3D senza camera viene accettato da `validate` e
+  reso come frame vuoto su ogni backend: è un fail-open del consumer, non un
+  difetto del producer HDRI.
+- Causa 2 (contributo ambiente): con la camera, piano con e senza
+  `environment_light` restano **byte-identici** (`f3117a8a…`). La mesh inline
+  è costruita con `accepts_lights(false)` in
+  `Chronon3d/src/compiler/scene_materializer.cpp` (committato `8f72236d4`,
+  2026-09-26), quindi la probe SH non arriva al soggetto.
+
+Verdetto: il round-trip **visibile** non è riproducibile sul source corrente.
+Il criterio resta aperto e bloccato a valle, con due prerequisiti nominati:
+(1) il consumer deve rifiutare o risolvere un piano 3D privo di camera;
+(2) il percorso mesh deve accettare la luce d'ambiente prima di poter
+confrontare SH/specular con la golden.
 
 ## TODO — cosa manca (agg. 2026-10-28)
 

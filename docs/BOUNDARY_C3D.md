@@ -39,14 +39,13 @@
   e highlight gain fuori da [0, 8]; il gain nell'intervallo è supportato dai
   kernel software e Vulkan per il bokeh circolare.
 - Call site: `per_pixel_dof_node.cpp:342`.
-- **Drift chiuso 2026-11-01:** `camera_contract_problem()` non rifiuta più
-  `dof_highlight_gain` (lo ammette per il percorso disk-bokeh nativo), mentre
-  il boundary render continua a rifiutarlo: un piano con gain non zero
-  passava l'admission e moriva a metà render. Il producer Motion ora chiama lo
-  stesso predicato `chronon3d::dof_shape_unsupported` in `lowerCameraPose` e in
-  `emissionCameraProblem`, quindi l'autoring di un gain non zero fallisce
-  subito. Il predicato resta l'unica sede della regola: quando il kernel
-  shaped esisterà, cambia lì e Motion lo segue senza patch.
+- **Drift chiuso 2026-11-02:** il 2026-11-01 il producer Motion rifiutava il
+  gain perché nessun kernel raggiungibile lo eseguiva. Da quando il kernel a
+  disco con highlight weighting è atterrato, `lowerCameraPose`,
+  `emissionCameraProblem` e `applyFocusSequence` accettano il gain e lo
+  trasportano nel piano, mentre il solo `iris_blades` resta fail-closed. Il
+  predicato resta l'unica sede: quando esisterà il kernel a lamelle cambia lì,
+  e Motion lo segue senza patch.
 - **FOV di default:** `CameraRig` e `CameraPose` partono da **50°** verticali
   (era 60), allineati al piano optical studio; il costruttore e i default dei
   membri erano disallineati (60 vs 50) e sono stati riuniti. Pin:

@@ -101,12 +101,15 @@ Updated 2026-11-01 from local source and recorded Release test evidence.
   `CameraRig::fov_` and the `CameraRig` constructor parameter were split
   between the two values and are now 50 everywhere. Showcase goldens do not
   move because every case pins its own FOV.
-- DoF admission is fail-closed at the producer again. The shared C3D
-  `camera_contract_problem()` admits `dof.highlight_gain` for the native
-  disk-bokeh path while `dof_shape_unsupported()` still rejects it at every
-  render boundary; Motion now calls that same predicate in `lowerCameraPose`
-  and in `emissionCameraProblem`, so an authored gain fails in authoring
-  instead of during rendering. The rule keeps a single seat.
+- DoF admission follows the shared shaped-bokeh predicate, which now fails
+  closed on `iris_blades` only. `dof_shape_unsupported()` accepts
+  `dof.highlight_gain` because both the software and the Vulkan DOF kernels
+  implement highlight weighting, so Motion calls that same predicate in
+  `lowerCameraPose` and in `emissionCameraProblem` and carries the authored
+  gain through; `iris_blades` still fails in authoring. `applyFocusSequence`
+  applies the same rule (gain passes, blades reject), and the FocusSequence
+  default keeps the gain unauthored instead of arming it. The rule keeps a
+  single seat in the shared header.
 - Local evidence: `cmake --build build/release-fast -j4` clean, then CTest
   **66/66 PASS** (66 registered in this configuration), `chrononmotion_authoring`
   381 checks / 0 failures.
