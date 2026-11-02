@@ -78,7 +78,7 @@ namespace chrononmotion::motion {
         }
 
         [[nodiscard]] std::size_t geometryVertexCount(const BufferGeometry& geometry) {
-            const auto* positions = geometry.getAttribute<FloatBufferAttribute>("position");
+            const auto* positions = geometry.getAttribute<float>("position");
             return positions ? positions->count() : 0;
         }
 

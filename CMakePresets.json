@@ -50,6 +50,37 @@
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
         "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=mold"
       }
+    },
+    {
+      "name": "windows-core",
+      "displayName": "Windows core library",
+      "description": "MSVC Release build of the dependency-free ChrononMotion core.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "binaryDir": "${sourceDir}/build/windows-core",
+      "cacheVariables": {
+        "CHRONONMOTION_BUILD_TESTS": "OFF",
+        "CHRONONMOTION_BUILD_RENDER": "OFF"
+      }
+    },
+    {
+      "name": "windows-gpu-adapter",
+      "inherits": "windows-core",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "displayName": "Windows Chronon3D RenderPlan adapter",
+      "description": "MSVC authoring tools and RenderPlan adapter for the sibling Windows GPU build.",
+      "binaryDir": "${sourceDir}/build/windows-gpu-adapter",
+      "cacheVariables": {
+        "CHRONON3D_INCLUDE_DIR": "${sourceDir}/../Chronon3d-mainfix/include",
+        "CHRONON3D_DEPENDENCY_INCLUDE_DIR": "${sourceDir}/../Chronon3d-mainfix/vcpkg_installed/win-gpu/x64-windows/include",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/../Chronon3d-mainfix/vcpkg_installed/win-gpu/x64-windows"
+      }
     }
   ],
   "buildPresets": [
@@ -70,6 +101,20 @@
       "name": "release-fast",
       "configurePreset": "release-fast",
       "jobs": 16
+    },
+    {
+      "name": "windows-core",
+      "configurePreset": "windows-core",
+      "configuration": "Release",
+      "targets": ["chrononmotion"],
+      "jobs": 8
+    },
+    {
+      "name": "windows-gpu-adapter",
+      "configurePreset": "windows-gpu-adapter",
+      "configuration": "Release",
+      "targets": ["chrononmotion_plan_optical_studio"],
+      "jobs": 8
     }
   ],
   "testPresets": [

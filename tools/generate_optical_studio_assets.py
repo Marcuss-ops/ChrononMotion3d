@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate original PNG plates for plan_optical_studio; requires Pillow."""
 import math
+import shutil
 import sys
 from pathlib import Path
 
@@ -14,6 +15,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     font_path = sys.argv[2]
     font = lambda size: ImageFont.truetype(font_path, size)
+    shutil.copy2(font_path, output / "Inter-Bold.ttf")
 
     # A quiet navy gradient with depth cues; no external imagery.
     background = Image.new("RGB", (1920, 1080))

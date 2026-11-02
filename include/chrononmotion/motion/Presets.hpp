@@ -325,6 +325,27 @@ namespace chrononmotion::motion {
 
         // ----------------------------------------------------------------- camera
 
+        /// Data for a common panel-camera shot. The framing math is delegated
+        /// to CameraFramingSolver; this pack only authors the push/pan keys.
+        struct CameraPanelChoreography {
+            float subjectWidth{0.f};
+            float fov{50.f};
+            float frameFill{0.78f};
+            float safeMargin{1.12f};
+            int totalFrames{90};
+            int zoomInFrame{10};
+            int zoomDuration{25};
+            float zoomDolly{180.f};
+            int panInFrame{28};
+            int panDuration{37};
+            Vector2 panOffset{-160.f, 0.f};
+        };
+
+        /// Apply the editable camera keys described by a panel choreography pack.
+        void applyPanelChoreography(CameraRig& rig,
+                                    const CameraPanelChoreography& choreography,
+                                    float fps, const Vector2& viewport);
+
         /// Dolly forward (toward the look-at target, or along the view axis).
         void cameraPush(CameraRig& rig, int inFrame, int duration, float distance, float fps);
 

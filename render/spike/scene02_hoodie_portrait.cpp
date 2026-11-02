@@ -31,6 +31,7 @@
 #include "stb_image_write.h"
 
 #include "chrononmotion/motion/MotionScene.hpp"
+#include "chrononmotion/motion/CameraRig.hpp"
 #include "threepp/canvas/Canvas.hpp"
 #include "threepp/geometries/BoxGeometry.hpp"
 #include "threepp/geometries/ConeGeometry.hpp"
@@ -233,6 +234,7 @@ int run(const fs::path& asset, const fs::path& out) {
     camera.targetTrack().add(5.f, {0.f, 1.31f, 0.f});
     // Focus sits on the face so the backdrop falls off via Bokeh.
     camera.setFocusDistance(2.05f);
+    camera.setFStop(2.8f).setMaxBlur(12.f);
     camera.focusDistanceTrack().add(0.f, 2.05f);
     camera.focusDistanceTrack().add(5.f, 1.62f);
 
@@ -262,7 +264,9 @@ int run(const fs::path& asset, const fs::path& out) {
     composer.renderToScreen = false;
     composer.setSize(W, H);
     composer.addPass(std::make_shared<RenderPass>(*scene2, *bridge.camera()));
-    auto bokeh = std::make_shared<BokehPass>(*scene2, *bridge.camera(), 2.05f, 0.01f, 0.025f);
+    auto bokehParams = chrononmotion::motion::bokehParams(camera.sample(0.f), float(H));
+    auto bokeh = std::make_shared<BokehPass>(*scene2, *bridge.camera(),
+                                             bokehParams.focus, bokehParams.aperture, bokehParams.maxBlur);
     composer.addPass(bokeh);
 
     const fs::path videoPath = out / "scene02_hoodie_portrait_854x480.mp4";
@@ -272,7 +276,10 @@ int run(const fs::path& asset, const fs::path& out) {
     for (int f = 0; f < FRAMES; ++f) {
         bridge.evaluateAndSync(motion, f, &camera);
         const float seconds = float(f) / float(FPS);
-        bokeh->focus = camera.sample(seconds).focusDistance;
+        bokehParams = chrononmotion::motion::bokehParams(camera.sample(seconds), float(H));
+        bokeh->focus = bokehParams.focus;
+        bokeh->aperture = bokehParams.aperture;
+        bokeh->maxblur = bokehParams.maxBlur;
         composer.render(1.f / float(FPS));
         renderer.setRenderTarget(&composer.readBuffer());
         gpuEncoder.encode_current_target(f);
@@ -288,7 +295,10 @@ int run(const fs::path& asset, const fs::path& out) {
     std::vector<unsigned char> frame77, frame0;
     for (int f = 0; f < FRAMES; ++f) {
         bridge.evaluateAndSync(motion, f, &camera);
-        bokeh->focus = camera.sample(float(f) / FPS).focusDistance;
+        bokehParams = chrononmotion::motion::bokehParams(camera.sample(float(f) / FPS), float(H));
+        bokeh->focus = bokehParams.focus;
+        bokeh->aperture = bokehParams.aperture;
+        bokeh->maxblur = bokehParams.maxBlur;
         composer.render(1.f / float(FPS));
         auto pixels = composer.readRGBPixels();
         if (pixels.size() != size_t(W) * H * 3) throw std::runtime_error("unexpected SCENE-02 readback size");
@@ -306,7 +316,10 @@ int run(const fs::path& asset, const fs::path& out) {
     bool toggleDeterministic = true;
     for (size_t i = 0; i < probes.size(); ++i) {
         bridge.evaluateAndSync(motion, probes[i], &camera);
-        bokeh->focus = camera.sample(float(probes[i]) / FPS).focusDistance;
+        bokehParams = chrononmotion::motion::bokehParams(camera.sample(float(probes[i]) / FPS), float(H));
+        bokeh->focus = bokehParams.focus;
+        bokeh->aperture = bokehParams.aperture;
+        bokeh->maxblur = bokehParams.maxBlur;
         renderer.shadowMap().enabled = false;
         composer.render(1.f / float(FPS));
         const auto off = composer.readRGBPixels();
@@ -321,7 +334,10 @@ int run(const fs::path& asset, const fs::path& out) {
     }
 
     bridge.evaluateAndSync(motion, 77, &camera);
-    bokeh->focus = camera.sample(77.f / float(FPS)).focusDistance;
+    bokehParams = chrononmotion::motion::bokehParams(camera.sample(77.f / float(FPS)), float(H));
+    bokeh->focus = bokehParams.focus;
+    bokeh->aperture = bokehParams.aperture;
+    bokeh->maxblur = bokehParams.maxBlur;
     composer.render(1.f / float(FPS));
     const bool randomOk = composer.readRGBPixels() == frame77;
 
