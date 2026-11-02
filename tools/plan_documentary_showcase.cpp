@@ -4,15 +4,15 @@
 // MotionScene -> lowerToRenderPlan (with parented CameraRig) -> renderPlanToJson
 // -> Chronon3D V3 RenderPlan pipeline:
 //
-//   1. Paper document plate + Serif text + Animated Cyan Highlighter (#00A8FF,
+//   1. Apollo archive paper plate + Serif text + Animated Cyan Highlighter (#00A8FF,
 //      Multiply blend mode, Trim Paths 0% -> 100% with fast-start/soft-out) +
 //      Document Null reading motion.
-//   2. Foreground subject cutout + 3D Depth of Field (focus pull from document
+//   2. Original fictional archivist cutout + 3D Depth of Field (focus pull from document
 //      at z=0 to subject at z=-320 when subject enters, darkening/defocusing
 //      the background without cutout edge halo) + Floating Dust/Bokeh particles
 //      in Screen blend mode.
-//   3. Pop-up graphic elements (Logo + "$10,000" tag) with spring overshoot,
-//      staggered by 7 frames, Drop Shadow + Glow.
+//   3. Two NASA archival photographs enter as restrained editorial cards,
+//      staggered in time and given a gentle floating move.
 //   4. Top-level Adjustment Layer with archive lens distortion, subtle RGB
 //      chromatic aberration, and soft elliptical vignette.
 
@@ -26,6 +26,7 @@
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -193,92 +194,22 @@ chronon3d::render_plan::LayerPlan makeSubjectCutout(const std::string& asset) {
     return plan;
 }
 
-chronon3d::render_plan::LayerPlan makeLogoBadge() {
+chronon3d::render_plan::LayerPlan makeArchivePhoto(const std::string& asset,
+                                                    float width,
+                                                    float height) {
     using namespace chronon3d::render_plan;
     LayerPlan plan;
-    plan.type = LayerType::Shape;
-    plan.size = {210.f, 210.f};
+    plan.type = LayerType::Image;
+    plan.asset = asset;
+    plan.fit = FitMode::Contain;
+    plan.size = {width, height};
     plan.size_dimensions = 2;
-
-    ShapeContentPlan shape;
-    shape.type = ShapeContentTypePlan::RoundedRect;
-    shape.radius = 44.f;
-    shape.fill_color = std::array<float, 4>{0.04f, 0.68f, 0.98f, 1.f};
-    StrokeStyle stroke;
-    stroke.solid_color = std::array<float, 4>{1.f, 1.f, 1.f, 1.f};
-    stroke.width = 6.f;
-    shape.stroke = stroke;
-    plan.shape = shape;
-
-    // Drop Shadow + wide soft Glow on the logo badge
     LayerPlan::EffectPlan shadow;
     shadow.kind = LayerPlan::EffectKindPlan::DropShadow;
-    shadow.radius = 22.f;
-    shadow.offset = {0.f, 10.f};
-    shadow.effect_color = {0.f, 0.f, 0.f, 0.65f};
+    shadow.radius = 14.f;
+    shadow.offset = {0.f, 9.f};
+    shadow.effect_color = {0.f, 0.f, 0.f, 0.42f};
     plan.effects.push_back(shadow);
-
-    LayerPlan::EffectPlan glow;
-    glow.kind = LayerPlan::EffectKindPlan::Glow;
-    glow.radius = 36.f;
-    glow.glow_intensity = 0.65f;
-    glow.effect_color = {0.0f, 0.72f, 1.0f, 1.0f};
-    plan.effects.push_back(glow);
-
-    return plan;
-}
-
-chronon3d::render_plan::LayerPlan makeTagCard() {
-    using namespace chronon3d::render_plan;
-    LayerPlan plan;
-    plan.type = LayerType::Shape;
-    plan.size = {420.f, 118.f};
-    plan.size_dimensions = 2;
-
-    ShapeContentPlan shape;
-    shape.type = ShapeContentTypePlan::RoundedRect;
-    shape.radius = 22.f;
-    shape.fill_color = std::array<float, 4>{0.08f, 0.78f, 0.38f, 1.f};
-    StrokeStyle stroke;
-    stroke.solid_color = std::array<float, 4>{0.96f, 1.f, 0.96f, 1.f};
-    stroke.width = 4.f;
-    shape.stroke = stroke;
-    plan.shape = shape;
-
-    LayerPlan::EffectPlan shadow;
-    shadow.kind = LayerPlan::EffectKindPlan::DropShadow;
-    shadow.radius = 20.f;
-    shadow.offset = {0.f, 8.f};
-    shadow.effect_color = {0.f, 0.f, 0.f, 0.60f};
-    plan.effects.push_back(shadow);
-
-    LayerPlan::EffectPlan glow;
-    glow.kind = LayerPlan::EffectKindPlan::Glow;
-    glow.radius = 28.f;
-    glow.glow_intensity = 0.45f;
-    glow.effect_color = {0.15f, 0.95f, 0.48f, 1.0f};
-    plan.effects.push_back(glow);
-
-    return plan;
-}
-
-chronon3d::render_plan::LayerPlan makePopupText(const std::string& text,
-                                                const std::string& font,
-                                                float fontSize) {
-    using namespace chronon3d::render_plan;
-    LayerPlan plan;
-    plan.type = LayerType::Text;
-    plan.text = text;
-    LayerStylePlan style;
-    style.font = font;
-    style.font_size = fontSize;
-    style.fill = "#FFFFFF";
-    GlowStyle glow;
-    glow.radius = 18.f;
-    glow.intensity = 0.40f;
-    glow.color = "#FFFFFF";
-    style.glow = glow;
-    plan.style = style;
     return plan;
 }
 
@@ -318,14 +249,24 @@ chronon3d::render_plan::LayerPlan makeCinematicGradeAdjustment() {
 
 int main(int argc, char** argv) {
     const std::string outputPath = argc > 1 ? argv[1] : "documentary_showcase.plan.json";
-    const std::string serifFont = argc > 2 ? argv[2] : "assets/fonts/FreeSerif.ttf";
-    const std::string boldFont = argc > 3 ? argv[3] : "assets/fonts/Inter-Bold.ttf";
-    const std::string cutoutAsset = argc > 4 ? argv[4] : "output/T16_Hero_Title/subject_cutout_refined.png";
+    // Defaults resolve to checked-in/shared assets; the old T16 output path
+    // was machine-local and made the acceptance scene impossible to reproduce
+    // from a clean checkout. Callers may still pass explicit font/cutout paths.
+    const std::string serifFont = argc > 2 ? argv[2] : "render/spike/assets/documentary_fonts/DejaVuSerif.ttf";
+    const std::string boldFont = argc > 3 ? argv[3] : "render/spike/assets/documentary_fonts/DejaVuSans-Bold.ttf";
+    const std::string cutoutAsset = argc > 4 ? argv[4] : "render/spike/assets/documentary_subject/archival_researcher_cutout.png";
     const int frames = argc > 5 ? std::atoi(argv[5]) : kDefaultFrames;
     const std::string renderOutput = argc > 6 ? argv[6] : "documentary_showcase.mp4";
+    const std::string liftoffAsset = "render/spike/assets/documentary_archive/apollo11_liftoff_s69-39525.jpg";
+    const std::string missionControlAsset = "render/spike/assets/documentary_archive/apollo11_mission_control_s69-40024.jpg";
 
     try {
-        MotionScene scene("documentary_showcase", kFps);
+        for (const auto& asset : {serifFont, boldFont, cutoutAsset, liftoffAsset, missionControlAsset}) {
+            if (!std::filesystem::is_regular_file(asset))
+                throw std::runtime_error("required acceptance asset is missing: " + asset);
+        }
+
+        MotionScene scene("apollo_archive_documentary", kFps);
         std::unordered_map<std::string, chronon3d::render_plan::LayerPlan> content;
 
         // ====================================================================
@@ -356,11 +297,11 @@ int main(int argc, char** argv) {
         content.emplace("11", makePaperPlate());
 
         // Document Header metadata
-        Layer& headerText = scene.addContent(12, "ARCHIVE DOSSIER // CASE #2017-MB",
-                                             ContentRef::text("ARCHIVE DOSSIER // CASE #2017-MB", Vector2{1200.f, 60.f}), 10);
+        Layer& headerText = scene.addContent(12, "ARCHIVE DOSSIER // APOLLO 11",
+                                             ContentRef::text("ARCHIVE DOSSIER // APOLLO 11", Vector2{1200.f, 60.f}), 10);
         headerText.is3D = true;
         headerText.transform.position.set(-180.f, 310.f, 1.f);
-        content.emplace("12", makeDocText("ARCHIVE DOSSIER // CASE #2017-MB", boldFont, 28.f, "#52525B"));
+        content.emplace("12", makeDocText("ARCHIVE DOSSIER // APOLLO 11", boldFont, 28.f, "#52525B"));
 
         // Three lines of Serif document text
         struct DocLine {
@@ -373,9 +314,9 @@ int main(int argc, char** argv) {
             int barStartFrame;
         };
         const std::array<DocLine, 3> kLines{{
-            {13, 14, "in May 2017,",              -260.f, -130.f, 540.f,  6},
-            {15, 16, "MrBeast would hit 1 million", -60.f,   -10.f, 980.f, 20},
-            {17, 18, "subscribers.",              -310.f,  110.f, 460.f, 34},
+            {13, 14, "On 20 July 1969,",             -260.f, -130.f, 620.f,  6},
+            {15, 16, "Apollo 11 reached the Moon",    -60.f,   -10.f, 1040.f, 20},
+            {17, 18, "for the first time.",           -310.f,  110.f, 700.f, 34},
         }};
 
         for (const auto& line : kLines) {
@@ -415,41 +356,30 @@ int main(int argc, char** argv) {
         content.emplace("40", makeSubjectCutout(cutoutAsset));
 
         // ====================================================================
-        // STEP 3: Pop-up Graphics (Logo Badge + "$10,000" Tag) with Overshoot
-        //         staggered by 7 frames, placed on the sharp foreground plane
+        // STEP 3: Restrained archive photo cards. They enter at separate times
+        //         and float subtly instead of using unrelated neon promo badges.
         // ====================================================================
-        Layer& logoBadge = scene.addContent(50, "logo_badge",
-                                            ContentRef::image("logo_badge", Vector2{210.f, 210.f}));
-        logoBadge.is3D = true;
-        logoBadge.transform.position.set(-560.f, 90.f, 120.f);
-        presets::fadeIn(logoBadge, 62, 6, kFps);
-        presets::scaleOvershoot(logoBadge, 62, 12, 0.01f, 1.0f, kFps);
-        content.emplace("50", makeLogoBadge());
+        Layer& liftoffPhoto = scene.addContent(50, liftoffAsset,
+            ContentRef::image(liftoffAsset, Vector2{430.f, 570.f}));
+        liftoffPhoto.is3D = true;
+        liftoffPhoto.transform.position.set(-570.f, 80.f, 170.f);
+        presets::fadeIn(liftoffPhoto, 62, 9, kFps);
+        presets::scaleOvershoot(liftoffPhoto, 62, 10, 0.92f, 1.0f, kFps);
+        liftoffPhoto.tracks.position
+            .add(72.f / kFps, Vector3{-570.f, 80.f, 170.f}, Easing::easeInOut())
+            .add(112.f / kFps, Vector3{-550.f, 96.f, 170.f});
+        content.emplace("50", makeArchivePhoto(liftoffAsset, 430.f, 570.f));
 
-        Layer& logoLabel = scene.addContent(51, "MB",
-                                            ContentRef::text("MB", Vector2{180.f, 120.f}));
-        logoLabel.is3D = true;
-        logoLabel.transform.position.set(-560.f, 90.f, 122.f);
-        presets::fadeIn(logoLabel, 62, 6, kFps);
-        presets::scaleOvershoot(logoLabel, 62, 12, 0.01f, 1.0f, kFps);
-        content.emplace("51", makePopupText("MB", boldFont, 76.f));
-
-        // Staggered by 7 frames (frame 69)
-        Layer& tagCard = scene.addContent(60, "tag_10k_card",
-                                          ContentRef::image("tag_10k_card", Vector2{420.f, 118.f}));
-        tagCard.is3D = true;
-        tagCard.transform.position.set(-560.f, -135.f, 120.f);
-        presets::fadeIn(tagCard, 69, 6, kFps);
-        presets::scaleOvershoot(tagCard, 69, 12, 0.01f, 1.0f, kFps);
-        content.emplace("60", makeTagCard());
-
-        Layer& tagText = scene.addContent(61, "$10,000",
-                                          ContentRef::text("$10,000", Vector2{380.f, 95.f}));
-        tagText.is3D = true;
-        tagText.transform.position.set(-560.f, -135.f, 122.f);
-        presets::fadeIn(tagText, 69, 6, kFps);
-        presets::scaleOvershoot(tagText, 69, 12, 0.01f, 1.0f, kFps);
-        content.emplace("61", makePopupText("$10,000", boldFont, 64.f));
+        Layer& missionControlPhoto = scene.addContent(60, missionControlAsset,
+            ContentRef::image(missionControlAsset, Vector2{500.f, 360.f}));
+        missionControlPhoto.is3D = true;
+        missionControlPhoto.transform.position.set(510.f, -235.f, 145.f);
+        presets::fadeIn(missionControlPhoto, 78, 9, kFps);
+        presets::scaleOvershoot(missionControlPhoto, 78, 10, 0.94f, 1.0f, kFps);
+        missionControlPhoto.tracks.position
+            .add(88.f / kFps, Vector3{510.f, -235.f, 145.f}, Easing::easeInOut())
+            .add(128.f / kFps, Vector3{490.f, -218.f, 145.f});
+        content.emplace("60", makeArchivePhoto(missionControlAsset, 500.f, 360.f));
 
         // ====================================================================
         // STEP 4: Top-Level Adjustment Layer (Optics Distortion + Chromatic
@@ -505,7 +435,7 @@ int main(int argc, char** argv) {
         RenderPlanLoweringOptions options;
         options.width = kWidth;
         options.height = kHeight;
-        options.jobId = "chronon_documentary_showcase";
+        options.jobId = "chronon_apollo_archive_documentary";
         options.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
         options.outputPath = renderOutput;
         options.contentLayers = content;

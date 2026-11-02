@@ -1,6 +1,6 @@
 #include "chrononmotion/motion/CameraFraming.hpp"
 #include "chrononmotion/motion/CameraScreenSpace.hpp"
-#include "chrononmotion/motion/CameraPanelChoreography.hpp"
+#include "chrononmotion/motion/Presets.hpp"
 #include "chrononmotion/motion/CameraValidation.hpp"
 #include "chrononmotion/motion/TitleCameraRecipe.hpp"
 
@@ -144,18 +144,21 @@ int main() {
 
     using namespace chrononmotion::motion::camera;
     const chrononmotion::Vector2 viewport{1920.f, 1080.f};
-    const float fit = panelFramingDistance(900.f, 50.f, viewport, 0.78f);
-    if (!(fit > 600.f && fit < 1080.f))
-        throw std::runtime_error("panel framing must fit the requested width and field of view");
     CameraRig panelRig;
-    CameraPanelChoreography move;
+    chrononmotion::motion::presets::CameraPanelChoreography move;
     move.subjectWidth = 900.f;
-    applyPanelChoreography(panelRig, move, 30.f, viewport);
+    if (!chrononmotion::motion::presets::known("cameraPanelChoreography"))
+        throw std::runtime_error("panel choreography pack must be registered as a preset");
+    chrononmotion::motion::presets::applyPanelChoreography(panelRig, move, 30.f, viewport);
+    CameraSafeArea panelSafeArea;
+    panelSafeArea.left = panelSafeArea.right = (1.f - move.frameFill) * 0.5f;
+    const float minimumFit = CameraFramingSolver::distanceForBounds(
+        move.subjectWidth * 0.5f, 0.f, 0.f, move.fov, viewport, panelSafeArea) * move.safeMargin;
     const auto start = panelRig.sample(10.f / 30.f);
     const auto middle = panelRig.sample(40.f / 30.f);
     const auto panStart = panelRig.sample(28.f / 30.f);
     const auto end = panelRig.sample(90.f / 30.f);
-    if (!(start.position.z > middle.position.z) ||
+    if (start.position.z < minimumFit || !(start.position.z > middle.position.z) ||
         std::abs(end.position.x - (panStart.position.x + move.panOffset.x)) > 0.1f)
         throw std::runtime_error("panel choreography must resolve its push, pan and settle through CameraRig");
     const auto trackValidation = validateCameraTrack(panelRig,

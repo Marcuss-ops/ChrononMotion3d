@@ -14,7 +14,12 @@ gates, implemented contracts, remaining scope limits (schedule serialization,
 puppet-triangle deformation, planar secondary, narrow glTF motion import) and
 evidence log.
 
-**A Linux-only motion engine, forked from [threepp](https://github.com/markaren/threepp).**
+**A cross-platform motion engine, forked from [threepp](https://github.com/markaren/threepp).**
+
+The dependency-free core and optional Chronon3D RenderPlan adapter build on
+Linux and Windows. The Windows GPU-adapter preset uses the sibling
+`Chronon3d-mainfix` `win-gpu` dependency install. The preview renderer and
+certification tools remain platform-specific.
 
 ChrononMotion keeps the half of threepp that a deterministic motion/transform
 compiler needs — the scene graph, the transform and quaternion/curve maths, the
@@ -167,8 +172,9 @@ ChrononMotion through `ContentRef`.
 
 ## Build
 
-Linux is the only supported deployment target. No platform abstraction or
-Windows toolchain is kept. Dependencies are limited to CMake 3.20+ and a C++20
+The motion core is dependency-free. The optional RenderPlan adapter needs the
+sibling Chronon3D headers and dependencies. The preview renderer remains
+platform-specific. Core dependencies are limited to CMake 3.20+ and a C++20
 compiler:
 
 ```shell
@@ -176,6 +182,12 @@ cmake --preset dev
 cmake --build --preset dev
 ctest --preset dev
 ```
+
+On Windows, build the core with `cmake --build --preset windows-core`. After
+the sibling Chronon3D `win-gpu` dependencies are installed, configure and build
+the GPU-connected optical-studio authoring tool with
+`cmake --preset windows-gpu-adapter` and
+`cmake --build --preset windows-gpu-adapter`.
 
 ```shell
 cmake --preset release        # -Wall -Wextra -Werror, the gate a change must pass

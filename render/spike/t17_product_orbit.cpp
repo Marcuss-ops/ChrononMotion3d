@@ -191,7 +191,9 @@ int main(int argc, char** argv) try {
     composer.renderToScreen = false;
     composer.setSize(W, H);
     composer.addPass(std::make_shared<RenderPass>(*bridge.scene(), *bridge.camera()));
-    auto bokeh = std::make_shared<BokehPass>(*bridge.scene(), *bridge.camera(), focusDistances[0], 0.008f, 0.02f);
+    auto bokehParams = chrononmotion::motion::bokehParams(cameraRig.sample(0.f), float(H));
+    auto bokeh = std::make_shared<BokehPass>(*bridge.scene(), *bridge.camera(),
+                                             bokehParams.focus, bokehParams.aperture, bokehParams.maxBlur);
     composer.addPass(bokeh);
 
     const fs::path videoPath = output / "T17_product_orbit_1080p30.mp4";
@@ -208,7 +210,10 @@ int main(int argc, char** argv) try {
     for (unsigned frame = 0; frame < FRAMES; ++frame) {
         bridge.evaluateAndSync(motion, int(frame), &cameraRig);
         const float seconds = float(frame) / float(FPS);
-        bokeh->focus = cameraRig.sample(seconds).focusDistance;
+        bokehParams = chrononmotion::motion::bokehParams(cameraRig.sample(seconds), float(H));
+        bokeh->focus = bokehParams.focus;
+        bokeh->aperture = bokehParams.aperture;
+        bokeh->maxblur = bokehParams.maxBlur;
         composer.render(1.f / float(FPS));
         renderer.setRenderTarget(&composer.readBuffer());
         gpuEncoder.encode_current_target(frame);
@@ -221,7 +226,10 @@ int main(int argc, char** argv) try {
     for (unsigned frame = 0; frame < FRAMES; ++frame) {
         bridge.evaluateAndSync(motion, int(frame), &cameraRig);
         const float seconds = float(frame) / float(FPS);
-        bokeh->focus = cameraRig.sample(seconds).focusDistance;
+        bokehParams = chrononmotion::motion::bokehParams(cameraRig.sample(seconds), float(H));
+        bokeh->focus = bokehParams.focus;
+        bokeh->aperture = bokehParams.aperture;
+        bokeh->maxblur = bokehParams.maxBlur;
         composer.render(1.f / float(FPS));
         const auto pixels = composer.readRGBPixels();
         if (pixels.size() != std::size_t(W) * H * 3) throw std::runtime_error("unexpected T17 diagnostic readback size");
@@ -246,7 +254,10 @@ int main(int argc, char** argv) try {
     }
     const auto sequentialDone = std::chrono::steady_clock::now();
     bridge.evaluateAndSync(motion, 77, &cameraRig);
-    bokeh->focus = cameraRig.sample(77.f / float(FPS)).focusDistance;
+    bokehParams = chrononmotion::motion::bokehParams(cameraRig.sample(77.f / float(FPS)), float(H));
+    bokeh->focus = bokehParams.focus;
+    bokeh->aperture = bokehParams.aperture;
+    bokeh->maxblur = bokehParams.maxBlur;
     composer.render(1.f / float(FPS));
     const bool randomAccess = composer.readRGBPixels() == reference77;
 

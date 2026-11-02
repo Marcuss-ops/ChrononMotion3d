@@ -1,0 +1,35 @@
+{
+  "schema": "chrononmotion.documentary-assets.v1",
+  "assets": [
+    {
+      "id": "document_serif",
+      "path": "render/spike/assets/documentary_fonts/DejaVuSerif.ttf",
+      "sha256": "8f2c103bfa3fd5de71f1b92b18f21906b5a26871fb7e19a9a4c9af539c3cc7ab",
+      "license": "Bitstream Vera / DejaVu; see LICENSE.txt"
+    },
+    {
+      "id": "interface_bold",
+      "path": "render/spike/assets/documentary_fonts/DejaVuSans-Bold.ttf",
+      "sha256": "5c1247acef7f2b8522a31742c76d6adcb5569bacc0be7ceaa4dc39dd252ce895",
+      "license": "Bitstream Vera / DejaVu; see LICENSE.txt"
+    },
+    {
+      "id": "archival_researcher_cutout",
+      "path": "render/spike/assets/documentary_subject/archival_researcher_cutout.png",
+      "sha256": "de08435f3b5ad4ba36708c845fb4673d0b43ac989455a5c0ea80eb911ec40e86",
+      "license": "Original AI-generated fictional subject for this acceptance fixture"
+    },
+    {
+      "id": "apollo11_liftoff",
+      "path": "render/spike/assets/documentary_archive/apollo11_liftoff_s69-39525.jpg",
+      "sha256": "0e07de8c7f8c8183003349e7e2be6ee450ae892778e9a5b4a1125ad45d45a71c",
+      "license": "NASA History Office / JSC Media Services Center; NASA photo credit required"
+    },
+    {
+      "id": "apollo11_mission_control",
+      "path": "render/spike/assets/documentary_archive/apollo11_mission_control_s69-40024.jpg",
+      "sha256": "9348e5a49545adc0c489cc8d243fe98f762eb7f762a42463d6093f59d16c463b",
+      "license": "NASA History Office / JSC Media Services Center; NASA photo credit required"
+    }
+  ]
+}
