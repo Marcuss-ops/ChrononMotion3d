@@ -313,7 +313,7 @@ rotta `--video-sink raw` (l'unica lane pixel-truth):
 | Criterio | Esito |
 |---|---|
 | Soggetto visibile (producer → consumer) | **PASS**: 2.965 pixel opachi sul frame 0 |
-| Contributo ambiente diffuso (SH) | **PASS**: 2.965/2.965 pixel del soggetto cambiano con la probe (`b403f65f…` vs `0c660f2b…`) |
+| Contributo ambiente diffuso (SH) | **PASS**: 2.965/2.965 pixel del soggetto cambiano con la probe, in tutti e 4 i frame (`b403f65f…` vs `ef26b12f…`), delta massimo 19/255 |
 | Golden speculare quantitativo | **PASS** producer-side: 244 check, dump byte-identico a `tests/hdri_specular_golden.json`; consumer-side pinnato dal caso `software environment specular samples the reflection direction and roughness mip` |
 | Contratto `HDRIENV1` e RenderPlan | **PASS**: decode, mounted-root, `environment_sh_asset_mismatch` sui payload incoerenti |
 | Suite CM3D | **PASS**: 67/67 in 37,97 s |
@@ -329,3 +329,11 @@ si perde alcuna prova: cambia solo il posto dove viene richiesta.
 **Superato:** la cifra «20.000 pixel opachi» citata nei checkpoint del 29-10
 appartiene a un campione mesh diverso; sul pair corrente il soggetto ha 2.965
 pixel opachi e la totalità di essi cambia con la probe.
+
+**Correzione di una mia misura del mattino.** La prima run del 2026-11-03
+confrontava il piano con ambiente (soggetto disegnato) contro un piano senza
+ambiente che rendeva **0 pixel opachi**: quel file era un frame vuoto e il
+confronto non dimostrava nulla. I piani sono stati rigenerati con la camera
+authorata nella fixture, entrambi disegnano il soggetto, e la tabella sopra è
+la misura valida. Il file con ambiente e il raw glTF non sono cambiati tra le
+due run.

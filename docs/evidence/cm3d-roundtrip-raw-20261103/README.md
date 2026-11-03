@@ -4,15 +4,21 @@
 
 - Chronon3D `cd593ffc379d98c5da5d7ea7bc091e6ee14ae65a`.
 - ChrononMotion3D `a878bcde22741b7337790584aa9320900665326e`.
-- Modifiche locali presenti durante il run (non committate, non influenti sui
-  pixel misurati): in C3D il rifiuto fail-closed dei piani 3D senza camera
+- Modifiche locali presenti durante il run (non committate): in C3D il rifiuto
+  fail-closed dei piani 3D senza camera
   (`src/render_plan/render_plan_relations_validator.cpp`) con la sua
   regressione; in CM3D la camera esplicita nella fixture di
   `tests/motion_authoring_renderplan.cpp`, che è ciò che rende rigenerabili i
-  quattro piani dell'evidenza. Il CLI usato è del 2026-11-02 21:15, quindi
-  **precedente** al validator: i render misurano il binario pre-modifica.
+  quattro piani dell'evidenza. La camera nella fixture **cambia i pixel**
+  (senza di essa il piano non disegna): è parte del run, non un dettaglio.
 - CLI: `Chronon3d/build/chronon/linux-video-release/apps/chronon3d_cli/chronon3d_cli`
-  (2026-11-02 21:15), costruito dal sorgente sopra.
+  **ricostruito il 2026-11-03 08:24** dal sorgente sopra, quindi con il
+  validator fail-closed incluso. I numeri sotto sono quelli di questo binario;
+  dove differiscono dalla run del mattino (binario 2026-11-02 21:15) la
+  differenza è annotata.
+- Verifica del validator: `chronon3d_c_abi_tests` → **296/296 casi, 8.090/8.090
+  asserzioni PASS**; un piano 3D senza `camera` ora dà `validate` exit 1 e
+  `render` exit 1 con «3D mesh layers require a camera or camera_samples».
 - Host: Linux x86_64, software backend. Nessun host GPU dedicato: qui non si
   certifica Vulkan né la CI same-SHA.
 - Suite CM3D sul pair: `ctest --test-dir build/release-fast -j4` →
@@ -27,8 +33,8 @@ Il checkpoint 2026-11-02 concludeva che il round-trip visibile «non è
 riproducibile» perché il piano con e senza `environment_light` restava
 byte-identico e i 31 campioni animati producevano un solo hash. Quelle due
 misure erano state prese sulla rotta **stills** (`-o file.png`). Sul pair
-corrente la rotta stills è effettivamente vuota per le mesh inline (vedi
-"Difetto aperto" sotto), ma la rotta **`--video-sink raw`** — quella usata dai
+corrente la rotta stills è effettivamente vuota per le mesh inline (vedi nota
+P0-0b sotto), ma la rotta **`--video-sink raw`** — quella usata dai
 probe del 29-10 e la stessa che alimenta l'encoder — disegna e anima
 correttamente. Questo run misura quella rotta, che è l'autorità visiva.
 
@@ -64,13 +70,23 @@ $CLI render --plan "$R/without-environment.plan.json" --assets-root "$R" --backe
   --start-frame 0 --end-frame 3 --video-sink raw --output /tmp/h-noenv.rgba -v error
 ```
 
-- Con ambiente: `sha256 b403f65f8301e54b835ee206029091369c4f9b0f33d628c3dfd08ca3410f49de`.
-- Senza ambiente: `sha256 0c660f2bd3eff3150dd0040789abe2291613b9af319df870203d4f77a4913a5f`.
-- I due file **non** sono uguali. Frame 0: **2.965 pixel opachi** e **2.965
-  pixel RGB differenti** tra i due piani, cioè il 100% del soggetto cambia
-  quando la probe SH è presente.
+- Con ambiente: `sha256 b403f65f8301e54b835ee206029091369c4f9b0f33d628c3dfd08ca3410f49de`
+  (identico alla run del mattino).
+- Senza ambiente: `sha256 ef26b12fa91f624c3d2a36bddeff2f364cbe1c4434ffda628a7046896ada9609`.
+- **Entrambi i piani disegnano il soggetto**: 2.965 pixel opachi per frame in
+  tutti e 4 i frame, sia con sia senza probe. Su quei 2.965 pixel cambiano
+  **2.965/2.965** valori RGB per frame (100% del soggetto), con delta massimo
+  **19/255**.
 - Il soggetto HDRI è statico: 4 frame, 1 solo hash distinto. Atteso
   (nessuna animazione nella fixture), non è un difetto.
+- **Correzione rispetto alla run del mattino.** Il file «senza ambiente» di
+  quella run (`0c660f2b…`) aveva **0 pixel opachi**: era un frame vuoto, quindi
+  il confronto «2.965 differenze» metteva a confronto un frame vuoto con uno
+  pieno e non dimostrava il contributo SH. Sui piani rigenerati (camera
+  authorata) il file senza ambiente disegna il soggetto e la misura qui sopra
+  è un confronto pixel-per-pixel valido. Il file con ambiente non è cambiato
+  tra le due run, e anche il raw glTF è byte-identico
+  (`c2d3f06d…`), quindi la rigenerazione non ha spostato la resa.
 
 ## Nota per `TICKET-TEXT-QUALITY-V2` P0-0b — la rotta stills non è una superficie di misura
 
