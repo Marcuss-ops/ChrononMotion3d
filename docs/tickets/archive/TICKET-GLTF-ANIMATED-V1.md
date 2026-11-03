@@ -273,3 +273,13 @@ allocati). La «broader production-material coverage» citata nelle note non è
 un criterio di questa scheda: la copertura materiali sta in
 `TICKET-PBR-MATERIALS-V1` (archiviata COMPLETE) e nella resa textured/alpha
 lato consumer (`TICKET-INLINE-MESH-TEXTURED-ALPHA`).
+
+## Evidenza animata (2026-11-03)
+
+Clip consegnata: [`../../../docs/evidence/showcase-animation-20261103/out/03-gltf-animato.mp4`](../../evidence/showcase-animation-20261103/README.md)
+(960×540, 120 frame, 30 fps, `sha256 149e320f7ce0103c…`). La fixture
+`ticket-roundtrip-scaled-20261029/gltf` viene riprodotta in ping-pong per 120
+frame; le posizioni bakeate sono riscalate in unità canvas durante il bake
+perché `inline_mesh.animation` non passa dal `scale` del layer. Il clip non
+dimostra nulla di nuovo sul contratto glTF: rende visibile, in movimento, la
+prova già registrata qui sopra.
