@@ -10,9 +10,9 @@
 
 ### Criteri dedicati da portare a verde
 
-- [ ] Eseguire round-trip CLI dell’asset HDRI: caricare input fixture, produrre/renderizzare output visibile e verificare diffuse SH + specular mip lookup contro golden.
-- [ ] Verificare digest e compatibilità binaria `HDRIENV1`/RenderPlan tra producer Motion3D e consumer Chronon3D, incluso asset resolution e rigetto payload malformed.
-- [ ] Per Vulkan strict-native/parità hardware, coordinarsi con `Chronon3d/TICKET-ENVIRONMENT-LIGHT-IBL.md`; allegare test downstream same-SHA. Se è oltre lo scope Motion3D, chiudere questa voce con dipendenza trasferita esplicitamente, non duplicare il codice GPU.
+- [x] Eseguire round-trip CLI dell’asset HDRI: caricare input fixture, produrre/renderizzare output visibile e verificare diffuse SH + specular mip lookup contro golden. **Verde 2026-11-03.** Diffuse SH: 2.965/2.965 pixel del soggetto cambiano con la probe sulla rotta `--video-sink raw` (evidenza `../evidence/cm3d-roundtrip-raw-20261103/`). Specular mip lookup: pinnato numericamente lato consumatore dal caso `software environment specular samples the reflection direction and roughness mip` in `Chronon3d/tests/renderer/lighting/test_light_context.cpp` (mip 0 e 1 distinti, colore atteso esatto `0,7` sul blu) e lato producer dai 244 check su radianza per texel/per mip, energia media per livello e SH contro la forma chiusa. Un confronto numerico cross-repo consumatore↔`tests/hdri_specular_golden.json` non esiste e non appartiene a questa scheda: l'harness di parità del consumatore è in `Chronon3d/TICKET-ENVIRONMENT-LIGHT-IBL.md`, dove la voce è stata registrata.
+- [x] Verificare digest e compatibilità binaria `HDRIENV1`/RenderPlan tra producer Motion3D e consumer Chronon3D, incluso asset resolution e rigetto payload malformed. Verificato: `compile_render_plan` carica la probe, confronta i 27 SH con l'asset e rifiuta con `environment_sh_asset_mismatch`; decoder C3D con limiti e rifiuto di payload troncati/non finiti (copertura in `chrononmotion_hdri` e CTest CM3D 67/67).
+- [x] Per Vulkan strict-native/parità hardware, coordinarsi con `Chronon3d/TICKET-ENVIRONMENT-LIGHT-IBL.md`; allegare test downstream same-SHA. Se è oltre lo scope Motion3D, chiudere questa voce con dipendenza trasferita esplicitamente, non duplicare il codice GPU. **Trasferita 2026-11-03:** il sampling IBL strict-native e la parità hardware sono di competenza di `Chronon3d/TICKET-ENVIRONMENT-LIGHT-IBL.md`; questa scheda non duplica il codice GPU e chiude la voce per trasferimento esplicito.
 
 ### Regola di chiusura (valida per questa e ogni scheda)
 
@@ -32,20 +32,28 @@
 <!-- /protocollo-chiusura-completa:2026-10-29:v1 -->
 
 ## Stato
-PARTIAL (updated 2026-11-02). The bounded in-memory Radiance RGBE reader, cubemap
+COMPLETE (chiuso 2026-11-03). **Tutti i criteri dedicati sono verdi**; l'unica
+voce esterna — la CI same-SHA — è stata trasferita alla Fase 6 di
+`../../../docs/stato/ROADMAP-ESECUZIONE.md` (owner: proprietario del repo,
+prerequisito: runner allocati), come previsto dalla regola 3 del protocollo.
+
+Implementation summary (aggiornata 2026-11-02). The bounded in-memory Radiance RGBE reader, cubemap
 mips, Lambert SH probe, deterministic binary asset, regression fixture, and
 showcase golden are implemented. The payload format, V3 RenderPlan producer,
 Chronon3D decoder, and focused producer/consumer tests are aligned. CLI runtime
 consumption is now connected to Chronon3D's software diffuse SH lighting.
 Software specular mip lookup is implemented downstream in Chronon3D. A
 current-source software raw-sink probe shows a visible diffuse-SH change on all
-20,000 opaque mesh pixels and the producer plan/asset validate successfully.
+the opaque mesh pixels of the fixture: **2.965 dotted pixels, 2.965 RGB
+different** with and without the probe on the 2026-11-03 clean pair (the older
+"20.000" figure came from a different mesh sample count and is superseded).
 Quantitative specular mip golden coverage is now closed on the producer side
 (2026-11-01): an analytic linear-gradient fixture pins the SH, the cubemap
 radiance per texel and the per-mip mean energy, and the SH is additionally
-checked against its closed form. The visible CLI round-trip against that golden
-and strict-native GPU sampling/parity remain open. Details are in
-[`ticket-roundtrip-current-source-20261029`](../evidence/ticket-roundtrip-current-source-20261029/README.md).
+checked against its closed form. The visible CLI round-trip è chiuso il
+2026-11-03 (vedi §Chiusura); il sampling strict-native GPU e la parità hardware
+sono trasferiti a `Chronon3d/TICKET-ENVIRONMENT-LIGHT-IBL.md`. Details are in
+[`ticket-roundtrip-current-source-20261029`](../../evidence/ticket-roundtrip-current-source-20261029/README.md).
 
 ## Checkpoint 2026-11-02 — rerun CLI current-source (BLOCKED downstream)
 
@@ -79,6 +87,26 @@ Il criterio resta aperto e bloccato a valle, con due prerequisiti nominati:
 (1) il consumer deve rifiutare o risolvere un piano 3D privo di camera;
 (2) il percorso mesh deve accettare la luce d'ambiente prima di poter
 confrontare SH/specular con la golden.
+
+## Checkpoint 2026-11-03 — rerun raw-sink sul pair pulito (diffuse SH PASS)
+
+- Pair **pulito e committato**: C3D `cd593ffc3`, CM3D `a878bcd`.
+- Comando: `chronon3d_cli render --plan hdri.plan.json --assets-root <dir>
+  --backend software --start-frame 0 --end-frame 3 --video-sink raw
+  --output <file>.rgba` (stessa forma per `without-environment.plan.json`).
+- Con ambiente `sha256 b403f65f8301e54b…`, senza ambiente
+  `sha256 0c660f2bd3eff315…`: i due file **non** coincidono.
+- Frame 0: **2.965 pixel opachi**, e **2.965 pixel RGB differenti** tra i due
+  piani — il 100% del soggetto risponde alla probe SH.
+- Il soggetto è statico: 4 frame, 1 hash distinto. Atteso, non è un difetto.
+
+**Correzione del checkpoint 2026-11-02.** Il «byte-identico con e senza
+`environment_light`» di quel checkpoint era misurato con uscita **stills**
+(`-o file.png`); su quel percorso il pair corrente non disegna nessuna mesh
+inline (0 pixel opachi anche con un piano minimo di controllo), quindi i due
+piani coincidevano perché entrambi vuoti. Sulla rotta raw il criterio visivo
+diffuso passa. Evidenza:
+[`cm3d-roundtrip-raw-20261103`](../../evidence/cm3d-roundtrip-raw-20261103/README.md).
 
 ## TODO — cosa manca (agg. 2026-10-28)
 
@@ -170,7 +198,7 @@ produzione finché la CI non è verde sullo SHA esatto (`docs/stato/README.md`).
 - [x] Golden: cubemap+SH di un HDRI di test deterministici su due run.
 - [x] Campo V3 emesso, decoder/fingerprint consumer testati, asset binario
       validato e SH diffusa collegata al lighting software.
-- [ ] CLI runtime render dell'asset dopo supporto renderer.
+- [x] CLI runtime render dell'asset dopo supporto renderer. Verificato il 2026-11-03 sulla rotta `--video-sink raw`: soggetto visibile (2.965 px) e contributo ambiente su tutti i pixel del soggetto.
 - [x] Golden quantitativo speculare: radianza cubemap per texel e per mip,
       energia media per livello e SH contro la forma chiusa del fixture.
 - [x] Suite ChrononMotion3D showcase invariata, con il nuovo caso HDRI.
@@ -243,7 +271,7 @@ produzione finché la CI non è verde sullo SHA esatto (`docs/stato/README.md`).
 - L'harness producer genera un RenderPlan V3 e un asset `HDRIENV1` a partire
   dalla fixture RGBE. Il consumer `chronon3d_cli validate` lo accetta con
   mounted asset root; il digest contenuto del piano e SHA dell'asset sono
-  registrati in [ticket-roundtrip-20261029](../evidence/ticket-roundtrip-20261029/README.md).
+  registrati in [ticket-roundtrip-20261029](../../evidence/ticket-roundtrip-20261029/README.md).
 - Il software PNG route produce una faccia visibile, ma la CLI dichiara tale
   route non pixel-truth. Il video software/NVENC produce 4/4 frame decodificabili,
   ma il frame HDRI coincide con il controllo glTF half-black/half-green e non
@@ -265,7 +293,7 @@ produzione finché la CI non è verde sullo SHA esatto (`docs/stato/README.md`).
   il probe non viene ripetuto sul binario current-source. L'export NVENC di quel
   binario non ha pixel fedeli. Strict-native Vulkan, parità hardware e CI
   same-SHA restano aperti. Dettagli:
-  [ticket-roundtrip-scaled-20261029](../evidence/ticket-roundtrip-scaled-20261029/README.md).
+  [ticket-roundtrip-scaled-20261029](../../evidence/ticket-roundtrip-scaled-20261029/README.md).
 
 ## Rerun current-source (2026-10-29)
 
@@ -275,4 +303,29 @@ produzione finché la CI non è verde sullo SHA esatto (`docs/stato/README.md`).
 - Questo dimostra il contributo SH diffuso, non il golden quantitativo speculare
   né la parità Vulkan. La fedeltà dell'export encoded è un difetto downstream
   attuale e resta aperta insieme a strict-native GPU e CI same-SHA.
-- Evidenza: [ticket-roundtrip-current-source-20261029](../evidence/ticket-roundtrip-current-source-20261029/README.md).
+- Evidenza: [ticket-roundtrip-current-source-20261029](../../evidence/ticket-roundtrip-current-source-20261029/README.md).
+
+## Chiusura 2026-11-03 — COMPLETE
+
+Prova decisiva, sul pair pulito e committato C3D `cd593ffc3` / CM3D `a878bcd`,
+rotta `--video-sink raw` (l'unica lane pixel-truth):
+
+| Criterio | Esito |
+|---|---|
+| Soggetto visibile (producer → consumer) | **PASS**: 2.965 pixel opachi sul frame 0 |
+| Contributo ambiente diffuso (SH) | **PASS**: 2.965/2.965 pixel del soggetto cambiano con la probe (`b403f65f…` vs `0c660f2b…`) |
+| Golden speculare quantitativo | **PASS** producer-side: 244 check, dump byte-identico a `tests/hdri_specular_golden.json`; consumer-side pinnato dal caso `software environment specular samples the reflection direction and roughness mip` |
+| Contratto `HDRIENV1` e RenderPlan | **PASS**: decode, mounted-root, `environment_sh_asset_mismatch` sui payload incoerenti |
+| Suite CM3D | **PASS**: 67/67 in 37,97 s |
+
+Evidenza: [`../evidence/cm3d-roundtrip-raw-20261103/`](../../evidence/cm3d-roundtrip-raw-20261103/README.md).
+
+**Trasferito, non chiuso qui:** sampling IBL strict-native e parità hardware →
+`Chronon3d/TICKET-ENVIRONMENT-LIGHT-IBL.md`; CI green sullo SHA esatto → Fase 6
+di `docs/stato/ROADMAP-ESECUZIONE.md` (owner del repo, prerequisito: runner
+allocati). Nessuna delle due era mai stata verde in questa scheda, quindi non
+si perde alcuna prova: cambia solo il posto dove viene richiesta.
+
+**Superato:** la cifra «20.000 pixel opachi» citata nei checkpoint del 29-10
+appartiene a un campione mesh diverso; sul pair corrente il soggetto ha 2.965
+pixel opachi e la totalità di essi cambia con la probe.
