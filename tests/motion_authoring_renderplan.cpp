@@ -1555,6 +1555,81 @@ void testTypedChronon3dLowering() {
               "shared camera contract rejects out-of-range and non-finite FOV");
     }
     cameraPose.fov = 50.f;
+    for (float focal : {12.f, 200.f}) {
+        cameraPose.focalLength = focal;
+        check(lowerCameraPose(cameraPose, 0.1f, 2000.f).focal_length_mm == focal,
+              "shared camera contract accepts both focal endpoints");
+    }
+    for (float focal : {11.99f, 200.01f, std::numeric_limits<float>::infinity()}) {
+        cameraPose.focalLength = focal;
+        check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+              "shared camera contract rejects out-of-range and non-finite focal length");
+    }
+    cameraPose.focalLength = 0.f;
+    for (float sensor : {1.f, 100.f}) {
+        cameraPose.sensorWidth = sensor;
+        cameraPose.sensorHeight = sensor;
+        const auto lowered = lowerCameraPose(cameraPose, 0.1f, 2000.f);
+        check(lowered.sensor_width_mm == sensor && lowered.sensor_height_mm == sensor,
+              "shared camera contract accepts both sensor endpoints");
+    }
+    cameraPose.sensorWidth = 0.99f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "shared camera contract rejects sensor width below the gate");
+    cameraPose.sensorWidth = 100.01f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "shared camera contract rejects sensor width above the gate");
+    cameraPose.sensorWidth = 36.f;
+    cameraPose.sensorHeight = 24.f;
+    for (float stop : {0.7f, 32.f}) {
+        cameraPose.fStop = stop;
+        cameraPose.focusDistance = 480.f;
+        check(lowerCameraPose(cameraPose, 0.1f, 2000.f).f_stop == stop,
+              "shared camera contract accepts both f-stop endpoints");
+    }
+    for (float stop : {0.69f, 32.01f, std::numeric_limits<float>::infinity()}) {
+        cameraPose.fStop = stop;
+        check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+              "shared camera contract rejects out-of-range and non-finite f-stop");
+    }
+    cameraPose.fStop = 2.8f;
+    for (float shift : {-1.f, 1.f}) {
+        cameraPose.lensShift = {shift, -shift};
+        const auto lowered = lowerCameraPose(cameraPose, 0.1f, 2000.f);
+        check(lowered.lens_shift[0] == shift && lowered.lens_shift[1] == -shift,
+              "shared camera contract accepts both normalized lens-shift endpoints");
+    }
+    cameraPose.lensShift = {1.01f, 0.f};
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "shared camera contract rejects lens shift outside the normalized viewport");
+    cameraPose.lensShift = {0.f, 0.f};
+    cameraPose.focusDistance = 1e7f;
+    check(lowerCameraPose(cameraPose, 0.1f, 2000.f).dof_focus_distance == 1e7f,
+          "shared camera contract accepts the focus-distance upper gate");
+    cameraPose.focusDistance = 10000001.f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "shared camera contract rejects focus beyond the upper gate");
+    cameraPose.focusDistance = 480.f;
+    cameraPose.maxBlur = 256.f;
+    check(lowerCameraPose(cameraPose, 0.1f, 2000.f).dof_max_blur == 256.f,
+          "shared camera contract accepts the max-blur upper gate");
+    cameraPose.maxBlur = 256.01f;
+    check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+          "shared camera contract rejects max blur beyond the upper gate");
+    cameraPose.maxBlur = 0.f;
+    for (float gain : {0.f, 8.f}) {
+        cameraPose.highlightGain = gain;
+        check(lowerCameraPose(cameraPose, 0.1f, 2000.f).dof_highlight_gain == gain,
+              "shared camera contract accepts both highlight-gain endpoints");
+    }
+    for (float gain : {-0.01f, 8.01f, std::numeric_limits<float>::infinity()}) {
+        cameraPose.highlightGain = gain;
+        check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
+              "shared camera contract rejects out-of-range and non-finite highlight gain");
+    }
+    cameraPose.highlightGain = 0.f;
+    cameraPose.focalLength = 0.f;
+    cameraPose.fov = 50.f;
     cameraPose.maxBlur = 300.f;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
           "camera lowering rejects depth-of-field values outside the RenderPlan schema bounds");
