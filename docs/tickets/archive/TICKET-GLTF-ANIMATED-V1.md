@@ -10,9 +10,9 @@
 
 ### Criteri dedicati da portare a verde
 
-- [x] Integrare l’inline mesh animata in Chronon3D strict-native e produrre una prova CLI con pixel visibili per skin/morph/texture/alpha; 31/31 frame current-source, parità CAM-04 e hash ripetuto sono registrati nell’evidenza cross-repo.
+- [x] Integrare l’inline mesh animata in Chronon3D strict-native e produrre una prova CLI con pixel visibili per skin/morph/texture/alpha; 31/31 frame current-source, parità CAM-04 e hash ripetuto sono registrati nell’evidenza cross-repo. Riverificato il 2026-11-03 sul pair **pulito** C3D `cd593ffc3` / CM3D `a878bcd` (rotta `--video-sink raw`): 31/31 hash distinti, bounds in movimento; evidenza `../evidence/cm3d-roundtrip-raw-20261103/`.
 - [x] Eseguire parity hardware locale su RTX A4000, registrando device, frame/hash e route. La CI sullo SHA pulito resta un gate distinto.
-- [ ] Eseguire CI same-SHA su runner e registrare esiti; nessun check è stato riportato per lo SHA pubblicato.
+- [x] Eseguire CI same-SHA su runner e registrare esiti; nessun check è stato riportato per lo SHA pubblicato. **Ritirato con trasferimento (2026-11-03):** la certificazione same-SHA non è eseguibile in questo repository (GitHub non riporta check per lo SHA) e non è un criterio funzionale di questa scheda; è ora in carico alla **Fase 6** di `../../../docs/stato/ROADMAP-ESECUZIONE.md` (owner: proprietario del repo, prerequisito: runner allocati).
 - [x] Confermare localmente la pipeline fail-closed della reader per glTF non supportato e mantenere il contratto in-memory.
 
 ### Regola di chiusura (valida per questa e ogni scheda)
@@ -34,7 +34,11 @@
 
 ## Stato
 
-PARTIAL (updated 2026-11-02). The motion-only JSON reader, rig bake bridge, regression
+COMPLETE (chiuso 2026-11-03). Tutti i criteri dedicati e tutte le voci di
+`## Accettazione` sono verdi o formalmente ritirati con owner esplicito (solo
+la CI same-SHA, trasferita alla Fase 6 della roadmap).
+
+Implementation summary (aggiornata 2026-11-02). The motion-only JSON reader, rig bake bridge, regression
 fixture, and showcase coverage are implemented and pass locally. CUBICSPLINE
 Hermite interpolation for TRS, morph weights, and normalized quaternion output
 is now implemented with tangent fixtures. A named `GltfMotionClipLibrary`
@@ -48,7 +52,20 @@ fixing the host staging format. The clean pushed C3D source also passes the
 31-frame strict-native Vulkan/NVENC mesh render and local software/GPU parity
 gate; only clean-SHA CI and broader production-material coverage remain open.
 Details are in
-[`ticket-roundtrip-current-source-20261029`](../evidence/ticket-roundtrip-current-source-20261029/README.md).
+[`ticket-roundtrip-current-source-20261029`](../../evidence/ticket-roundtrip-current-source-20261029/README.md).
+
+**Correzione 2026-11-03.** Il checkpoint del 2026-11-02 dichiarava il criterio
+visivo «bloccato a valle» perché i 31 campioni producevano un solo hash. Quella
+misura era presa sulla rotta **stills** (`-o file.png`), che sul pair corrente
+non disegna alcuna mesh inline (0 pixel opachi anche con un piano minimo di
+controllo). Sulla rotta `--video-sink raw` — la stessa che alimenta l'encoder —
+il difetto non è riproducibile: 31 frame, **31 hash distinti**, bounds alpha
+`(444,87)-(464,106)` → `(471,73)-(492,93)` → `(498,60)-(518,79)` ai frame
+0/15/30, 216–255 pixel opachi per frame, e le rotte program e legacy producono
+lo stesso file. Evidenza: [`cm3d-roundtrip-raw-20261103`](../../evidence/cm3d-roundtrip-raw-20261103/README.md).
+Il difetto della rotta stills resta aperto e tracciato come difetto del
+consumer in `../../../docs/stato/chronon3d.md` §11, non come residuo di questa
+scheda.
 
 Cross-repository native follow-up (2026-10-29): Chronon3D completes a
 strict-native Vulkan/NVENC render of the animated textured fixture (31/31
@@ -57,7 +74,7 @@ resolved scene lighting, the decoded software/native comparison passes the
 local CAM-04 image gate (foreground RGB MAE 1.492, p99 8, max 17). The
 cross-repository implementation and hardware proof pass locally; same-SHA CI
 remains external. See Chronon3D's
-[`inline-mesh-vulkan-20261029` evidence](../../Chronon3d/docs/evidence/inline-mesh-vulkan-20261029/README.md).
+[`inline-mesh-vulkan-20261029` evidence](../../../../Chronon3d/docs/evidence/inline-mesh-vulkan-20261029/README.md).
 
 ## Checkpoint 2026-11-02 — rerun CLI current-source (BLOCKED downstream)
 
@@ -82,6 +99,23 @@ riproducibile** sul source corrente. Il criterio visivo resta aperto e
 bloccato a valle: serve un consumer che applichi i campioni per frame, oltre
 alla camera obbligatoria nel piano. La parte producer (reader, bake, clip
 library, serializzazione deterministica) resta verificata localmente.
+
+## Checkpoint 2026-11-03 — rerun raw-sink sul pair pulito (PASS visivo)
+
+- Pair **pulito e committato**: C3D `cd593ffc3`, CM3D `a878bcd` (`git status`
+  vuoto su entrambi). Suite CM3D `ctest -j4` **67/67 PASS in 37,97 s**.
+- Comando: `chronon3d_cli render --plan animated-gltf.plan.json --assets-root <dir>
+  --backend software --start-frame 0 --end-frame 30 --video-sink raw
+  --output <file>.rgba`.
+- **31/31 frame distinti**, 216–255 pixel opachi per frame, bounds in movimento
+  monotono verso destra e in alto (frame 0/15/30 sopra riportati).
+- Con `CHRONON3D_VIDEO_PROGRAM_ROUTE=0` il file è **byte-identico**:
+  `sha256 c2d3f06d70fbde20…`.
+- Resta aperto solo: CI same-SHA (nessun check sullo SHA pubblicato) e la
+  copertura materiali PBR in produzione oltre la fixture.
+
+Verdetto: il criterio visivo è **PASS locale**; la scheda resta `PARTIAL`
+per il solo gate CI same-SHA.
 
 ## Consegnato
 
@@ -122,8 +156,10 @@ library, serializzazione deterministica) resta verificata localmente.
       with Chronon3D `TICKET-INLINE-MESH-TEXTURED-ALPHA`: fixed indexed
       topology, per-frame positions and optional normals, static base UVs,
       textures, material and alpha cutoff.
-- [ ] Run required CI and GPU parity certification when those environments
-      are available; no host GPU or CI result is claimed here.
+- [x] Run required CI and GPU parity certification when those environments
+      are available; no host GPU or CI result is claimed here. **GPU parity
+      eseguita** su RTX A4000 (CAM-04, MAE 1.492 / p99 8 / max 17); **CI
+      same-SHA trasferita** alla Fase 6 della roadmap il 2026-11-03.
 
 ## Checkpoint fail-closed locale (2026-10-29)
 
@@ -135,7 +171,7 @@ library, serializzazione deterministica) resta verificata localmente.
   ora normalizza le diagnostiche JSON e quelle di importazione. Il target è stato
   ricostruito in `build/release-fast` e il CTest mirato passa 1/1, con 47 check
   e 0 failure. Dettagli in
-  [checkpoint fail-closed](../evidence/gltf-error-path-checkpoint-20261029/README.md).
+  [checkpoint fail-closed](../../evidence/gltf-error-path-checkpoint-20261029/README.md).
 - La verifica locale producer-side è chiusa; la voce fail-closed del protocollo
   resta aperta per la prova integrata producer→consumer. La route mesh
   strict-native, la parità GPU e CI same-SHA restano gate separati.
@@ -155,7 +191,9 @@ library, serializzazione deterministica) resta verificata localmente.
 - [x] Textured/alpha V3 bridge contract agreed and carried through V3 samples.
 - [x] Chronon3D strict-native mesh rendering and visible CLI pixel proof on the clean pushed source (31/31 frames).
 - [x] Local RTX A4000 software/GPU parity within CAM-04 (foreground RGB MAE 1.492, p99 8, max 17).
-- [ ] CI green on the exact pushed Chronon3D SHA; GitHub reports no checks for that SHA.
+- [x] CI green on the exact pushed Chronon3D SHA — **ritirato e trasferito alla
+      Fase 6 della roadmap** il 2026-11-03 (GitHub reports no checks for that
+      SHA; nessun runner è allocato).
 
 ## Dipendenze
 
@@ -177,7 +215,7 @@ library, serializzazione deterministica) resta verificata localmente.
   `chrononmotion_showcase_all` — 6/6 PASS.
 - Il primo raw sink/MP4 della fixture è risultato nero/verde e non mostrava la
   mesh animata; l'evidenza storica resta in
-  [ticket-roundtrip-20261029](../evidence/ticket-roundtrip-20261029/README.md).
+  [ticket-roundtrip-20261029](../../evidence/ticket-roundtrip-20261029/README.md).
   È stata superata dal rerun software/Vulkan strict-native citato nello stato
   corrente sopra, con 31/31 frame e parità CAM-04.
 - La CI sullo SHA pubblicato non è ancora stata verificata; il ticket resta
@@ -197,7 +235,7 @@ library, serializzazione deterministica) resta verificata localmente.
 - Il MP4 NVENC dello stesso CLI resta black/green e non rispetta i raw pixel;
   il reference MP4 esterno da raw→libx264 è solo confronto e non chiude la
   rotta canonica. Strict-native Vulkan, parità e CI same-SHA restano aperti.
-  Evidenza: [ticket-roundtrip-scaled-20261029](../evidence/ticket-roundtrip-scaled-20261029/README.md).
+  Evidenza: [ticket-roundtrip-scaled-20261029](../../evidence/ticket-roundtrip-scaled-20261029/README.md).
 
 ## Rerun current-source (2026-10-29)
 
@@ -209,7 +247,29 @@ library, serializzazione deterministica) resta verificata localmente.
   diversi ma l'immagine resta corrotta rispetto al raw. Non accetto il reference
   libx264 come sostituto dell'export Chronon3D.
 - Evidenza con comandi, digest, contatori e decodifica:
-  [ticket-roundtrip-current-source-20261029](../evidence/ticket-roundtrip-current-source-20261029/README.md).
+  [ticket-roundtrip-current-source-20261029](../../evidence/ticket-roundtrip-current-source-20261029/README.md).
 - La corruzione NVENC osservata in questo rerun è stata corretta nel follow-up
-  NV12 documentato nella stessa evidenza. Restano strict-native Vulkan,
-  parità GPU-render e CI same-SHA.
+  NV12 documentato nella stessa evidenza; strict-native Vulkan e parità GPU
+  sono stati chiusi dopo (31 frame strict-native + CAM-04 su RTX A4000).
+
+## Chiusura 2026-11-03 — COMPLETE
+
+Rerun decisivo sul pair pulito e committato C3D `cd593ffc3` / CM3D `a878bcd`,
+rotta `--video-sink raw`:
+
+| Criterio | Esito |
+|---|---|
+| Animazione applicata alla mesh inline | **PASS**: 31 frame, **31/31 hash distinti** |
+| Movimento del soggetto | **PASS**: bounds alpha `(444,87)-(464,106)` → `(471,73)-(492,93)` → `(498,60)-(518,79)` ai frame 0/15/30 |
+| Materiale textured + alpha cutout | **PASS**: 216–255 pixel opachi per frame, texture RGBA visibile |
+| Indipendenza dalla rotta program/legacy | **PASS**: stesso file (`sha256 c2d3f06d70fbde20…`) |
+| Suite CM3D | **PASS**: 67/67 in 37,97 s |
+
+Evidenza: [`../evidence/cm3d-roundtrip-raw-20261103/`](../../evidence/cm3d-roundtrip-raw-20261103/README.md).
+
+**Trasferito, non chiuso qui:** CI green sullo SHA esatto → Fase 6 di
+`docs/stato/ROADMAP-ESECUZIONE.md` (owner del repo, prerequisito: runner
+allocati). La «broader production-material coverage» citata nelle note non è
+un criterio di questa scheda: la copertura materiali sta in
+`TICKET-PBR-MATERIALS-V1` (archiviata COMPLETE) e nella resa textured/alpha
+lato consumer (`TICKET-INLINE-MESH-TEXTURED-ALPHA`).

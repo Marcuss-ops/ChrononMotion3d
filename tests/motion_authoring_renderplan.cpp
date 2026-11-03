@@ -1351,6 +1351,12 @@ void testTypedChronon3dLowering() {
         visiblePlan.layers[0].input_color_space = "srgb";
         visibleMesh.material->base_color = std::array<float, 4>{1.f, 1.f, 1.f, 1.f};
         visibleMesh.material->alpha_cutoff = 0.5f;
+        // A 3D mesh is camera-projected: without an explicit camera the
+        // consumer now fails closed, and the old fixture rendered an empty
+        // frame. Author the camera in the producer so regenerating this
+        // evidence keeps the visible round-trip reproducible.
+        visiblePlan.camera = chronon3d::render_plan::CameraPlan{};
+        visiblePlan.camera->position = {0.0f, 0.0f, -1000.0f};
         visiblePlan.output.format = chronon3d::render_plan::OutputFormat::Mp4;
         visiblePlan.output.path = "animated-gltf.mp4";
         std::filesystem::create_directories(std::filesystem::path(path).parent_path());
@@ -1363,6 +1369,9 @@ void testTypedChronon3dLowering() {
         visiblePlan.canvas.duration = chronon3d::Frame{4};
         visiblePlan.layers[0].position = {320.0f, 180.0f, 0.0f};
         visiblePlan.layers[0].scale = {100.0f, 100.0f, 100.0f};
+        // The fixture is 3D: it must ship its camera, otherwise the consumer
+        // renders the default near-plane frame (zero pixels).
+        visiblePlan.camera = chronon3d::render_plan::CameraPlan{};
         visiblePlan.output.format = chronon3d::render_plan::OutputFormat::Mp4;
         visiblePlan.output.path = "hdri-probe.mp4";
         auto probe = decodeHdriRadiance(chrononmotion_test::constantRadianceHdr());
