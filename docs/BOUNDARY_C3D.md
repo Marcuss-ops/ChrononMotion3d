@@ -10,6 +10,8 @@
 > DoF e shutter fa fede [`ADR-CAMERA-PIPELINE-OWNERSHIP.md`](ADR-CAMERA-PIPELINE-OWNERSHIP.md).
 > Questo documento descrive in quelle sezioni il confine legacy ancora presente
 > nel codice; non è più la regola target. Migrazione e acceptance sono aperte.
+> Il contratto canonico di unità, spazi, rotazioni e capability camera è
+> [`CAMERA_RENDERPLAN_CONTRACT.md`](CAMERA_RENDERPLAN_CONTRACT.md).
 
 ## Ruoli (perché non c'è duplicazione di renderer)
 
