@@ -337,3 +337,13 @@ confronto non dimostrava nulla. I piani sono stati rigenerati con la camera
 authorata nella fixture, entrambi disegnano il soggetto, e la tabella sopra è
 la misura valida. Il file con ambiente e il raw glTF non sono cambiati tra le
 due run.
+
+## Evidenza animata (2026-11-03)
+
+Clip consegnata: [`../../../docs/evidence/showcase-animation-20261103/out/01-oggetto-sotto-luce.mp4`](../../evidence/showcase-animation-20261103/README.md)
+(960×540, 120 frame, 30 fps, `sha256 a8c0e246ef8c0b5a…`): tre solidi sotto
+`environment_light` + `lighting_rig` con probe che ruota 0→358° e dolly di
+camera. Limite visto nel clip: sulle facce frontali grandi la risposta al probe
+resta quasi uniforme, la variazione si legge sulle facce inclinate. La clip
+"nuvole" prevista per questo ticket non è producibile in questo build perché
+`layers[].animation.tracks` non muove nulla (vedi README della cartella).
