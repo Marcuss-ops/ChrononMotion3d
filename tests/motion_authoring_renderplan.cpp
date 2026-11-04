@@ -1364,6 +1364,76 @@ void testTypedChronon3dLowering() {
         if (!output || !(output << renderPlanToJson(visiblePlan)))
             throw std::runtime_error("cannot write requested animated glTF ticket RenderPlan");
     }
+    if (const char* path = std::getenv("CHRONONMOTION_TICKET_GLTF_CAMERA_PLAN")) {
+        // Full-length producer→RenderPlan acceptance fixture: one in-memory
+        // glTF asset carries both a joint skin and an animated morph weight.
+        // Retiming its authored one-second clip across the complete 150-frame
+        // shot keeps RigProgram tracks self-contained, then every absolute
+        // presentation frame is baked into canonical V3 mesh samples so the
+        // renderer does not acquire a second rig authority.
+        auto orbitProgram = importedProgram;
+        constexpr float shotDurationSeconds = 149.f / 30.f;
+        for (auto& node : orbitProgram.animation) {
+            auto& keys = node.tracks.position.keys();
+            for (auto& key : keys) key.time *= shotDurationSeconds;
+        }
+        for (auto& geometry : orbitProgram.geometry) {
+            for (auto& morphTrack : geometry.morphTracks) {
+                auto& keys = morphTrack.keys();
+                for (auto& key : keys) key.time *= shotDurationSeconds;
+            }
+        }
+        const auto orbitBake = RigProgramEvaluator(orbitProgram).bake(0, 149, 30.f);
+        check(orbitBake.frames.size() == 150,
+              "mixed skin/morph glTF rig bakes every acceptance frame 0..149");
+        checkNear(orbitBake.frames.at(149).geometry.at(0).positions.at(0).x,
+                  2.f, 1e-5f, "150-frame acceptance bake retains animated skin translation");
+        checkNear(orbitBake.frames.at(74).geometry.at(0).positions.at(0).y,
+                  74.f / 149.f, 1e-5f,
+                  "150-frame acceptance bake retains animated morph weight");
+        auto orbitPlan = inlineMeshPlan;
+        orbitPlan.canvas.duration = chronon3d::Frame{150};
+        orbitPlan.layers[0].duration_frames = 150;
+        orbitPlan.layers[0].color = {1.f, 0.12f, 0.04f, 1.f};
+        orbitPlan.layers[0].position = {320.f, 180.f, 0.f};
+        orbitPlan.layers[0].scale = {70.f, 70.f, 70.f};
+        orbitPlan.layers[0].asset.clear();
+        orbitPlan.layers[0].input_color_space.clear();
+        orbitPlan.layers[0].inline_mesh->material.reset();
+        orbitPlan.layers[0].inline_mesh->metallic_roughness_texture_asset.clear();
+        applyRigGeometryBake(orbitPlan.layers[0], orbitBake,
+                             importedGltf.geometry[0].id,
+                             importedGltf.geometry[0].indices, 0);
+        orbitPlan.camera = chronon3d::render_plan::CameraPlan{};
+        orbitPlan.camera->position = {320.f, 180.f, -700.f};
+        orbitPlan.camera_samples.emplace();
+        constexpr float pi = 3.14159265358979323846f;
+        for (const int frame : {0, 37, 74, 112, 149}) {
+            const float t = static_cast<float>(frame) / 149.f;
+            const float angle = -0.7f + 1.4f * t;
+            auto camera = *orbitPlan.camera;
+            camera.position = {320.f + 700.f * std::sin(angle), 180.f,
+                               -700.f * std::cos(angle)};
+            camera.rotation_deg = {2.f * std::sin(angle),
+                                   -angle * 180.f / pi, 0.f};
+            orbitPlan.camera_samples->push_back({static_cast<double>(frame), camera});
+        }
+        orbitPlan.camera = orbitPlan.camera_samples->front().camera;
+        check(orbitPlan.layers[0].inline_mesh->animation.size() == 150 &&
+              orbitPlan.camera_samples->size() == 5 &&
+              orbitPlan.camera_samples->front().camera.position !=
+                  orbitPlan.camera_samples->back().camera.position,
+              "150-frame mixed glTF RenderPlan carries baked geometry and an orbiting camera");
+        orbitPlan.output.format = chronon3d::render_plan::OutputFormat::Mp4;
+        orbitPlan.output.path = "animated-gltf-camera-orbit.mp4";
+        if (const auto problem = renderPlanEmissionProblem(orbitPlan); !problem.empty())
+            throw std::runtime_error("camera orbit skin/morph plan is invalid: " + problem);
+        const std::filesystem::path outputPath(path);
+        std::filesystem::create_directories(outputPath.parent_path());
+        std::ofstream output(outputPath, std::ios::binary);
+        if (!output || !(output << renderPlanToJson(orbitPlan)))
+            throw std::runtime_error("cannot write requested camera orbit skin/morph RenderPlan");
+    }
     if (const char* path = std::getenv("CHRONONMOTION_TICKET_HDRI_PLAN")) {
         auto visiblePlan = inlineMeshPlan;
         visiblePlan.canvas.duration = chronon3d::Frame{4};

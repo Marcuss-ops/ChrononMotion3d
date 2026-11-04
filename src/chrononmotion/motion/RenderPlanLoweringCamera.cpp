@@ -81,15 +81,8 @@ CameraPlan lowerCameraPose(const CameraPose& pose, float nearPlane, float farPla
     }
     if (const auto problem = chronon3d::render_plan::camera_contract_problem(camera))
         throw std::invalid_argument("lowerCameraPose: " + *problem);
-    // `dof_shape_unsupported` is the single seat of the shaped-bokeh rule: it
-    // rejects iris-blade authoring, whose polygon aperture no Chronon3D kernel
-    // builds, while highlight weighting is implemented and consumed by both the
-    // software and the Vulkan kernels. Producer and render boundary call the
-    // same predicate, so a plan admitted here cannot die mid-render.
-    if (chronon3d::dof_shape_unsupported(camera.iris_blades, camera.dof_highlight_gain))
-        throw std::invalid_argument(
-            "lowerCameraPose: the Chronon3D DOF kernels implement circular bokeh with highlight "
-            "weighting only; keep camera.iris_blades at zero until iris-shaped kernels land");
+    // camera_contract_problem is the shared policy boundary for both the
+    // unsupported iris shape and the separately bounded highlight gain.
     return camera;
 }
 
