@@ -469,7 +469,9 @@ if(CHRONONMOTION_BUILD_TESTS)
     endif()
     add_test(NAME chrononmotion_procedural_certification COMMAND chrononmotion_procedural_certification)
 
-    add_executable(chrononmotion_geospatial tests/motion_geospatial.cpp)
+    add_executable(chrononmotion_geospatial
+            tests/motion_geospatial.cpp
+            tests/motion_geospatial_camera.cpp)
     target_link_libraries(chrononmotion_geospatial PRIVATE chrononmotion)
     if(CHRONON3D_INCLUDE_DIR)
         target_sources(chrononmotion_geospatial PRIVATE
