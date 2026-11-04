@@ -365,6 +365,7 @@ void checkCameraBake() {
     shutterScene.setShutter(ShutterSettings{180.f, 8});
     CameraRig shutterRig(80, 50.f, 16.f / 9.f);
     auto shutterOptions = options;
+    shutterOptions.cameraCutFrames.clear();
     shutterOptions.cameraRig = &shutterRig;
     const auto shutterPlan = lowerToRenderPlan(shutterScene, shutterOptions);
     const auto calendar = chronon3d::render_plan::resolved_sample_frames(shutterPlan.canvas, shutterPlan.temporal_motion_blur);
