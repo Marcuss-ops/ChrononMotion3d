@@ -1,0 +1,245 @@
+[2026-11-04 00:44:13.988] [info] [plan-profile] read=0.34ms parse=9.06ms decode=421.83ms resolver=0.01ms compile_validate=5.53ms total=436.81ms
+[2026-11-04 00:44:13.989] [info] [video] Pre-encode sink: keeping the host frame format (rgba) instead of the encoder's yuv420p default
+[2026-11-04 00:44:13.989] [info] [video] execution plan resolved (reason: render_graph_default); decode=2 composite=3 encode=2 interop=0 handoff=3 codec=3
+[2026-11-04 00:44:13.990] [info] [video-runtime] created persistent runtime for device 0 (CUDA ordinal 0)
+[2026-11-04 00:44:13.990] [info] [video] Using raw sink (new) — frames will be written as raw pixel data to /tmp/chronon2-p004-camera-20261104/validation-probe.partial.rgba
+[2026-11-04 00:44:13.990] [info] [video] encoder feed capability: host_frame=true direct_yuv=false native_surface=false
+[2026-11-04 00:44:13.993] [info] [video_adapter] Opened raw sink: 640x360 @ 30/1fps, format=rgba, codec=libx264
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:          Searching for explicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_INTEL_nullhw.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_MESA_overlay.json
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:          Searching for explicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_INTEL_nullhw.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_MESA_overlay.json
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:          Searching for implicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/nvidia_layers.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:          Searching for explicit layer manifest files
+[Vulkan Loader] LAYER:             In following locations:
+[Vulkan Loader] LAYER:                /home/pierone/.config/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/xdg/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/Projects/company/Chronon3d/vcpkg_bootstrap/packages/vulkan-loader_x64-linux/debug/etc/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /etc/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /home/pierone/.local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/local/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d
+[Vulkan Loader] LAYER:             Found the following files:
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_INTEL_nullhw.json
+[Vulkan Loader] LAYER:                /usr/share/vulkan/explicit_layer.d/VkLayer_MESA_overlay.json
+[Vulkan Loader] WARNING | LAYER: env var 'VK_INSTANCE_LAYERS' defined and adding layers "VK_LAYER_KHRONOS_validation"
+[Vulkan Loader] WARNING | LAYER: env var 'VK_INSTANCE_LAYERS' defined and adding layers "VK_LAYER_KHRONOS_validation"
+[Vulkan Loader] DEBUG | LAYER:  Loading layer library libVkLayer_khronos_validation.so
+[Vulkan Loader] INFO | LAYER:   Insert instance layer "VK_LAYER_KHRONOS_validation" (/usr/lib/x86_64-linux-gnu/libVkLayer_khronos_validation.so)
+[Vulkan Loader] DEBUG | LAYER:  Loading layer library libVkLayer_MESA_device_select.so
+[Vulkan Loader] INFO | LAYER:   Insert instance layer "VK_LAYER_MESA_device_select" (/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so)
+[Vulkan Loader] LAYER:          vkCreateInstance layer callstack setup to:
+[Vulkan Loader] LAYER:             <Application>
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             <Loader>
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             VK_LAYER_MESA_device_select
+[Vulkan Loader] LAYER:                     Type: Implicit
+[Vulkan Loader] LAYER:                     Enabled By: Implicit Layer
+[Vulkan Loader] LAYER:                         Disable Env Var:  NODEVICE_SELECT
+[Vulkan Loader] LAYER:                     Manifest: /usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json
+[Vulkan Loader] LAYER:                     Library:  /usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             VK_LAYER_KHRONOS_validation
+[Vulkan Loader] LAYER:                     Type: Explicit
+[Vulkan Loader] LAYER:                     Enabled By: Environment Variable VK_INSTANCE_LAYERS
+[Vulkan Loader] LAYER:                     Manifest: /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[Vulkan Loader] LAYER:                     Library:  /usr/lib/x86_64-linux-gnu/libVkLayer_khronos_validation.so
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] LAYER:             <Drivers>
+[Vulkan Loader] INFO | LAYER:   Inserted device layer "VK_LAYER_KHRONOS_validation" (/usr/lib/x86_64-linux-gnu/libVkLayer_khronos_validation.so)
+[Vulkan Loader] INFO | LAYER:   Failed to find vkGetDeviceProcAddr in layer "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so"
+[Vulkan Loader] DRIVER:         vkCreateDevice layer callstack setup to:
+[Vulkan Loader] DRIVER:            <Application>
+[Vulkan Loader] DRIVER:              ||
+[Vulkan Loader] DRIVER:            <Loader>
+[Vulkan Loader] DRIVER:              ||
+[Vulkan Loader] LAYER:             VK_LAYER_KHRONOS_validation
+[Vulkan Loader] LAYER:                     Type: Explicit
+[Vulkan Loader] LAYER:                     Enabled By: Environment Variable VK_INSTANCE_LAYERS
+[Vulkan Loader] LAYER:                     Manifest: /usr/share/vulkan/explicit_layer.d/VkLayer_khronos_validation.json
+[Vulkan Loader] LAYER:                     Library:  /usr/lib/x86_64-linux-gnu/libVkLayer_khronos_validation.so
+[Vulkan Loader] LAYER:               ||
+[Vulkan Loader] DRIVER:            <Device>
+[Vulkan Loader] DRIVER:                Using "NVIDIA RTX A4000" with driver: "/usr/lib/x86_64-linux-gnu/libGLX_nvidia.so.595.99.02"
+[2026-11-04 00:44:14.776] [info] [temp-lifetime] frame=0 after_level=0 live=[0,1,] retired=[]
+[2026-11-04 00:44:14.776] [info] [exec-level-diag] frame=0 level=0 nodes=2 input_ms=0.050 dispatch_ms=124.947 fb_release_ms=0.007
+[2026-11-04 00:44:14.776] [info] [graph-edge] frame=0 level=1 consumer_id=2 input_index=0 producer_id=1 producer_level=0
+[2026-11-04 00:44:14.777] [info] [temp-lifetime] frame=0 after_level=1 live=[0,2,] retired=[1,]
+[2026-11-04 00:44:14.777] [info] [exec-level-diag] frame=0 level=1 nodes=1 input_ms=0.018 dispatch_ms=0.156 fb_release_ms=0.009
+[2026-11-04 00:44:14.777] [info] [graph-edge] frame=0 level=2 consumer_id=3 input_index=0 producer_id=0 producer_level=0
+[2026-11-04 00:44:14.777] [info] [graph-edge] frame=0 level=2 consumer_id=3 input_index=1 producer_id=2 producer_level=1
+[2026-11-04 00:44:14.803] [info] [temp-lifetime] frame=0 after_level=2 live=[3,] retired=[0,2,]
+[2026-11-04 00:44:14.804] [info] [exec-level-diag] frame=0 level=2 nodes=1 input_ms=0.018 dispatch_ms=26.833 fb_release_ms=0.053
+[2026-11-04 00:44:14.847] [info] [temp-lifetime] frame=0 after_level=0 live=[0,1,] retired=[]
+[2026-11-04 00:44:14.847] [info] [exec-level-diag] frame=0 level=0 nodes=2 input_ms=0.005 dispatch_ms=6.969 fb_release_ms=0.002
+[2026-11-04 00:44:14.847] [info] [graph-edge] frame=0 level=1 consumer_id=2 input_index=0 producer_id=1 producer_level=0
+[2026-11-04 00:44:14.847] [info] [temp-lifetime] frame=0 after_level=1 live=[0,2,] retired=[1,]
+[2026-11-04 00:44:14.847] [info] [exec-level-diag] frame=0 level=1 nodes=1 input_ms=0.015 dispatch_ms=0.114 fb_release_ms=0.006
+[2026-11-04 00:44:14.847] [info] [graph-edge] frame=0 level=2 consumer_id=3 input_index=0 producer_id=0 producer_level=0
+[2026-11-04 00:44:14.847] [info] [graph-edge] frame=0 level=2 consumer_id=3 input_index=1 producer_id=2 producer_level=1
+[2026-11-04 00:44:14.869] [info] [temp-lifetime] frame=0 after_level=2 live=[3,] retired=[0,2,]
+[2026-11-04 00:44:14.869] [info] [exec-level-diag] frame=0 level=2 nodes=1 input_ms=0.018 dispatch_ms=22.561 fb_release_ms=0.032
+[2026-11-04 00:44:14.919] [info] [video]   1/1 frames
+[2026-11-04 00:44:14.930] [info] [temp-lifetime] frame=0 after_level=0 live=[0,1,] retired=[]
+[2026-11-04 00:44:14.930] [info] [exec-level-diag] frame=0 level=0 nodes=2 input_ms=0.005 dispatch_ms=9.170 fb_release_ms=0.003
+[2026-11-04 00:44:14.930] [info] [graph-edge] frame=0 level=1 consumer_id=2 input_index=0 producer_id=1 producer_level=0
+[2026-11-04 00:44:14.931] [info] [temp-lifetime] frame=0 after_level=1 live=[0,2,] retired=[1,]
+[2026-11-04 00:44:14.931] [info] [exec-level-diag] frame=0 level=1 nodes=1 input_ms=0.017 dispatch_ms=0.128 fb_release_ms=0.007
+[2026-11-04 00:44:14.931] [info] [graph-edge] frame=0 level=2 consumer_id=3 input_index=0 producer_id=0 producer_level=0
+[2026-11-04 00:44:14.931] [info] [graph-edge] frame=0 level=2 consumer_id=3 input_index=1 producer_id=2 producer_level=1
+[2026-11-04 00:44:14.955] [info] [temp-lifetime] frame=0 after_level=2 live=[3,] retired=[0,2,]
+[2026-11-04 00:44:14.955] [info] [exec-level-diag] frame=0 level=2 nodes=1 input_ms=0.020 dispatch_ms=23.987 fb_release_ms=0.028
+[2026-11-04 00:44:14.969] [info] [video] Exporting via Arena-backed SIMD pipeline
+[2026-11-04 00:44:14.981] [info] [video] writer join complete
+[2026-11-04 00:44:14.981] [info] [drain-debug] start drain, capacity=6
+[2026-11-04 00:44:14.981] [info] [drain-debug] reap done, busy_count=0
+[2026-11-04 00:44:14.981] [info] [video] trimming framebuffer pool
+[2026-11-04 00:44:14.989] [info] [video] Released framebuffer pool — memory trimmed
+[2026-11-04 00:44:14.989] [info] [video] frame-loop cleanup complete
+[2026-11-04 00:44:14.989] [info] [video] Encoder write blocked duration: 0.99 ms
+[2026-11-04 00:44:14.989] [info] [video_diag] conversion_and_copy_duration_ms: 9 ms
+[2026-11-04 00:44:14.989] [info] [video_diag] conversion_bytes_written=921600 encoder_staging_copy_bytes=0 encoder_slot_reuses=0
+[2026-11-04 00:44:14.989] [info] [video_adapter] Closed sink — 1 frames written, write_blocked=0.99ms, close=0.02ms
+[2026-11-04 00:44:14.989] [info] [video] render_ms=49.76 encode_ms=20.41 writer_encode_ms=10.24 wall_ms=1000.16 nvml_stop_ms=0.17
+[2026-11-04 00:44:14.989] [info] [video] FFmpeg queue wait duration: 0.01 ms
+[2026-11-04 00:44:14.994] [info] [video] pre-encode artifact verified: 1 frames × 921600 bytes = 921600 bytes (format rgba), sha256=0afe368af62b238164b2ea2f6fc05643a1c2ee9bf495d1c76e97cf9e34e573f8
+[2026-11-04 00:44:14.995] [info] [startup-profile] total=1071.36ms logger=0.08ms cli_bootstrap=11.15ms cli_parse=nullms composition=0.30ms plan_read=0.34ms json_parse=9.06ms plan_decode_validate=421.83ms asset_resolve=0.01ms plan_compile=5.53ms unaccounted=554.30ms
+[2026-11-04 00:44:14.998] [info] [video] Wrote exact per-frame timing sidecar: /tmp/chronon2-p004-camera-20261104/validation-probe.rgba.timing.json
+[2026-11-04 00:44:14.999] [info] [INFO] job-lifecycle: slot_pool_close_ms=0.0 surface_release_ms=0.0
+[Vulkan Loader] DEBUG | LAYER:  Unloading layer library /usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so
+[Vulkan Loader] DEBUG | LAYER:  Unloading layer library /usr/lib/x86_64-linux-gnu/libVkLayer_khronos_validation.so
+[2026-11-04 00:44:15.134] [info] [INFO] job-lifecycle: queue_close_ms=0.0 writer_join_ms=0.0 encoder_reset_ms=0.5 decoder_reset_ms=0.0 full_graph_reset_ms=134.8 sink_ctx_reset_ms=0.0 device_runtime_reset_ms=0.0 device_reservation_reset_ms=0.0
+[2026-11-04 00:44:15.134] [info] [INFO] job-lifecycle: sidecar_write_ms=3.9 session_teardown_ms=135.6
+[2026-11-04 00:44:15.142] [info] [INFO] job-lifecycle: post_sidecar_to_receipt_ms=144.0
+[2026-11-04 00:44:15.142] [info] [INFO] job-lifecycle: execute_ms=1153.5 caller_tail_ms=0.0 receipt_deferred=0
