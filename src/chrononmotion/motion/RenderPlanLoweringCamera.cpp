@@ -127,7 +127,9 @@ nlohmann::json cameraSamplesToJson(
         if (camera.f_stop > 0.f) value["f_stop"] = camera.f_stop;
         value["iris_blades"] = camera.iris_blades;
         value["dof"]["highlight_gain"] = camera.dof_highlight_gain;
-        result.push_back({{"frame", sample.frame}, {"camera", std::move(value)}});
+        nlohmann::json item = {{"frame", sample.frame}, {"camera", std::move(value)}};
+        if (sample.cut) item["cut"] = true;
+        result.push_back(std::move(item));
     }
     return result;
 }

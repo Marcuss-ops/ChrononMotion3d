@@ -348,6 +348,10 @@ namespace chrononmotion::motion {
                 writer.exactNumber(sample.frame);
                 writer.key("camera");
                 writeCamera(writer, sample.camera);
+                if (sample.cut) {
+                    writer.key("cut");
+                    writer.boolean(true);
+                }
                 writer.endObject();
             }
             writer.endArray();
