@@ -160,6 +160,11 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: active camera rig has an invalid or over-budget animation end time");
         lastFrame = std::max(lastFrame, static_cast<int>(std::ceil(static_cast<double>(endTime) * scene.fps())));
     }
+    for (double cutFrame : options.cameraCutFrames) {
+        if (cutFrame >= 1'000'000.0)
+            throw std::invalid_argument("lowerToRenderPlan: camera cut exceeds the offline frame budget");
+        lastFrame = std::max(lastFrame, static_cast<int>(std::ceil(cutFrame)));
+    }
     if (lastFrame >= 1'000'000)
         throw std::invalid_argument("lowerToRenderPlan: dense bake exceeds the offline sample budget");
     const std::size_t frameCount = static_cast<std::size_t>(lastFrame) + 1;
@@ -444,10 +449,19 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             std::max<std::int64_t>(1, plan.canvas.duration.integral()));
         if (options.cameraSampleFrames.empty() && frameCount > 65536)
             throw std::invalid_argument("lowerToRenderPlan: resolved camera sample sequence exceeds 65536 frames");
-        if (!sampleFrames.empty()) {
+        std::vector<double> cameraFrames = sampleFrames;
+        if (cameraFrames.empty() && !options.cameraCutFrames.empty()) {
+            cameraFrames.reserve(frameCount + options.cameraCutFrames.size());
+            for (std::size_t frame = 0; frame < frameCount; ++frame)
+                cameraFrames.push_back(static_cast<double>(frame));
+        }
+        cameraFrames.insert(cameraFrames.end(), options.cameraCutFrames.begin(), options.cameraCutFrames.end());
+        std::sort(cameraFrames.begin(), cameraFrames.end());
+        cameraFrames.erase(std::unique(cameraFrames.begin(), cameraFrames.end()), cameraFrames.end());
+        if (!cameraFrames.empty()) {
             std::vector<chronon3d::render_plan::CameraSamplePlan> explicitSamples;
-            explicitSamples.reserve(sampleFrames.size());
-            for (double frame : sampleFrames) {
+            explicitSamples.reserve(cameraFrames.size());
+            for (double frame : cameraFrames) {
                 const double wholeFrame = std::floor(frame);
                 int whole = static_cast<int>(wholeFrame);
                 float fraction = static_cast<float>(frame - wholeFrame);
@@ -504,7 +518,9 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             const auto cut = std::lower_bound(plan.camera_samples->begin(), plan.camera_samples->end(), cutFrame,
                 [](const auto& sample, double frame) { return sample.frame < frame; });
             if (cut == plan.camera_samples->end() || cut->frame != cutFrame || cut == plan.camera_samples->begin())
-                throw std::invalid_argument("lowerToRenderPlan: every camera cut needs a matching non-initial baked camera sample");
+                throw std::invalid_argument("lowerToRenderPlan: camera cut frame " + std::to_string(cutFrame) +
+                    " has no matching non-initial sample in a " +
+                    std::to_string(plan.camera_samples->size()) + "-sample camera bake");
             cut->cut = true;
         }
     }
