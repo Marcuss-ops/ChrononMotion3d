@@ -46,6 +46,7 @@ void checkCameraBake() {
     options.height = 1080;
     options.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
     options.cameraRig = &rig;
+    options.cameraCutFrames = {15.0};
     chronon3d::render_plan::LayerPlan image;
     image.type = chronon3d::render_plan::LayerType::Image;
     image.asset = "bake-canary";
@@ -58,6 +59,11 @@ void checkCameraBake() {
     if (!plan.camera_samples) return;
     const auto& samples = *plan.camera_samples;
     check(samples.size() == 31, "bake emits one complete camera sample per frame (0..30)");
+    check(samples.at(15).cut && !samples.at(14).cut,
+          "hard cut is attached only to its exact incoming sample");
+    const auto emittedCameraSamples = cameraSamplesToJson(samples);
+    check(emittedCameraSamples.at(15).at("cut").get<bool>(),
+          "camera sample JSON preserves the hard-cut marker");
     for (std::size_t i = 0; i < samples.size(); ++i) {
         const float seconds = static_cast<float>(i) / kFps;
         const CameraPose expected = rig.sample(seconds);
@@ -78,6 +84,27 @@ void checkCameraBake() {
         identical = plan2.camera_samples->at(i).camera.position == samples[i].camera.position &&
                     plan2.camera_samples->at(i).camera.rotation_deg == samples[i].camera.rotation_deg;
     check(identical, "offline camera samples are bit-deterministic across runs");
+
+    CameraRig secondRig(2, 55.f, 16.f / 9.f);
+    secondRig.positionTrack().add(0.f, Vector3(420.f, 15.f, 900.f), Easing::linear());
+    secondRig.positionTrack().add(0.5f, Vector3(480.f, 15.f, 900.f), Easing::linear());
+    auto cutOptions = options;
+    cutOptions.cameraRig = nullptr;
+    cutOptions.cameraCutFrames.clear();
+    cutOptions.activeCameraShots = {{0, &rig}, {15, &secondRig}};
+    const auto cutPlan = lowerToRenderPlan(scene, cutOptions);
+    check(cutPlan.camera_samples && cutPlan.camera_samples->size() == samples.size(),
+          "active camera sequence bakes a complete presentation-frame camera calendar");
+    if (cutPlan.camera_samples && cutPlan.camera_samples->size() > 15) {
+        const auto& outgoing = cutPlan.camera_samples->at(14).camera;
+        const auto& incoming = cutPlan.camera_samples->at(15).camera;
+        check(!cutPlan.camera_samples->at(14).cut && cutPlan.camera_samples->at(15).cut,
+              "active camera switch is marked only at the exact incoming cut frame");
+        checkNear(outgoing.position[0], rig.sample(14.f / kFps).position.x, kEps,
+                  "active shot preserves the outgoing rig through the preceding frame");
+        checkNear(incoming.position[0], secondRig.sample(0.5f).position.x, kEps,
+                  "active shot switches to the incoming rig at the cut frame");
+    }
 
     auto resolvedLayerOptions = options;
     resolvedLayerOptions.requireResolvedLayerSamples = true;

@@ -21,6 +21,7 @@
 #include <optional>
 #include <memory>
 #include <span>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -28,6 +29,10 @@
 namespace chrononmotion::motion {
 
     struct RenderPlanLoweringOptions {
+        struct ActiveCameraShot {
+            std::int64_t cutFrame{0};
+            const CameraRig* rig{nullptr};
+        };
         int width{1920};
         int height{1080};
         std::string jobId{"chrononmotion_baked"};
@@ -46,6 +51,10 @@ namespace chrononmotion::motion {
         std::optional<chronon3d::render_plan::MotionBlurPlan> temporalMotionBlur{};
         /// Optional rig supplies deterministic time-varying pose samples during lowering.
         const CameraRig* cameraRig{nullptr};
+        /// Optional active-camera sequence. Each rig owns one shot; switching
+        /// to the next rig is a hard cut at cutFrame, with no cross-shot blend.
+        /// The first shot must start at frame zero. Samples are baked by Motion.
+        std::vector<ActiveCameraShot> activeCameraShots{};
         /// Keep the rig's initial pose in `camera`, but leave time-varying camera
         /// evaluation to a runtime CameraSampleProvider instead of serializing resolved samples.
         bool bakeResolvedCameraSamples{true};
@@ -61,6 +70,10 @@ namespace chrononmotion::motion {
         /// Without shutter, empty retains the integer camera bake; requiring
         /// resolved layer samples fills all presentation-frame timestamps.
         std::vector<double> cameraSampleFrames{};
+        /// Absolute frames that begin hard cuts between resolved camera poses.
+        /// Every cut must be an exact non-initial baked sample; runtime-only
+        /// camera providers cannot carry cut metadata.
+        std::vector<double> cameraCutFrames{};
     };
 
     /// Evaluate the MotionScene at each output frame, compile each evaluated

@@ -90,8 +90,26 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     const auto problems = scene.validate();
     if (!problems.empty())
         throw std::invalid_argument("lowerToRenderPlan: scene validation failed: " + problems.front());
-    if (!options.cameraSampleFrames.empty() && (!options.cameraRig || !options.bakeResolvedCameraSamples))
+    if (options.cameraRig && !options.activeCameraShots.empty())
+        throw std::invalid_argument("lowerToRenderPlan: use either cameraRig or activeCameraShots, not both");
+    if (!options.activeCameraShots.empty()) {
+        if (!options.bakeResolvedCameraSamples || options.activeCameraShots.front().cutFrame != 0)
+            throw std::invalid_argument("lowerToRenderPlan: active camera shots must be baked and begin at frame zero");
+        std::int64_t previousCut = -1;
+        for (const auto& shot : options.activeCameraShots) {
+            if (!shot.rig || shot.cutFrame <= previousCut || shot.cutFrame < 0 || shot.cutFrame >= 1'000'000)
+                throw std::invalid_argument("lowerToRenderPlan: active camera shots require rigs and strictly increasing non-negative cut frames");
+            previousCut = shot.cutFrame;
+        }
+        if (!options.cameraCutFrames.empty())
+            throw std::invalid_argument("lowerToRenderPlan: cut frames are authored by activeCameraShots");
+    }
+    const CameraRig* primaryCameraRig = options.cameraRig ? options.cameraRig
+        : options.activeCameraShots.empty() ? nullptr : options.activeCameraShots.front().rig;
+    if (!options.cameraSampleFrames.empty() && (!primaryCameraRig || !options.bakeResolvedCameraSamples))
         throw std::invalid_argument("lowerToRenderPlan: explicit camera sample frames require a baked CameraRig");
+    if (!options.cameraCutFrames.empty() && (!options.cameraRig || !options.bakeResolvedCameraSamples))
+        throw std::invalid_argument("lowerToRenderPlan: camera cuts require baked CameraRig samples");
     if (options.cameraSampleFrames.size() > 1'000'000)
         throw std::invalid_argument("lowerToRenderPlan: explicit camera sample sequence exceeds 1000000 samples");
     double previousCameraFrame = -std::numeric_limits<double>::infinity();
@@ -100,12 +118,23 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: explicit camera sample frames must be finite, strictly increasing, and within [-1000000, 1000000]");
         previousCameraFrame = frame;
     }
-    const Layer::Id cameraParentId = options.cameraRig ? options.cameraRig->layer().parentId : Layer::kRoot;
+    double previousCutFrame = -std::numeric_limits<double>::infinity();
+    for (double frame : options.cameraCutFrames) {
+        if (!std::isfinite(frame) || frame <= previousCutFrame || frame < -1'000'000.0 || frame > 1'000'000.0)
+            throw std::invalid_argument("lowerToRenderPlan: camera cut frames must be finite, strictly increasing, and within [-1000000, 1000000]");
+        previousCutFrame = frame;
+    }
+    const Layer::Id cameraParentId = primaryCameraRig ? primaryCameraRig->layer().parentId : Layer::kRoot;
     if (cameraParentId != Layer::kRoot && scene.findLayer(cameraParentId) == nullptr)
         throw std::invalid_argument("lowerToRenderPlan: CameraRig parentId does not reference an authored layer in MotionScene");
+    for (const auto& shot : options.activeCameraShots) {
+        const Layer::Id parentId = shot.rig->layer().parentId;
+        if (parentId != Layer::kRoot && scene.findLayer(parentId) == nullptr)
+            throw std::invalid_argument("lowerToRenderPlan: active CameraRig parentId does not reference an authored layer in MotionScene");
+    }
     int lastFrame = std::max(0, scene.contentEndFrame());
-    if (options.cameraRig) {
-        const float cameraEndTime = options.cameraRig->endTime();
+    if (primaryCameraRig) {
+        const float cameraEndTime = primaryCameraRig->endTime();
         if (!std::isfinite(cameraEndTime) || cameraEndTime < 0.f)
             throw std::invalid_argument("lowerToRenderPlan: camera rig has an invalid animation end time");
         const double cameraFrame = static_cast<double>(cameraEndTime) * scene.fps();
@@ -121,6 +150,15 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         const double cameraLastFrame = std::abs(cameraFrame - nearestFrame) <= frameTolerance
             ? nearestFrame : std::ceil(cameraFrame);
         lastFrame = std::max(lastFrame, static_cast<int>(cameraLastFrame));
+    }
+    for (const auto& shot : options.activeCameraShots)
+        lastFrame = std::max(lastFrame, static_cast<int>(shot.cutFrame));
+    for (const auto& shot : options.activeCameraShots) {
+        const float endTime = shot.rig->endTime();
+        if (!std::isfinite(endTime) || endTime < 0.f ||
+            static_cast<double>(endTime) * scene.fps() >= 1'000'000.)
+            throw std::invalid_argument("lowerToRenderPlan: active camera rig has an invalid or over-budget animation end time");
+        lastFrame = std::max(lastFrame, static_cast<int>(std::ceil(static_cast<double>(endTime) * scene.fps())));
     }
     if (lastFrame >= 1'000'000)
         throw std::invalid_argument("lowerToRenderPlan: dense bake exceeds the offline sample budget");
@@ -186,14 +224,14 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         }
     }
     RenderPlanLoweringOptions resolvedOptions = options;
-    if (options.cameraRig) {
+    if (primaryCameraRig) {
         if (options.camera && options.camera->type != "perspective")
             throw std::invalid_argument("lowerToRenderPlan: CameraRig only lowers to a perspective RenderPlan camera");
-        const float nearPlane = options.camera ? options.camera->near : options.cameraRig->nearPlane();
-        const float farPlane = options.camera ? options.camera->far : options.cameraRig->farPlane();
+        const float nearPlane = options.camera ? options.camera->near : primaryCameraRig->nearPlane();
+        const float farPlane = options.camera ? options.camera->far : primaryCameraRig->farPlane();
         CameraPose firstPose = cameraParentId != Layer::kRoot
-            ? options.cameraRig->sampleWorld(0.f, cameraParentWorlds.front())
-            : options.cameraRig->sample(0.f);
+            ? primaryCameraRig->sampleWorld(0.f, cameraParentWorlds.front())
+            : primaryCameraRig->sample(0.f);
         // CameraRig::sample has already resolved these authoring channels into
         // orientation; clear only the redundant metadata before projection.
         firstPose.hasTarget = false;
@@ -321,6 +359,17 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         for (std::size_t frame = 0; frame < frameCount; ++frame)
             sampleFrames.push_back(static_cast<double>(frame));
     }
+    if (!options.activeCameraShots.empty() && sampleFrames.empty()) {
+        sampleFrames.reserve(frameCount);
+        for (std::size_t frame = 0; frame < frameCount; ++frame)
+            sampleFrames.push_back(static_cast<double>(frame));
+    }
+    if (!options.activeCameraShots.empty()) {
+        for (const auto& shot : options.activeCameraShots)
+            if (shot.cutFrame != 0) sampleFrames.push_back(static_cast<double>(shot.cutFrame));
+        std::sort(sampleFrames.begin(), sampleFrames.end());
+        sampleFrames.erase(std::unique(sampleFrames.begin(), sampleFrames.end()), sampleFrames.end());
+    }
     if (!sampleFrames.empty()) {
         if (plan.schema != kRenderPlanSchemaV3 ||
             (scene.layerCount() != 0 && sampleFrames.size() > kMaximumBakedTransformSamples / scene.layerCount()))
@@ -390,7 +439,7 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             }
         }
     }
-    if (options.cameraRig && options.bakeResolvedCameraSamples) {
+    if (primaryCameraRig && options.bakeResolvedCameraSamples) {
         const std::size_t frameCount = static_cast<std::size_t>(
             std::max<std::int64_t>(1, plan.canvas.duration.integral()));
         if (options.cameraSampleFrames.empty() && frameCount > 65536)
@@ -404,17 +453,28 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
                 float fraction = static_cast<float>(frame - wholeFrame);
                 if (fraction >= 1.f) { ++whole; fraction = 0.f; }
                 const MotionTime time{whole, scene.fps(), fraction};
+                const auto activeIt = options.activeCameraShots.empty()
+                    ? options.activeCameraShots.end()
+                    : std::upper_bound(options.activeCameraShots.begin(), options.activeCameraShots.end(), frame,
+                        [](double value, const auto& shot) { return value < static_cast<double>(shot.cutFrame); });
+                const auto* rig = options.activeCameraShots.empty() ? primaryCameraRig : (activeIt - 1)->rig;
+                const auto parentId = rig->layer().parentId;
                 CameraPose pose;
-                if (cameraParentId != Layer::kRoot) {
+                if (parentId != Layer::kRoot) {
                     scene.evaluate(time);
-                    pose = options.cameraRig->sampleWorld(time.pts(), scene.worldMatrix(cameraParentId));
+                    pose = rig->sampleWorld(time.pts(), scene.worldMatrix(parentId));
                 } else {
-                    pose = options.cameraRig->sample(static_cast<float>(frame / scene.fps()));
+                    pose = rig->sample(static_cast<float>(frame / scene.fps()));
                 }
                 pose.hasTarget = false;
                 pose.roll = 0.f;
-                explicitSamples.push_back({frame, lowerCameraPose(
-                    pose, resolvedOptions.camera->near, resolvedOptions.camera->far)});
+                chronon3d::render_plan::CameraSamplePlan sample{frame, lowerCameraPose(
+                    pose, options.camera ? options.camera->near : rig->nearPlane(),
+                    options.camera ? options.camera->far : rig->farPlane())};
+                sample.cut = !options.activeCameraShots.empty() &&
+                    std::any_of(options.activeCameraShots.begin() + 1, options.activeCameraShots.end(),
+                        [frame](const auto& shot) { return static_cast<double>(shot.cutFrame) == frame; });
+                explicitSamples.push_back(std::move(sample));
             }
             plan.camera_samples = std::move(explicitSamples);
         } else if (cameraParentId != Layer::kRoot) {
@@ -440,6 +500,13 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             sequenceUsesDof = sequenceUsesDof || sample.camera.dof_enabled;
         resolvedOptions.camera->dof_enabled = sequenceUsesDof;
         plan.camera = resolvedOptions.camera;
+        for (double cutFrame : options.cameraCutFrames) {
+            const auto cut = std::lower_bound(plan.camera_samples->begin(), plan.camera_samples->end(), cutFrame,
+                [](const auto& sample, double frame) { return sample.frame < frame; });
+            if (cut == plan.camera_samples->end() || cut->frame != cutFrame || cut == plan.camera_samples->begin())
+                throw std::invalid_argument("lowerToRenderPlan: every camera cut needs a matching non-initial baked camera sample");
+            cut->cut = true;
+        }
     }
     return plan;
 }
