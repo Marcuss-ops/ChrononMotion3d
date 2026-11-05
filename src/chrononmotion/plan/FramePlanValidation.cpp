@@ -304,6 +304,9 @@ namespace chrononmotion::plan {
                         // An inline-geometry mesh has no asset id by design; the
                         // renderer-facing handles below carry its identity.
                         break;
+                    case PlanLayerKind::Particles:
+                        // Particles are procedural content; no asset id is required.
+                        break;
                 }
 
                 if (layer.samples.size() != expectedSize)

@@ -130,7 +130,7 @@
   mesh/piano: 46/46 asserzioni; suite renderer-core: 204/204 casi.
 - Shutter GPU, layout/lifecycle Vulkan e accettazione video restano gate backend
   aperti nel
-  [`ticket camera di C3D`](../../Chronon3d/docs/tickets/TICKET-CAMERA-DEFINITIVE-CLOSURE.md).
+  [`ticket camera di C3D`](../../Chronon3d/docs/tickets/archive/TICKET-CAMERA-DEFINITIVE-CLOSURE.md).
   Non duplicare queste implementazioni in Motion per aggirare i gate.
 
 ### Contratto camera/layer risolti — aggiornamento 2026-10-30

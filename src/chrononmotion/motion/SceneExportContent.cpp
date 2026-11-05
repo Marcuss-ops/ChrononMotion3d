@@ -28,6 +28,7 @@ namespace chrononmotion::motion {
                 case ContentKind::Image: writer.raw("\"image\""); break;
                 case ContentKind::Video: writer.raw("\"video\""); break;
                 case ContentKind::Mesh: writer.raw("\"mesh\""); break;
+                case ContentKind::Particles: writer.raw("\"particles\""); break;
             }
 
             // The whole of what this tree is allowed to know: the neutral
@@ -108,6 +109,118 @@ namespace chrononmotion::motion {
             writer.endObject();
             writer.endObject();
         }
+
+        void writeParticles(Writer& writer, const ParticleEmitter& particles) {
+
+            writer.beginObject();
+            writer.key("count");
+            writer.unsignedInteger(particles.count);
+            writer.key("seed");
+            writer.unsignedInteger(particles.seed);
+            writer.key("emitterSize");
+            writeVector2(writer, particles.emitterSize);
+            writer.key("velocityMin");
+            writeVector2(writer, particles.velocityMin);
+            writer.key("velocityMax");
+            writeVector2(writer, particles.velocityMax);
+            writer.key("lifetime");
+            writer.beginArray();
+            writer.item();
+            writer.number(particles.lifetimeMin);
+            writer.item();
+            writer.number(particles.lifetimeMax);
+            writer.endArray();
+            writer.key("size");
+            writer.beginArray();
+            writer.item();
+            writer.number(particles.sizeMin);
+            writer.item();
+            writer.number(particles.sizeMax);
+            writer.endArray();
+            writer.key("gravity");
+            writer.number(particles.gravity);
+            writer.key("turbulence");
+            writer.number(particles.turbulence);
+            writer.key("shape");
+            switch (particles.shape) {
+                case ParticleEmitterShape::Box: writer.raw("\"box\""); break;
+                case ParticleEmitterShape::Ellipse: writer.raw("\"ellipse\""); break;
+                case ParticleEmitterShape::Edge: writer.raw("\"edge\""); break;
+                case ParticleEmitterShape::Path: writer.raw("\"path\""); break;
+            }
+            writer.key("pathId");
+            writer.text(particles.pathId);
+            writer.key("pathPoints");
+            writer.beginArray();
+            for (const auto point : particles.pathPoints) {
+                writer.item();
+                writeVector2(writer, point);
+            }
+            writer.endArray();
+            writer.key("spriteAsset");
+            writer.text(particles.spriteAsset);
+            writer.key("spriteScale");
+            writer.beginArray();
+            writer.item();
+            writer.number(particles.spriteScaleMin);
+            writer.item();
+            writer.number(particles.spriteScaleMax);
+            writer.endArray();
+            writer.key("rotation");
+            writer.beginArray();
+            writer.item();
+            writer.number(particles.rotationMin);
+            writer.item();
+            writer.number(particles.rotationMax);
+            writer.endArray();
+            writer.key("angularVelocity");
+            writer.beginArray();
+            writer.item();
+            writer.number(particles.angularVelocityMin);
+            writer.item();
+            writer.number(particles.angularVelocityMax);
+            writer.endArray();
+            writer.key("blendMode");
+            switch (particles.blendMode) {
+                case ParticleBlendMode::Normal: writer.raw("\"normal\""); break;
+                case ParticleBlendMode::Add: writer.raw("\"add\""); break;
+                case ParticleBlendMode::Screen: writer.raw("\"screen\""); break;
+            }
+            writer.key("environment");
+            writer.boolean(particles.environment);
+            writer.key("depthRange");
+            writer.beginArray();
+            writer.item();
+            writer.number(particles.depthMin);
+            writer.item();
+            writer.number(particles.depthMax);
+            writer.endArray();
+            writer.key("bokeh");
+            writer.boolean(particles.bokeh);
+            writer.key("colorRamp");
+            writer.beginArray();
+            for (const auto& stop : particles.colorRamp) {
+                writer.item();
+                writer.beginObject();
+                writer.key("position");
+                writer.number(stop.position);
+                writer.key("color");
+                writer.beginArray();
+                writer.item();
+                writer.number(stop.r);
+                writer.item();
+                writer.number(stop.g);
+                writer.item();
+                writer.number(stop.b);
+                writer.item();
+                writer.number(stop.a);
+                writer.endArray();
+                writer.endObject();
+            }
+            writer.endArray();
+            writer.endObject();
+        }
+
         [[nodiscard]] const char* constraintKindName(ConstraintKind kind) {
 
             switch (kind) {

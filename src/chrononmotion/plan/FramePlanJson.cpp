@@ -20,6 +20,7 @@ namespace chrononmotion::plan {
             case PlanLayerKind::Image: return "image";
             case PlanLayerKind::Video: return "video";
             case PlanLayerKind::Mesh: return "mesh";
+            case PlanLayerKind::Particles: return "particles";
         }
         return "null";
     }

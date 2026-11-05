@@ -238,11 +238,22 @@ if(CHRONON3D_INCLUDE_DIR)
     target_compile_features(chrononmotion_plan_optical_studio PRIVATE cxx_std_20)
     chrononmotion_set_target_warnings(chrononmotion_plan_optical_studio)
 
+    add_executable(chrononmotion_plan_optical_remake tools/plan_optical_remake.cpp)
+    target_include_directories(chrononmotion_plan_optical_remake PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/render/thirdparty/nlohmann)
+    target_compile_features(chrononmotion_plan_optical_remake PRIVATE cxx_std_20)
+    chrononmotion_set_target_warnings(chrononmotion_plan_optical_remake)
+
     # The definitive 4-stage documentary showcase generator.
     add_executable(chrononmotion_plan_documentary_showcase tools/plan_documentary_showcase.cpp)
     target_link_libraries(chrononmotion_plan_documentary_showcase PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
     target_compile_features(chrononmotion_plan_documentary_showcase PRIVATE cxx_std_20)
     chrononmotion_set_target_warnings(chrononmotion_plan_documentary_showcase)
+
+    # Three asset-free particle plans authored through the Motion layer model.
+    add_executable(chrononmotion_plan_particles_showcase tools/plan_particles_showcase.cpp)
+    target_link_libraries(chrononmotion_plan_particles_showcase PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
+    target_compile_features(chrononmotion_plan_particles_showcase PRIVATE cxx_std_20)
+    chrononmotion_set_target_warnings(chrononmotion_plan_particles_showcase)
 endif()
 
 if(CHRONONMOTION_BUILD_BENCHMARKS)

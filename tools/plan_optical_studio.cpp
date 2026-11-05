@@ -47,6 +47,8 @@ int main(int argc, char** argv) try {
     constexpr float fps = 30.f;
     const int last = (mode == "breakdown" || mode == "cards_breakdown") ? 179 : (plane_diagnostic && !animated_diagnostic ? 0 : 149);
     const std::string prefix = argv[2];
+    // Cinematic settle used by the card carousel: fast departure, long tail.
+    const auto cine = Easing::cubicBezier(0.16f, 1.f, 0.3f, 1.f);
     MotionScene scene("optical_studio", fps);
     std::unordered_map<std::string, chronon3d::render_plan::LayerPlan> content;
     auto addPlate = [&](int id, const std::string& name, float x, float y, float z,
@@ -66,10 +68,18 @@ int main(int argc, char** argv) try {
     };
     const std::string font = prefix + "/Inter-Bold.ttf";
     if (mode == "cards_breakdown") {
-        addPlate(1, "card_tower", 520, 60, -1000, 900, 1260);
-        addPlate(2, "card_city", -420, 280, -500, 1050, 590);
-        addPlate(3, "card_supercar", 140, -180, 0, 850, 580);
-        addPlate(4, "card_drone", -320, -120, 350, 540, 420);
+        // A real backdrop and a perspective floor replace the flat black
+        // clear, so the cards sit in a space instead of floating in a void.
+        // A bitmap backdrop is not usable here: the software renderer lifts
+        // low values and mipmaps the far plate into a flat grey wall.  Keep the
+        // stage black and use the local glow for spatial hierarchy.
+        addPlate(8, "cards/card_glow", 140, -180, -260, 1100, 700);
+        addPlate(1, "cards/card_tower", 520, 60, -1000, 900, 1260);
+        addPlate(2, "cards/card_city", -420, 280, -500, 1050, 590);
+        addPlate(3, "cards/card_supercar", 140, -180, 0, 850, 580);
+        // Keep the drone card inside the frame at t=0; at x=-320 it was
+        // clipped by the left edge before the camera started moving.
+        addPlate(4, "cards/card_drone", -120, -120, 350, 540, 420);
 
         auto addBadge = [&](int id, const std::string& name, const std::string& text,
                             float x, float y, float z, float fontSize, const std::string& color) {
@@ -94,13 +104,16 @@ int main(int argc, char** argv) try {
         addBadge(11, "badge_c1", "CARD 01 // TOWER (DEEP Z: -1000)", 160.f, 750.f, -980.f, 44.f, "#818CF8");
         addBadge(12, "badge_c2", "CARD 02 // SKYLINE (Z: -500)", -780.f, 620.f, -480.f, 40.f, "#38BDF8");
         addBadge(13, "badge_c3", "CARD 03 // SUPERCAR (Z: 0)", -220.f, 150.f, 20.f, 38.f, "#F43F5E");
-        addBadge(14, "badge_c4", "CARD 04 // DRONE (FOREGROUND Z: +350)", -520.f, 130.f, 370.f, 36.f, "#34D399");
+        addBadge(14, "badge_c4", "CARD 04 // DRONE (FOREGROUND Z: +350)", -320.f, 130.f, 370.f, 36.f, "#34D399");
     } else {
         // At the 50° camera FOV and 2000-unit camera-to-plane distance, the
         // visible field is about 3316×1865. A 3840×2160 plate gives a modest
         // overscan without allocating an 8400×4725 software source surface.
+        // 1.8x overscan: the orbit translates +/-280 units and rolls; the old
+        // 3840x2160 plate left black frustum wedges at the frame edge.
+        const float bg_scale = plane_diagnostic ? background_scale : 1.8f;
         addPlate(1, "background", 0, 0, -1000,
-                 3840.f * background_scale, 2160.f * background_scale);
+                 3840.f * bg_scale, 2160.f * bg_scale);
         addPlate(2, "far", 505, 35, -380, 730, 830);
         if (plate_count >= 3) addPlate(3, "middle", 0, 0, 0, 570, 650);
         // Keep the authored near target centered in the frozen left-side ROI after
@@ -231,10 +244,13 @@ int main(int argc, char** argv) try {
             .add(5.2f, 1165.f*s, Easing::easeInOut())
             .add(179.f/fps, 1175.f*s);
     } else if (mode == "cards_breakdown") {
+        // The long travel must stay ease-in-out: an expo-out reaches the side
+        // of the card planes at mid-clip and shows them edge-on.  Keep the
+        // inertia only on the short final settle.
         rig.positionTrack().add(0.f, Vector3{0.f, 0.f, 1000.f*s}, Easing::easeInOut())
             .add(1.5f, Vector3{0.f, 0.f, 1000.f*s}, Easing::easeInOut())
             .add(5.2f, Vector3{1200.f*s, 200.f*s, 220.f*s}, Easing::easeInOut())
-            .add(179.f/fps, Vector3{1220.f*s, 205.f*s, 210.f*s});
+            .add(179.f/fps, Vector3{1220.f*s, 205.f*s, 210.f*s}, cine);
         rig.setTarget(Vector3{20.f*s, 0.f, -250.f*s});
         rig.setFStop(5.6f).setMaxBlur(4.f*s).setFocusDistance(1000.f*s);
         rig.focusDistanceTrack().add(0.f, 1000.f*s, Easing::easeInOut())

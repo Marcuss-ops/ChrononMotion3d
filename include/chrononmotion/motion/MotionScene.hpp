@@ -182,6 +182,10 @@ namespace chrononmotion::motion {
         /// content side; only the asset id and the data-only handles travel.
         Layer& addMesh(Layer::Id id, std::string name, MeshAttachment mesh,
                        Layer::Id parentId = Layer::kRoot);
+        /// Add a particle layer. The content ref must be ContentKind::Particles;
+        /// the emitter is validated before the layer enters the scene.
+        Layer& addParticles(Layer::Id id, std::string name, ContentRef content,
+                            ParticleEmitter emitter, Layer::Id parentId = Layer::kRoot);
         /// Allocate the smallest currently unused positive layer id.
         [[nodiscard]] Layer::Id allocateLayerId();
 

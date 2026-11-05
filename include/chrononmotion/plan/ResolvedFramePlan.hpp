@@ -112,7 +112,8 @@ namespace chrononmotion::plan {
         Text,
         Image,
         Video,
-        Mesh
+        Mesh,
+        Particles
     };
 
     [[nodiscard]] std::string_view planLayerKindName(PlanLayerKind kind);

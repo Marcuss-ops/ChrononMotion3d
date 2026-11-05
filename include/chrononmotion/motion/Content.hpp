@@ -25,7 +25,8 @@ namespace chrononmotion::motion {
         Text,
         Image,
         Video,
-        Mesh
+        Mesh,
+        Particles
     };
 
     /// The neutral, content-free measurements the motion side needs to anchor a
@@ -112,6 +113,15 @@ namespace chrononmotion::motion {
             return ContentRef{std::move(id), ContentKind::Mesh, ContentMetrics{std::string{}, naturalSize, anchor}};
         }
 
+        /// A particle field. The emitter itself is authored beside the ref on
+        /// the Layer; this ref only carries identity and the neutral rectangle.
+        [[nodiscard]] static ContentRef particles(std::string id,
+                                                   Vector2 naturalSize,
+                                                   Vector2 anchor = Vector2(0.5f, 0.5f)) {
+
+            return ContentRef{std::move(id), ContentKind::Particles, ContentMetrics{std::string{}, naturalSize, anchor}};
+        }
+
         /// A handle whose rectangle was measured from content with this digest.
         /// This is the form a Chronon-produced ref takes; the un-fingerprinted
         /// factories above stay for hand-authored geometry and for the tests.
@@ -145,6 +155,7 @@ namespace chrononmotion::motion {
         [[nodiscard]] bool isImage() const { return kind == ContentKind::Image; }
         [[nodiscard]] bool isVideo() const { return kind == ContentKind::Video; }
         [[nodiscard]] bool isMesh() const { return kind == ContentKind::Mesh; }
+        [[nodiscard]] bool isParticles() const { return kind == ContentKind::Particles; }
 
         /// Identity only: `metrics` is a cached measurement of the same asset, not
         /// part of what makes it the same asset — and neither is its fingerprint,

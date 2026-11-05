@@ -85,6 +85,7 @@ namespace chrononmotion::motion {
           authoringOwner(nullptr),
           content(source.content),
           mesh(source.mesh),
+          particleEmitter(source.particleEmitter),
           precomp(source.precomp),
           lifetime(source.lifetime),
           timeRemap(source.timeRemap),
@@ -111,6 +112,7 @@ namespace chrononmotion::motion {
         authoringOwner = source.authoringOwner;
         content = std::move(source.content);
         mesh = std::move(source.mesh);
+        particleEmitter = std::move(source.particleEmitter);
         precomp = std::move(source.precomp);
         lifetime = source.lifetime;
         timeRemap = source.timeRemap;
@@ -290,6 +292,12 @@ namespace chrononmotion::motion {
     Layer& Layer::withMesh(MeshAttachment value) {
 
         mesh = std::move(value);
+        return *this;
+    }
+
+    Layer& Layer::withParticles(ParticleEmitter value) {
+
+        particleEmitter = std::move(value);
         return *this;
     }
 

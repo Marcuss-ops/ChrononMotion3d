@@ -3,7 +3,9 @@
 #include "chrononmotion/math/MathUtils.hpp"
 
 #include <chronon3d/core/types/time.hpp>
+#include <chronon3d/graphics/gradient.hpp>
 #include <chronon3d/render_plan/camera_contract.hpp>
+#include <chronon3d/scene/model/shape/particles.hpp>
 
 #include <algorithm>
 #include <array>
@@ -20,6 +22,73 @@
 namespace chrononmotion::motion::lowering_detail {
 namespace {
 using namespace chronon3d::render_plan;
+
+chronon3d::ParticleEmitterParams toRenderPlanParticles(const ParticleEmitter& source) {
+    chronon3d::ParticleEmitterParams output;
+    output.count = source.count;
+    output.seed = source.seed;
+    output.emitter_size = {source.emitterSize.x, source.emitterSize.y};
+    output.velocity_min = {source.velocityMin.x, source.velocityMin.y};
+    output.velocity_max = {source.velocityMax.x, source.velocityMax.y};
+    output.lifetime_min = source.lifetimeMin;
+    output.lifetime_max = source.lifetimeMax;
+    output.size_min = source.sizeMin;
+    output.size_max = source.sizeMax;
+    output.gravity = source.gravity;
+    output.turbulence = source.turbulence;
+    switch (source.shape) {
+        case ParticleEmitterShape::Box: output.shape = chronon3d::EmitterShape::Box; break;
+        case ParticleEmitterShape::Ellipse: output.shape = chronon3d::EmitterShape::Ellipse; break;
+        case ParticleEmitterShape::Edge: output.shape = chronon3d::EmitterShape::Edge; break;
+        case ParticleEmitterShape::Path: output.shape = chronon3d::EmitterShape::Path; break;
+    }
+    output.path_id = source.pathId;
+    output.path_points.reserve(source.pathPoints.size());
+    for (const auto point : source.pathPoints)
+        output.path_points.push_back({point.x, point.y});
+    output.sprite_asset = source.spriteAsset;
+    output.sprite_scale_min = source.spriteScaleMin;
+    output.sprite_scale_max = source.spriteScaleMax;
+    output.rotation_min = source.rotationMin;
+    output.rotation_max = source.rotationMax;
+    output.angular_velocity_min = source.angularVelocityMin;
+    output.angular_velocity_max = source.angularVelocityMax;
+    switch (source.blendMode) {
+        case ParticleBlendMode::Normal: output.blend_mode = chronon3d::BlendMode::Normal; break;
+        case ParticleBlendMode::Add: output.blend_mode = chronon3d::BlendMode::Add; break;
+        case ParticleBlendMode::Screen: output.blend_mode = chronon3d::BlendMode::Screen; break;
+    }
+    output.environment = source.environment;
+    output.depth_min = source.depthMin;
+    output.depth_max = source.depthMax;
+    output.bokeh = source.bokeh;
+    if (!source.colorRamp.empty()) {
+        std::vector<chronon3d::graphics::GradientStop> stops;
+        stops.reserve(source.colorRamp.size());
+        for (const auto& stop : source.colorRamp) {
+            stops.push_back({stop.position, chronon3d::Color{stop.r, stop.g, stop.b, stop.a}});
+        }
+        output.color_ramp = chronon3d::graphics::GradientDefinition::linear(
+            {0.f, 0.f}, {1.f, 0.f}, std::move(stops));
+    }
+    if (const auto problem = chronon3d::validate_particle_emitter(output); !problem.empty())
+        throw std::invalid_argument("lowerToRenderPlan: particle emitter is invalid: " + problem);
+    return output;
+}
+
+LayerPlan makeParticleLayerPlan(const Layer& layer, std::size_t frameCount) {
+    if (!layer.particleEmitter)
+        throw std::invalid_argument("lowerToRenderPlan: particle content has no emitter");
+    if (const auto problem = particleEmitterProblem(*layer.particleEmitter); !problem.empty())
+        throw std::invalid_argument("lowerToRenderPlan: " + problem);
+    LayerPlan output;
+    output.id = std::to_string(layer.id);
+    output.type = LayerType::Particles;
+    output.start_frame = chronon3d::Frame{0};
+    output.duration_frames = chronon3d::Frame{static_cast<std::int64_t>(frameCount)};
+    output.particle_emitter = toRenderPlanParticles(*layer.particleEmitter);
+    return output;
+}
 
 bool samePose(const ResolvedPose& a, const ResolvedPose& b) {
     return a.position.x == b.position.x && a.position.y == b.position.y && a.position.z == b.position.z &&
@@ -227,6 +296,12 @@ RenderPlan lowerSamplesToRenderPlan(
         if (layer.content.kind == ContentKind::Text && supplied.type != LayerType::Text)
             throw std::invalid_argument("lowerToRenderPlan: text content must map to a text plan");
     }
+    for (const Layer& layer : metadata) {
+        if (layer.content.isParticles() && !layer.particleEmitter)
+            throw std::invalid_argument("lowerToRenderPlan: particle content has no emitter");
+        if (layer.particleEmitter && !layer.content.isParticles())
+            throw std::invalid_argument("lowerToRenderPlan: particle emitter requires particle content");
+    }
 
     RenderPlan plan;
     plan.schema = options.schema;
@@ -254,9 +329,18 @@ RenderPlan lowerSamplesToRenderPlan(
         LayerPlan output;
         if (!layer.isNull()) {
             const auto supplied = options.contentLayers.find(layerId);
-            if (supplied == options.contentLayers.end())
-                throw std::invalid_argument("lowerToRenderPlan: caller must provide the content-owning LayerPlan for layer '" + layerId + "'");
-            output = supplied->second;
+            if (supplied == options.contentLayers.end()) {
+                if (!layer.content.isParticles())
+                    throw std::invalid_argument("lowerToRenderPlan: caller must provide the content-owning LayerPlan for layer '" + layerId + "'");
+                output = makeParticleLayerPlan(layer, frameCount);
+            } else {
+                output = supplied->second;
+                if (layer.content.isParticles()) {
+                    if (output.type != LayerType::Particles)
+                        throw std::invalid_argument("lowerToRenderPlan: particle content must map to a particles plan");
+                    output.particle_emitter = toRenderPlanParticles(*layer.particleEmitter);
+                }
+            }
             if (layer.content.isVideo() && output.type != LayerType::Video)
                 throw std::invalid_argument("lowerToRenderPlan: supplied layer type does not match video content");
             if (layer.content.isText() && output.type != LayerType::Text)
