@@ -13,7 +13,7 @@ Updated 2026-11-01 from local source and recorded Release test evidence.
 - The associated Chronon3D camera-closure ticket remains PARTIAL: local
   implementation checkpoints landed, while full end-to-end camera/video
   parity and same-SHA certification remain open. See
-  `../../Chronon3d/docs/tickets/TICKET-CAMERA-DEFINITIVE-CLOSURE.md`.
+  `../../Chronon3d/docs/tickets/archive/TICKET-CAMERA-DEFINITIVE-CLOSURE.md`.
 
 ## Complete feature tickets
 

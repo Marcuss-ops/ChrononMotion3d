@@ -10,6 +10,7 @@ namespace chrononmotion::motion::scene_import_detail {
             else if (kind == "image") contentKind = ContentKind::Image;
             else if (kind == "video") contentKind = ContentKind::Video;
             else if (kind == "mesh") contentKind = ContentKind::Mesh;
+            else if (kind == "particles") contentKind = ContentKind::Particles;
             else if (kind != "none") reject(where, "has an unknown content kind");
             const auto& size = required(value, "naturalSize", where).array("content size");
             if (size.size() != 2) reject(where, "content size must be a 2-element array");
@@ -66,6 +67,80 @@ namespace chrononmotion::motion::scene_import_detail {
                 mesh.metallicRoughnessTextureAsset = texture->string("mesh metallic-roughness texture");
             mesh.material = readMaterial(required(value, "material", where), "mesh material");
             return mesh;
+        }
+
+        ParticleEmitter readParticles(const JsonValue& value, std::string_view where) {
+            rejectUnknownKeys(value,
+                              {"count", "seed", "emitterSize", "velocityMin", "velocityMax", "lifetime",
+                               "size", "gravity", "turbulence", "shape", "pathId", "pathPoints",
+                               "spriteAsset", "spriteScale", "rotation", "angularVelocity", "blendMode",
+                               "environment", "depthRange", "bokeh", "colorRamp"},
+                              where);
+            ParticleEmitter particles;
+            particles.count = idValue(required(value, "count", where), "particle count");
+            particles.seed = idValue(required(value, "seed", where), "particle seed");
+            particles.emitterSize = readVector2(required(value, "emitterSize", where), "particle emitter size");
+            particles.velocityMin = readVector2(required(value, "velocityMin", where), "particle velocity min");
+            particles.velocityMax = readVector2(required(value, "velocityMax", where), "particle velocity max");
+            const auto& lifetime = required(value, "lifetime", where).array("particle lifetime");
+            if (lifetime.size() != 2) reject(where, "particle lifetime must be a 2-element array");
+            particles.lifetimeMin = floatValue(lifetime[0], where);
+            particles.lifetimeMax = floatValue(lifetime[1], where);
+            const auto& size = required(value, "size", where).array("particle size");
+            if (size.size() != 2) reject(where, "particle size must be a 2-element array");
+            particles.sizeMin = floatValue(size[0], where);
+            particles.sizeMax = floatValue(size[1], where);
+            particles.gravity = floatValue(required(value, "gravity", where), "particle gravity");
+            particles.turbulence = floatValue(required(value, "turbulence", where), "particle turbulence");
+            const std::string shape = required(value, "shape", where).string("particle shape");
+            if (shape == "box") particles.shape = ParticleEmitterShape::Box;
+            else if (shape == "ellipse") particles.shape = ParticleEmitterShape::Ellipse;
+            else if (shape == "edge") particles.shape = ParticleEmitterShape::Edge;
+            else if (shape == "path") particles.shape = ParticleEmitterShape::Path;
+            else reject(where, "has an unknown particle shape");
+            particles.pathId = required(value, "pathId", where).string("particle path id");
+            for (const auto& point : required(value, "pathPoints", where).array("particle path points"))
+                particles.pathPoints.push_back(readVector2(point, "particle path point"));
+            particles.spriteAsset = required(value, "spriteAsset", where).string("particle sprite asset");
+            const auto& spriteScale = required(value, "spriteScale", where).array("particle sprite scale");
+            if (spriteScale.size() != 2) reject(where, "particle sprite scale must be a 2-element array");
+            particles.spriteScaleMin = floatValue(spriteScale[0], where);
+            particles.spriteScaleMax = floatValue(spriteScale[1], where);
+            const auto& rotation = required(value, "rotation", where).array("particle rotation");
+            if (rotation.size() != 2) reject(where, "particle rotation must be a 2-element array");
+            particles.rotationMin = floatValue(rotation[0], where);
+            particles.rotationMax = floatValue(rotation[1], where);
+            const auto& angular = required(value, "angularVelocity", where).array("particle angular velocity");
+            if (angular.size() != 2) reject(where, "particle angular velocity must be a 2-element array");
+            particles.angularVelocityMin = floatValue(angular[0], where);
+            particles.angularVelocityMax = floatValue(angular[1], where);
+            const std::string blend = required(value, "blendMode", where).string("particle blend mode");
+            if (blend == "normal") particles.blendMode = ParticleBlendMode::Normal;
+            else if (blend == "add") particles.blendMode = ParticleBlendMode::Add;
+            else if (blend == "screen") particles.blendMode = ParticleBlendMode::Screen;
+            else reject(where, "has an unknown particle blend mode");
+            particles.environment = required(value, "environment", where).boolean("particle environment");
+            const auto& depth = required(value, "depthRange", where).array("particle depth range");
+            if (depth.size() != 2) reject(where, "particle depth range must be a 2-element array");
+            particles.depthMin = floatValue(depth[0], where);
+            particles.depthMax = floatValue(depth[1], where);
+            particles.bokeh = required(value, "bokeh", where).boolean("particle bokeh");
+            for (const auto& item : required(value, "colorRamp", where).array("particle color ramp")) {
+                const auto& stopValue = item.object("particle color stop");
+                rejectUnknownKeys(item, {"position", "color"}, "particle color stop");
+                ParticleColorStop stop;
+                stop.position = floatValue(required(stopValue, "position", where), "particle color position");
+                const auto& color = required(stopValue, "color", where).array("particle color");
+                if (color.size() != 4) reject(where, "particle color must be a 4-element array");
+                stop.r = floatValue(color[0], where);
+                stop.g = floatValue(color[1], where);
+                stop.b = floatValue(color[2], where);
+                stop.a = floatValue(color[3], where);
+                particles.colorRamp.push_back(stop);
+            }
+            if (const auto problem = particleEmitterProblem(particles); !problem.empty())
+                reject(where, problem);
+            return particles;
         }
 
         TimeRemap readTimeRemap(const JsonValue& value, std::string_view where) {
@@ -212,7 +287,7 @@ namespace chrononmotion::motion::scene_import_detail {
 
         Layer readLayer(const JsonValue& value, std::string_view where, int depth) {
             rejectUnknownKeys(value,
-                              {"id", "name", "parentId", "content", "mesh", "precomp", "lifetime", "is3D",
+                              {"id", "name", "parentId", "content", "mesh", "particles", "precomp", "lifetime", "is3D",
                                "shadow", "timeRemap", "timeRemapTrack", "transform", "tracks", "constraints",
                                "spaceSwitches", "drivers"},
                               where);
@@ -221,6 +296,14 @@ namespace chrononmotion::motion::scene_import_detail {
             layer.parentId = idValue(required(value, "parentId", where), "layer parent");
             layer.content = readContent(required(value, "content", where), "layer content");
             layer.mesh = readMesh(required(value, "mesh", where), "layer mesh");
+            if (const JsonValue* particles = find(value, "particles");
+                particles != nullptr && !std::holds_alternative<std::nullptr_t>(particles->value)) {
+                layer.particleEmitter = readParticles(*particles, "layer particles");
+            }
+            if (layer.content.isParticles() && !layer.particleEmitter)
+                reject(where, "particle content requires a particle emitter");
+            if (layer.particleEmitter && !layer.content.isParticles())
+                reject(where, "particle emitter requires particle content");
             layer.precomp = readPrecomp(required(value, "precomp", where), "layer precomp", depth);
             const JsonValue& lifetime = required(value, "lifetime", where);
             rejectUnknownKeys(lifetime, {"inFrame", "outFrame"}, "layer lifetime");

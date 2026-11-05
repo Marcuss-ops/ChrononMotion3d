@@ -12,6 +12,7 @@
 #include "chrononmotion/core/Object3D.hpp"
 #include "chrononmotion/materials/Descriptors.hpp"
 #include "chrononmotion/motion/Content.hpp"
+#include "chrononmotion/motion/Particles.hpp"
 #include "chrononmotion/motion/Track.hpp"
 #include "chrononmotion/motion/Transform.hpp"
 #include "chrononmotion/motion/Constraints.hpp"
@@ -21,6 +22,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -138,6 +140,9 @@ namespace chrononmotion::motion {
         ContentRef content{};
         /// Present for a mesh layer: asset identity + renderer-facing handles.
         MeshAttachment mesh{};
+        /// Present for a particle layer. The content ref carries identity and
+        /// the neutral rectangle; this carries the authored emitter.
+        std::optional<ParticleEmitter> particleEmitter{};
         CompositionRef precomp{};
         FrameRange lifetime{};
         TimeRemap timeRemap{};
@@ -228,6 +233,7 @@ namespace chrononmotion::motion {
         Layer& alive(int inFrame, int outFrame);
         Layer& contentOf(ContentRef value);
         Layer& withMesh(MeshAttachment value);
+        Layer& withParticles(ParticleEmitter value);
 
         /// Mark the layer as a 2.5D plane rather than a fully 3D object. A
         /// `MotionPlane` does this when it is applied: the layer is positioned in

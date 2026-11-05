@@ -217,9 +217,10 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
                 throw std::invalid_argument("lowerToRenderPlan: compiled transform has no authored layer");
             if (authoredLayer->isNull() && supplied != options.contentLayers.end())
                 throw std::invalid_argument("lowerToRenderPlan: null/controller layers cannot own RenderPlan content");
-            const bool checkAnchor = supplied != options.contentLayers.end() &&
-                (supplied->second.type == LayerType::Text || supplied->second.type == LayerType::Shape ||
-                 supplied->second.type == LayerType::Particles || supplied->second.type == LayerType::Light);
+            const bool checkAnchor = authoredLayer->content.isParticles() ||
+                (supplied != options.contentLayers.end() &&
+                 (supplied->second.type == LayerType::Text || supplied->second.type == LayerType::Shape ||
+                  supplied->second.type == LayerType::Particles || supplied->second.type == LayerType::Light));
             const bool allowReflection = supplied != options.contentLayers.end() &&
                 supplied->second.type == LayerType::Image;
             const ResolvedPose pose = resolvePose(transform.world, transform.opacity, transform.visible,

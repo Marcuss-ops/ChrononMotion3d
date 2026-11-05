@@ -679,6 +679,58 @@ void testTypedChronon3dLowering() {
     check(!renderPlanEmissionProblem(legacyDustPlan).empty(),
           "V3-only particle path and sprite fields are rejected under the V2 schema");
 
+    section("authored particle layer lowers without a caller-supplied content plan");
+    {
+        MotionScene particleScene("particle-authoring", 30.f);
+        ParticleEmitter emitter;
+        emitter.count = 96;
+        emitter.seed = 0xD057U;
+        emitter.emitterSize = {1280.f, 720.f};
+        emitter.velocityMin = {-6.f, -24.f};
+        emitter.velocityMax = {6.f, -8.f};
+        emitter.lifetimeMin = 1.5f;
+        emitter.lifetimeMax = 3.5f;
+        emitter.sizeMin = 1.f;
+        emitter.sizeMax = 4.f;
+        emitter.turbulence = 5.f;
+        emitter.blendMode = ParticleBlendMode::Screen;
+        emitter.colorRamp = {
+            {0.f, 0.70f, 0.90f, 1.f, 0.f},
+            {0.5f, 0.80f, 1.f, 1.f, 0.7f},
+            {1.f, 1.f, 0.85f, 0.7f, 0.f}};
+        auto& dust = particleScene.addParticles(
+            1, "dust", ContentRef::particles("dust", {1280.f, 720.f}), emitter);
+        dust.flat().alive(0, 29).positionedAt({0.f, 0.f, 0.f});
+
+        RenderPlanLoweringOptions particleOptions;
+        particleOptions.width = 1280;
+        particleOptions.height = 720;
+        particleOptions.jobId = "particle-authoring";
+        particleOptions.outputPath = "particle-authoring.mp4";
+        particleOptions.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
+        const auto particlePlan = lowerToRenderPlan(particleScene, particleOptions);
+        check(particlePlan.layers.size() == 1,
+              "particle content creates exactly one RenderPlan layer");
+        check(particlePlan.layers[0].type == chronon3d::render_plan::LayerType::Particles,
+              "particle content lowers to a particles layer");
+        check(particlePlan.layers[0].particle_emitter.has_value(),
+              "particle lowering carries the authored emitter");
+        if (particlePlan.layers[0].particle_emitter) {
+            const auto& emitted = *particlePlan.layers[0].particle_emitter;
+            check(emitted.count == 96 && emitted.seed == 0xD057U,
+                  "particle count and seed survive lowering");
+            check(emitted.color_ramp.color_stops.size() == 3,
+                  "particle colour ramp survives lowering");
+        }
+        check(renderPlanEmissionProblem(particlePlan).empty(),
+              "authored particle layer passes the RenderPlan emission contract");
+        const auto particleJson = nlohmann::json::parse(renderPlanToJson(particlePlan));
+        const auto& emitted = particleJson.at("layers").at(0).at("particle_emitter");
+        check(emitted.at("count") == 96 && emitted.at("seed") == 0xD057U &&
+              emitted.at("color_ramp").size() == 3,
+              "authored particle data is present in the serialized plan");
+    }
+
     auto lightPlan = slowedVideo;
     lightPlan.layers[0].id = "chalk-light";
     lightPlan.layers[0].type = chronon3d::render_plan::LayerType::Light;

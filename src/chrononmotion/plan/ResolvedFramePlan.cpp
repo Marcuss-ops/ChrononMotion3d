@@ -47,6 +47,7 @@ namespace chrononmotion::plan {
                 case motion::ContentKind::Image: return PlanLayerKind::Image;
                 case motion::ContentKind::Video: return PlanLayerKind::Video;
                 case motion::ContentKind::Mesh: return PlanLayerKind::Mesh;
+                case motion::ContentKind::Particles: return PlanLayerKind::Particles;
             }
             return PlanLayerKind::Null;
         }

@@ -141,6 +141,20 @@ using scene_detail::saturatedAdd;
         return addLayer(std::move(layer));
     }
 
+    Layer& MotionScene::addParticles(Layer::Id id, std::string name, ContentRef content,
+                                     ParticleEmitter emitter, Layer::Id parentId) {
+
+        if (content.kind != ContentKind::Particles)
+            throw std::invalid_argument("MotionScene::addParticles: content must be ContentKind::Particles");
+        if (const auto problem = particleEmitterProblem(emitter); !problem.empty())
+            throw std::invalid_argument("MotionScene::addParticles: " + problem);
+        Layer layer(id, std::move(name));
+        layer.parentId = parentId;
+        layer.content = std::move(content);
+        layer.particleEmitter = std::move(emitter);
+        return addLayer(std::move(layer));
+    }
+
     Layer::Id MotionScene::allocateLayerId() {
         ensureMutable("allocate layer id");
         Layer::Id candidate = 1;

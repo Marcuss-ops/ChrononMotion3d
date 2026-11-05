@@ -249,6 +249,7 @@ float relativeError(float actual, float expected) {
 
 int main(int argc, char** argv) try {
     const bool dump = argc > 1 && std::string_view(argv[1]) == "--dump-golden";
+    const bool dump_payload = argc > 2 && std::string_view(argv[1]) == "--dump-payload";
 
     const auto bytes = chrononmotion_test::constantRadianceHdr();
     const auto env = decodeHdriRadiance(bytes);
@@ -299,6 +300,15 @@ int main(int argc, char** argv) try {
     using Fixture = chrononmotion_test::LinearGradientRadiance;
     const auto gradientBytes = chrononmotion_test::linearGradientRadianceHdr();
     const auto gradient = decodeHdriRadiance(gradientBytes);
+    if (dump_payload) {
+        const auto payload = gradient.serialize();
+        std::ofstream output(argv[2], std::ios::binary);
+        output.write(reinterpret_cast<const char*>(payload.data()),
+                     static_cast<std::streamsize>(payload.size()));
+        if (!output) throw std::runtime_error("cannot write HDRIENV1 payload");
+        std::cout << "wrote " << payload.size() << " bytes to " << argv[2] << "\n";
+        return 0;
+    }
     check(gradient.sourceWidth == Fixture::width && gradient.sourceHeight == Fixture::height,
           "analytic fixture decodes at its authored resolution");
     check(gradient.faceSize == Fixture::height / 2 && gradient.mips.size() == 5,

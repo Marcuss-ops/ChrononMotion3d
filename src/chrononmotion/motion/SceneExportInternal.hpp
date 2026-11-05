@@ -17,8 +17,18 @@ namespace chrononmotion::motion {
         void writeTransform(Writer& writer, const Transform& transform);
         void writeContent(Writer& writer, const ContentRef& content);
         void writeMesh(Writer& writer, const MeshAttachment& mesh);
+        void writeParticles(Writer& writer, const ParticleEmitter& particles);
         void writeConstraint(Writer& writer, const ConstraintSpec& constraint);
         void writeDriver(Writer& writer, const DriverSpec& driver);
+        inline void writeVector2(Writer& writer, const Vector2& value) {
+            writer.beginArray();
+            writer.item();
+            writer.number(value.x);
+            writer.item();
+            writer.number(value.y);
+            writer.endArray();
+        }
+
         inline void writeVector3(Writer& writer, const Vector3& value) {
             writer.beginArray();
             writer.item();

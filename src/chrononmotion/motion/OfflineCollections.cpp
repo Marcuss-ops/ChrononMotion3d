@@ -26,7 +26,7 @@ std::vector<const Layer*> selectCollection(const MotionScene& scene,
         static_cast<unsigned>(selector.layerKind) >
                 static_cast<unsigned>(CollectionSelector::LayerKind::Mesh) ||
         (selector.contentKind &&
-         static_cast<unsigned>(*selector.contentKind) > static_cast<unsigned>(ContentKind::Mesh))) {
+         static_cast<unsigned>(*selector.contentKind) > static_cast<unsigned>(ContentKind::Particles))) {
         throw std::invalid_argument("selectCollection: invalid selector criteria or query budget");
     }
 

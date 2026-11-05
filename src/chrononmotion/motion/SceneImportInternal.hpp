@@ -53,6 +53,12 @@ namespace chrononmotion::motion::scene_import_detail {
             return static_cast<int>(raw);
         }
 
+        inline Vector2 readVector2(const JsonValue& value, std::string_view where) {
+            const auto& items = value.array(where);
+            if (items.size() != 2) reject(where, "must be a 2-element array");
+            return Vector2(floatValue(items[0], where), floatValue(items[1], where));
+        }
+
         inline Vector3 readVector3(const JsonValue& value, std::string_view where) {
             const auto& items = value.array(where);
             if (items.size() != 3) reject(where, "must be a 3-element array");
@@ -239,6 +245,7 @@ namespace chrononmotion::motion::scene_import_detail {
 
 MotionScene readScene(const JsonValue& value, std::string_view where, int depth);
 ContentRef readContent(const JsonValue& value, std::string_view where);
+ParticleEmitter readParticles(const JsonValue& value, std::string_view where);
 Layer readLayer(const JsonValue& value, std::string_view where, int depth);
 LightKind readLightKind(const JsonValue& value, std::string_view where);
 void addLight(MotionScene& scene, LightKind kind, const JsonValue& value, std::string_view where);

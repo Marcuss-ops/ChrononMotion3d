@@ -43,6 +43,12 @@ namespace chrononmotion::motion {
             writeContent(writer, layer.content);
             writer.key("mesh");
             writeMesh(writer, layer.mesh);
+            writer.key("particles");
+            if (layer.particleEmitter) {
+                writeParticles(writer, *layer.particleEmitter);
+            } else {
+                writer.null();
+            }
 
             writer.key("precomp");
             if (layer.precomp.empty()) {
