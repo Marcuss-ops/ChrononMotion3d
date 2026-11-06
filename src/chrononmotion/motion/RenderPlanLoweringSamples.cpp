@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace chrononmotion::motion::lowering_detail {
@@ -130,6 +131,19 @@ AnimationTrackPlan makeVectorTrack(const char* property,
     return result;
 }
 
+void remapPrecompReferences(LayerPlan& output, const FlattenedLayer& flattened,
+                            const std::unordered_set<std::string>& outputIds) {
+    if (!flattened.fromPrecomp) return;
+    const auto remap = [&](std::string& source) {
+        if (source.empty()) return;
+        const std::string candidate = flattened.pathPrefix + source;
+        if (outputIds.contains(candidate)) source = candidate;
+    };
+    if (output.track_matte) remap(output.track_matte->source);
+    if (output.path_mask) remap(output.path_mask->text_source);
+    for (auto& mask : output.masks) remap(mask.text_source);
+}
+
 void preserveNonTransformTracks(LayerPlan& layer, AnimationPlan& baked) {
     if (!layer.animation) return;
     for (auto& track : layer.animation->tracks) {
@@ -232,7 +246,7 @@ using namespace chronon3d::render_plan;
 
 RenderPlan lowerSamplesToRenderPlan(
     float fps, std::size_t frameCount, const RenderPlanLoweringOptions& options,
-    const std::vector<Layer>& metadata,
+    const std::vector<FlattenedLayer>& metadata,
     const std::vector<std::vector<ResolvedPose>>& samples) {
     if (options.width <= 0 || options.height <= 0 || options.jobId.empty() || options.outputPath.empty())
         throw std::invalid_argument("lowerToRenderPlan: dimensions, job id and output path are required");
@@ -254,49 +268,54 @@ RenderPlan lowerSamplesToRenderPlan(
         frameCount > 1'000'000)
         throw std::invalid_argument("lowerToRenderPlan: dense bake exceeds the offline sample budget");
 
-    std::unordered_map<std::string, std::size_t> layerIndexById;
-    for (std::size_t index = 0; index < metadata.size(); ++index)
-        layerIndexById.emplace(std::to_string(metadata[index].id), index);
+    std::unordered_map<std::string, std::vector<std::size_t>> contentTargets;
+    std::unordered_set<std::string> outputIds;
+    for (std::size_t index = 0; index < metadata.size(); ++index) {
+        const FlattenedLayer& flattened = metadata[index];
+        outputIds.insert(flattened.outputId);
+        contentTargets[flattened.outputId].push_back(index);
+        if (flattened.fallbackToSource)
+            contentTargets[flattened.sourceId].push_back(index);
+    }
     for (const auto& [id, unused] : options.contentLayers) {
         (void)unused;
-        const auto found = layerIndexById.find(id);
-        if (found == layerIndexById.end() || metadata[found->second].isNull())
+        if (!contentTargets.contains(id))
             throw std::invalid_argument("lowerToRenderPlan: content mapping names no content layer '" + id + "'");
     }
     for (const auto& [id, supplied] : options.contentLayers) {
-        const auto found = layerIndexById.find(id);
-        if (found == layerIndexById.end() || metadata[found->second].isNull())
-            throw std::invalid_argument("lowerToRenderPlan: content mapping names no content layer '" + id + "'");
-        const Layer& layer = metadata[found->second];
-        const bool mesh_layer = !layer.mesh.empty() || layer.content.isMesh();
-        if (mesh_layer && (layer.content.isImage() || layer.content.isVideo() || layer.content.isText()))
-            throw std::invalid_argument("lowerToRenderPlan: mesh attachment and non-mesh ContentRef cannot share one RenderPlan layer");
-        if (!mesh_layer && layer.content.isMesh())
-            throw std::invalid_argument("lowerToRenderPlan: mesh ContentRef requires an explicit MeshAttachment with geometry");
-        if (mesh_layer && !layer.mesh.geometry)
-            throw std::invalid_argument("lowerToRenderPlan: mesh geometry must be explicitly available inline; an opaque asset id alone cannot be rendered");
-        if (mesh_layer) {
-            if (supplied.type != LayerType::Mesh)
-                throw std::invalid_argument("lowerToRenderPlan: mesh layers require a Mesh RenderPlan layer");
-        } else if (supplied.type != LayerType::Image && supplied.type != LayerType::Video &&
-                   supplied.type != LayerType::Text && supplied.type != LayerType::Shape &&
-                   supplied.type != LayerType::Particles && supplied.type != LayerType::Light &&
-                   supplied.type != LayerType::Adjustment) {
-            throw std::invalid_argument("lowerToRenderPlan: unsupported content-layer type for motion content");
+        for (const std::size_t index : contentTargets.at(id)) {
+            const Layer& layer = metadata[index].layer;
+            const bool mesh_layer = !layer.mesh.empty() || layer.content.isMesh();
+            if (mesh_layer && (layer.content.isImage() || layer.content.isVideo() || layer.content.isText()))
+                throw std::invalid_argument("lowerToRenderPlan: mesh attachment and non-mesh ContentRef cannot share one RenderPlan layer");
+            if (!mesh_layer && layer.content.isMesh())
+                throw std::invalid_argument("lowerToRenderPlan: mesh ContentRef requires an explicit MeshAttachment with geometry");
+            if (mesh_layer && !layer.mesh.geometry)
+                throw std::invalid_argument("lowerToRenderPlan: mesh geometry must be explicitly available inline; an opaque asset id alone cannot be rendered");
+            if (mesh_layer) {
+                if (supplied.type != LayerType::Mesh)
+                    throw std::invalid_argument("lowerToRenderPlan: mesh layers require a Mesh RenderPlan layer");
+            } else if (supplied.type != LayerType::Image && supplied.type != LayerType::Video &&
+                       supplied.type != LayerType::Text && supplied.type != LayerType::Shape &&
+                       supplied.type != LayerType::Particles && supplied.type != LayerType::Light &&
+                       supplied.type != LayerType::Adjustment) {
+                throw std::invalid_argument("lowerToRenderPlan: unsupported content-layer type for motion content");
+            }
+            if (!layer.content.id.empty() && supplied.type == LayerType::Shape &&
+                layer.content.kind != ContentKind::Image)
+                throw std::invalid_argument("lowerToRenderPlan: shape content requires an explicitly supplied Shape LayerPlan");
+            if (layer.content.kind == ContentKind::Image && supplied.type != LayerType::Image &&
+                supplied.type != LayerType::Shape && supplied.type != LayerType::Particles &&
+                supplied.type != LayerType::Adjustment)
+                throw std::invalid_argument("lowerToRenderPlan: image content must map to an image or explicit shape plan");
+            if (layer.content.kind == ContentKind::Video && supplied.type != LayerType::Video)
+                throw std::invalid_argument("lowerToRenderPlan: video content must map to a video plan");
+            if (layer.content.kind == ContentKind::Text && supplied.type != LayerType::Text)
+                throw std::invalid_argument("lowerToRenderPlan: text content must map to a text plan");
         }
-        if (!layer.content.id.empty() && supplied.type == LayerType::Shape &&
-            layer.content.kind != ContentKind::Image)
-            throw std::invalid_argument("lowerToRenderPlan: shape content requires an explicitly supplied Shape LayerPlan");
-        if (layer.content.kind == ContentKind::Image && supplied.type != LayerType::Image &&
-            supplied.type != LayerType::Shape && supplied.type != LayerType::Particles &&
-            supplied.type != LayerType::Adjustment)
-            throw std::invalid_argument("lowerToRenderPlan: image content must map to an image or explicit shape plan");
-        if (layer.content.kind == ContentKind::Video && supplied.type != LayerType::Video)
-            throw std::invalid_argument("lowerToRenderPlan: video content must map to a video plan");
-        if (layer.content.kind == ContentKind::Text && supplied.type != LayerType::Text)
-            throw std::invalid_argument("lowerToRenderPlan: text content must map to a text plan");
     }
-    for (const Layer& layer : metadata) {
+    for (const FlattenedLayer& flattened : metadata) {
+        const Layer& layer = flattened.layer;
         if (layer.content.isParticles() && !layer.particleEmitter)
             throw std::invalid_argument("lowerToRenderPlan: particle content has no emitter");
         if (layer.particleEmitter && !layer.content.isParticles())
@@ -320,21 +339,23 @@ RenderPlan lowerSamplesToRenderPlan(
     }
 
     for (std::size_t index = 0; index < metadata.size(); ++index) {
-        const Layer& layer = metadata[index];
+        const FlattenedLayer& flattened = metadata[index];
+        const Layer& layer = flattened.layer;
         // Nulls are Motion controllers, never renderable RenderPlan layers.
         // Their resolved world transforms have already been folded into
         // content layers and/or camera samples during evaluation above.
         if (layer.isNull()) continue;
-        const std::string layerId = std::to_string(layer.id);
+        const std::string& layerId = flattened.outputId;
+        const LayerPlan* supplied = findContentLayer(options, flattened);
         LayerPlan output;
         if (!layer.isNull()) {
-            const auto supplied = options.contentLayers.find(layerId);
-            if (supplied == options.contentLayers.end()) {
+            if (supplied == nullptr) {
                 if (!layer.content.isParticles())
                     throw std::invalid_argument("lowerToRenderPlan: caller must provide the content-owning LayerPlan for layer '" + layerId + "'");
                 output = makeParticleLayerPlan(layer, frameCount);
             } else {
-                output = supplied->second;
+                output = *supplied;
+                remapPrecompReferences(output, flattened, outputIds);
                 if (layer.content.isParticles()) {
                     if (output.type != LayerType::Particles)
                         throw std::invalid_argument("lowerToRenderPlan: particle content must map to a particles plan");
@@ -486,8 +507,6 @@ RenderPlan lowerSamplesToRenderPlan(
         output.id = layerId;
         output.parent.reset();
         const auto& poses = samples[index];
-        if (layer.isNull() && options.contentLayers.contains(layerId))
-            throw std::invalid_argument("lowerToRenderPlan: null/controller layers cannot own RenderPlan content");
         if (poses.size() != frameCount)
             throw std::invalid_argument("lowerToRenderPlan: inconsistent sample counts across layers");
         const ResolvedPose& first = poses.front();
@@ -509,7 +528,7 @@ RenderPlan lowerSamplesToRenderPlan(
         const bool flatEmission = !layer.is3D && !leavesCanvasPlane;
         output.position = planPosition(first, output.type, options.width, options.height);
         output.position_dimensions = flatEmission ? 2 : 3;
-        const bool staticPlanWasProvided = options.contentLayers.contains(layerId);
+        const bool staticPlanWasProvided = supplied != nullptr;
         if (!staticPlanWasProvided &&
             (output.type == LayerType::Text || output.type == LayerType::Shape ||
              output.type == LayerType::Particles || output.type == LayerType::Light)) {
@@ -554,13 +573,10 @@ RenderPlan lowerSamplesToRenderPlan(
             output.enable_3d = true;
         output.start_frame = chronon3d::Frame{0};
         output.duration_frames = chronon3d::Frame{static_cast<std::int64_t>(frameCount)};
-        const TimeRemap& authoredTimeRemap = layer.timeRemap;
-        const bool hasMotionTimeRemap = !layer.timeRemapTrack.empty() || authoredTimeRemap.offsetFrames != 0.f ||
-            authoredTimeRemap.stretch != 1.f || authoredTimeRemap.reverse || authoredTimeRemap.freeze ||
-            authoredTimeRemap.pingPong || authoredTimeRemap.loopEnd >= authoredTimeRemap.loopStart;
-        if (hasMotionTimeRemap && output.time_remap)
+        const bool authoredMotionTimeRemap = hasMotionTimeRemap(layer);
+        if (authoredMotionTimeRemap && output.time_remap)
             throw std::invalid_argument("lowerToRenderPlan: caller-supplied RenderPlan time remap conflicts with Motion layer timing");
-        if (hasMotionTimeRemap && !layer.content.isVideo())
+        if (authoredMotionTimeRemap && !layer.content.isVideo())
             throw std::invalid_argument("lowerToRenderPlan: Motion time remap is supported only for video content");
         lowerTimeRemap(layer, output, options.schema, fps, frameCount);
 
@@ -574,7 +590,11 @@ RenderPlan lowerSamplesToRenderPlan(
         } else {
             preserveNonTransformTracks(output, baked);
         }
-        if (frameCount > 1 && output.type != LayerType::Mesh) {
+        // V2 is the only schema that carries the historical dense integer TRS
+        // animation. V3 is materialized as resolved transform samples by the
+        // caller and must not grow a second transform authority here.
+        if (frameCount > 1 && output.type != LayerType::Mesh &&
+            options.schema == kRenderPlanSchemaV2) {
             std::vector<AnimationKeyframePlan> positions, scales, rotations, opacities;
             positions.reserve(frameCount); scales.reserve(frameCount);
             rotations.reserve(frameCount); opacities.reserve(frameCount);

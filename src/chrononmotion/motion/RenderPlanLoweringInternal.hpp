@@ -26,7 +26,46 @@ struct ResolvedPose {
     Vector3 scale{1.f, 1.f, 1.f};
     Vector3 rotation{};
     float opacity{1.f};
+    // Final world matrix after precomp composition. Kept alongside the
+    // decomposed pose so resolved-sample emission can reproduce the
+    // consumer's rotation convention without re-evaluating nested scenes.
+    Matrix4 world{};
 };
+
+/// A renderable layer after nested compositions have been flattened into the
+/// outer timeline. `outputId` is the stable RenderPlan identity (the authored
+/// top-level id, or a slash-qualified path inside a precomp). `sourceId` keeps
+/// the authored id so callers can reuse one content plan for every instance of
+/// the same nested layer; it is only used as a fallback when it cannot be
+/// confused with a top-level layer.
+struct FlattenedLayer {
+    FlattenedLayer() = default;
+    explicit FlattenedLayer(const Layer& source) : layer(source) {}
+
+    Layer layer{};
+    std::string outputId{};
+    std::string sourceId{};
+    std::string pathPrefix{};
+    bool fromPrecomp{false};
+    bool fallbackToSource{false};
+};
+
+inline const chronon3d::render_plan::LayerPlan* findContentLayer(
+        const RenderPlanLoweringOptions& options, const FlattenedLayer& layer) {
+    const auto exact = options.contentLayers.find(layer.outputId);
+    if (exact != options.contentLayers.end()) return &exact->second;
+    if (!layer.fallbackToSource) return nullptr;
+    const auto source = options.contentLayers.find(layer.sourceId);
+    return source == options.contentLayers.end() ? nullptr : &source->second;
+}
+
+inline bool hasMotionTimeRemap(const Layer& layer) {
+    const TimeRemap& remap = layer.timeRemap;
+    return !layer.timeRemapTrack.empty() || remap.offsetFrames != 0.f ||
+           remap.stretch != 1.f || remap.reverse || remap.freeze || remap.pingPong ||
+           remap.loopEnd >= remap.loopStart;
+}
+
 inline constexpr std::size_t kMaximumBakedTransformSamples = 250'000;
 
 inline void ensureFinite(float value, const char* name) {
@@ -77,7 +116,7 @@ inline chronon3d::render_plan::AnimationKeyframePlan makePlanKeyframe(chronon3d:
 
 [[nodiscard]] chronon3d::render_plan::RenderPlan lowerSamplesToRenderPlan(
     float fps, std::size_t frameCount, const RenderPlanLoweringOptions& options,
-    const std::vector<Layer>& metadata,
+    const std::vector<FlattenedLayer>& metadata,
     const std::vector<std::vector<ResolvedPose>>& samples);
 
 

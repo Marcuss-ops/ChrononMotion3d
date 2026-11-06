@@ -41,6 +41,7 @@ void writePlan(const std::filesystem::path& outputDir, const std::string& name,
     options.jobId = name;
     options.outputPath = (outputDir / (name + ".png")).string();
     options.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
+    options.requireResolvedLayerSamples = true;
 
     auto plan = lowerToRenderPlan(scene, options);
     if (const auto problem = renderPlanEmissionProblem(plan); !problem.empty())

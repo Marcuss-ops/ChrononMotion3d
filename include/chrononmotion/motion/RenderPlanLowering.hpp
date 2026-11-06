@@ -44,6 +44,10 @@ namespace chrononmotion::motion {
         // geometry is not consumable by this RenderPlan contract. Motion never
         // invents assets, text bytes, or styling.
         // Caller-supplied content/shape/style identity, keyed by layer id.
+        // Top-level layers use their authored id. A flattened precomp child
+        // uses its slash-qualified path (for example "50/101"); the bare child
+        // id remains a fallback only when it cannot collide with a top-level
+        // layer id, so ambiguous mappings must use the qualified key.
         std::unordered_map<std::string, chronon3d::render_plan::LayerPlan> contentLayers{};
         std::optional<chronon3d::render_plan::CameraPlan> camera{};
         /// Optional full-scene shutter accumulation (RenderPlan V3 only).
@@ -58,11 +62,11 @@ namespace chrononmotion::motion {
         /// Keep the rig's initial pose in `camera`, but leave time-varying camera
         /// evaluation to a runtime CameraSampleProvider instead of serializing resolved samples.
         bool bakeResolvedCameraSamples{true};
-        /// Require resolved layer transform samples. This can be used without
-        /// a camera rig; with shutter or explicit cameraSampleFrames, the
-        /// renderer's resolved calendar is used, otherwise presentation frames
-        /// are baked. Materialized V3 producers set this; legacy integer TRS
-        /// keyframes remain available only to migration/tests that leave it false.
+        /// Historical migration switch for resolved layer transform samples.
+        /// V3 always emits resolved samples (the shutter calendar when active,
+        /// otherwise every presentation frame) regardless of this value; the
+        /// flag remains for source compatibility. The false default remains for
+        /// supported V2 plans, which use the legacy dense integer-TRS animation.
         bool requireResolvedLayerSamples{false};
         /// Optional strictly increasing absolute fractional frame times supplied
         /// by the renderer's schedule. With shutter enabled, an empty list uses

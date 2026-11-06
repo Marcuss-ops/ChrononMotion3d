@@ -503,6 +503,7 @@ void testVectorPathBaking() {
 
 #if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)
 void testTypedChronon3dLowering();
+void testPrecompRenderPlanFlattening();
 #endif
 
 int main() {
@@ -515,6 +516,7 @@ int main() {
     testVectorPathBaking();
 #if defined(CHRONONMOTION_HAS_CHRONON3D_ADAPTER)
     testTypedChronon3dLowering();
+    testPrecompRenderPlanFlattening();
 #endif
     return chrononmotion_test::report();
 }
