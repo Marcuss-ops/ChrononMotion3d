@@ -53,6 +53,23 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
             const LayerStylePlan& style = *layer.style;
             const std::string owner = layerOwner(layer);
 
+            if ((style.gel_surface || style.gel_light_azimuth_radians ||
+                 style.gel_light_elevation) && layer.type != LayerType::Text)
+                return owner + " carries a gel-text material on a non-text layer";
+            if ((style.gel_light_azimuth_radians || style.gel_light_elevation) &&
+                !style.gel_surface)
+                return owner + " carries gel light parameters without gel_surface";
+            constexpr float kPi = 3.14159265358979323846f;
+            if ((style.gel_light_azimuth_radians &&
+                 (!std::isfinite(*style.gel_light_azimuth_radians) ||
+                  *style.gel_light_azimuth_radians < -kPi ||
+                  *style.gel_light_azimuth_radians > kPi)) ||
+                (style.gel_light_elevation &&
+                 (!std::isfinite(*style.gel_light_elevation) ||
+                  *style.gel_light_elevation < 0.f ||
+                  *style.gel_light_elevation > 1.f)))
+                return owner + " carries gel light parameters outside the supported range";
+
             if (style.text_fit_mode != "none") {
                 return owner + " carries style text_fit_mode '" + style.text_fit_mode +
                        "', which this emitter does not write";

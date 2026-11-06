@@ -44,8 +44,9 @@ postprocessing/ splats/ extras/        deleted
 apps/ examples/ tests/ python/         deleted
 ```
 
-Roughly **6.9% of the upstream library sources survive** (~17.8k of ~259.3k lines,
-130 files across `include/` and `src/`), and nothing is fetched at configure time. What grows back on top is the
+Roughly **6.9% of the upstream library sources survive** (~17.8k of ~259.3k
+lines, about 130 retained upstream files), and nothing is fetched at configure
+time. What grows back on top is the
 half threepp does not have: the deterministic motion model in
 `include/chrononmotion/motion/` — see [The motion model](#the-motion-model).
 Three geometry primitives (`BoxGeometry`, `PlaneGeometry`, `SphereGeometry`)
@@ -88,9 +89,10 @@ available. Verlet/rigid-body, IK, PCM audio feature/driver, flow layout, SVG
 morph/repeater, and RenderPlan lowering execute at authoring time only. The
 optional Chronon3d adapter is built only when `CHRONON3D_INCLUDE_DIR` is supplied;
 it lowers representable poses into typed V2/V3 plans and is never a renderer
-runtime dependency. Schema-defined static camera DoF round-trips through the
-plan adapter; physical lens metadata and animated camera DoF fail closed. A
-schema-driven CTest gate detects camera-field contract drift. Static glTF
+runtime dependency. Schema-defined camera DoF — static and animated — lowers
+per resolved sample: focal length, sensor, f-stop, focus distance, max blur and
+highlight gain travel on each camera sample, while unsupported iris shapes fail
+closed. A schema-driven CTest gate detects camera-field contract drift. Static glTF
 2.0/GLB 2.0 import is geometry-only and fail-closed;
 see [GLTF_READER.md](docs/GLTF_READER.md). The public headers and C++ namespace
 use `chrononmotion`; Box, Plane, Sphere, and imported BufferGeometry primitives
@@ -195,10 +197,11 @@ cmake --build --preset release
 ctest --preset release
 ```
 
-The optional adapter preserves schema-defined static camera depth of field
-through RenderPlan JSON and Chronon3D camera evaluation; unsupported physical
-lens metadata and animated camera DoF are rejected rather than discarded. A
-schema-derived CTest gate checks camera-field transport parity.
+The optional adapter preserves schema-defined camera depth of field through
+RenderPlan JSON and Chronon3D camera evaluation, including per-sample focus,
+f-stop and DoF for animated cameras; unsupported iris shapes are rejected
+rather than discarded. A schema-derived CTest gate checks camera-field
+transport parity.
 
 To build the optional Chronon3d RenderPlan adapter and its authoring tests, use
 an adjacent Chronon3d checkout and configure with the Chronon3d include root,

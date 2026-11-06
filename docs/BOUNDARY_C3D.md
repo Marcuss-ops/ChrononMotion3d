@@ -164,14 +164,16 @@
 
 #### Demolition debt — integer transform bake
 - Owner: manutentore del confine Motion/RenderPlan.
-- Reason: i job senza shutter e senza lista esplicita mantengono il formato
-  storico a keyframe interi; non sono dichiarati exact sub-frame.
-- Exit condition: tutti i producer esigono campioni risolti e il corpus
-  compatibility/typed ha equivalenza verificata per i payload supportati.
+- Reason: V2 non trasporta `transform_samples`; la sua lane dense resta il
+  formato storico a keyframe interi e non è dichiarata exact sub-frame.
+- Exit condition: il corpus compatibility/typed ha equivalenza verificata per
+  i payload supportati e viene deciso il ritiro di V2.
 - Equivalence gate: camera bake roundtrip + consumer typed raw pixel gate.
 - Removal scope: emissione dense integer TRS in RenderPlanLoweringSamples,
   non le AnimationTrack authored generiche del renderer.
-- Status: ACTIVE. Il passaggio non elimina il renderer DoF C3D.
+- Status: PARTIAL — la lane V3 è stata rimossa (emette sempre
+  `transform_samples`); resta solo V2 legacy e l'equivalenza consumer. Il
+  passaggio non elimina il renderer DoF C3D.
 
 ### Camera parented e shutter: note storiche del checkpoint precedente
 - `makeCameraSampleProvider(rig, scene, fingerprint)` risolve il parent nel
@@ -189,11 +191,14 @@
   ciò non certifica un handoff RGBA animato GPU-native o la qualità dei bordi.
   `render/` resta attualmente un harness e non un renderer di produzione.
 
-### F2 — Easing: tre vocabolari
+### F2 — Easing: tre vocabolari — CHIUSO come decisione (2026-11-06)
 - C3D `easing.hpp` (enum → GLM), CM3D `motion/Easing.hpp` (CubicBezier class),
-  CM3D `extras/core/Interpolations.hpp` (eredietà threepp). Il mapping va
-  definito come contratto lato lowering quando servono easing per-key
-  (oggi il lowering bake linear samples — RenderPlanEmission.hpp:43-44).
+  CM3D `extras/core/Interpolations.hpp` (eredità threepp). I tre vocabolari
+  restano deliberatamente separati: il lowering **bakea ogni easing in campioni
+  lineari risolti** e il piano non trasporta easing per-key. La parità è
+  pinnata da `tests/motion_renderplan_easing_parity.cpp`, che copre tutti gli
+  11 tipi Motion contro il piano abbassato. Nessuna mappatura per-key va
+  aggiunta al confine.
 
 ### F4 — Layer shadow: authored e serializzato, non lowering-rizzato
 - `Layer.hpp:146-148` e `CompiledScene.hpp:36-38` trasportano
@@ -203,6 +208,21 @@
   `castsShadow`/`shadowRadius`/`shadowBias` (RenderPlanLowering.cpp:224-226).
   Chiusura = aggiungere emissione `shadow_blur/shadow_opacity` al lowering
   quando C3D espone i relativi per-layer kernel; NON duplicare i campi altrove.
+  Stato 2026-11-06: validazione, serializzazione e round-trip sono verdi lato
+  CM3D; l'emission resta **BLOCKED** sul kernel C3D. Non è un item reachable
+  in questa milestone.
+
+### F5 — Roving key: fuori scope V1, fail-closed (2026-11-06)
+- `Keyframe` non ha un flag roving e l'emission rifiuta un key di piano con
+  `roving=true` (`RenderPlanEmissionValidateTracks.cpp`). La semantica
+  AE/EffectCraft non è definita abbastanza da aggiungere API: resta fuori scope
+  V1. Il rifiuto è il contratto, non un TODO.
+
+### F6 — Motion blur per-layer: richiede contratto gemello (2026-11-06)
+- L'unico shutter authorato è quello di scena (`MotionScene::setShutter`,
+  `MotionBlurPlan`). Un flag per-layer come in AE richiede un campo nel piano e
+  un kernel C3D: non è implementabile in CM3D da solo. Resta dichiarato, non
+  duplicato.
 
 ### S0 — Guardrail anti-rigrow della superficie camera (2026-10-31)
 
@@ -243,20 +263,29 @@ e semantica sotto `motion::camera`, senza header pubblici separati. I consumer
 implementation/test includono ora l'autorità camera consolidata. Passano
 `chrononmotion_camera_sequence`, `chrononmotion_camera_shake`, authoring e
 camera-bake (373 check authoring, 832 bake). La conta estesa 15→13 comprende
-`AspectReframe` ed `EyeTrace`; il target ticket 13→≤6 e gli altri applier
-restano aperti.
+`AspectReframe` ed `EyeTrace`. Il target 13→≤6 e il confronto
+lowering-per-lowering (S5) sono **demandati a v2.1** dalla chiusura
+amministrativa del 2026-11-04
+(`Chronon3d/docs/tickets/archive/TICKET-CAMERA-SURFACE-CONSOLIDATION.md`):
+non sono lavoro aperto di questa milestone.
 
-Per ogni piano materializzato V3, impostare
-`RenderPlanLoweringOptions::requireResolvedLayerSamples`: usa il calendario
-shutter se attivo, altrimenti ogni frame di presentazione, ed evita i TRS
-keyframe interi. Il requisito vale anche per piani senza CameraRig; quando
-esiste un rig, camera e layer condividono gli stessi timestamp. Template lo
-applica nel wrapper comune e i producer Motion censiti lo richiedono
-esplicitamente, incluso Showreel camera-free. Image/Video/Color/Text/Shape/
-Particle/Adjustment sono supportati; Light e Mesh restano esclusi per le loro
-semantiche di consumo dedicate. I Null controller non sono contenuti renderabili
-e non vanno serializzati come Color trasparenti. La demolition debt resta ACTIVE
-finché il corpus compatibility/typed non passa l'equivalenza prevista sopra.
+Per ogni piano V3 il lowering materializza `transform_samples` per schema:
+usa il calendario shutter se attivo, altrimenti ogni frame di presentazione,
+quindi non esiste più un path dense integer TRS V3. Il comportamento vale
+anche per piani senza CameraRig; quando esiste un rig, camera e layer
+condividono gli stessi timestamp. `requireResolvedLayerSamples` resta per
+compatibilità sorgente e per i test di migrazione, ma non è più necessario per
+V3. Template lo applica nel wrapper comune e i sei producer Motion censiti lo
+richiedono esplicitamente, incluso Showreel camera-free. Image/Video/Color/
+Text/Shape/Particle/Adjustment sono supportati; Light e Mesh restano esclusi
+dai campioni risolti per le loro semantiche di consumo dedicate. I Null
+controller non sono contenuti renderabili e non vanno serializzati come Color
+trasparenti. Audit 2026-11-06: tutti i sei tool materializzati (`plan_showreel`,
+`plan_map_flyover`, `plan_optical_studio`, `plan_documentary_showcase`,
+`plan_particles_showcase`, `plan_word_rack_focus`) impostano il flag; il
+default `false` resta per i piani V2. La demolition debt resta PARTIAL solo per
+l'equivalenza del corpus consumer compatibility/typed e per la decisione sul
+ritiro di V2.
 
 ## Regola di manutenzione
 

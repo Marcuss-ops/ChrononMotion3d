@@ -9,12 +9,14 @@
 #include "motion_check.hpp"
 #include <chronon3d/render_plan/render_plan.hpp>
 #include <nlohmann/json.hpp>
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -46,6 +48,15 @@ bool sameLoweredPlan(const chronon3d::render_plan::RenderPlan& left,
             a.enable_3d != b.enable_3d || a.opacity != b.opacity ||
             a.animation.has_value() != b.animation.has_value())
             return false;
+        if (a.transform_samples.size() != b.transform_samples.size()) return false;
+        for (std::size_t sampleIndex = 0; sampleIndex < a.transform_samples.size(); ++sampleIndex) {
+            const auto& sampleA = a.transform_samples[sampleIndex];
+            const auto& sampleB = b.transform_samples[sampleIndex];
+            if (sampleA.frame != sampleB.frame || sampleA.position != sampleB.position ||
+                sampleA.scale != sampleB.scale || sampleA.rotation_deg != sampleB.rotation_deg ||
+                sampleA.opacity != sampleB.opacity)
+                return false;
+        }
         if (!a.animation) continue;
         if (a.animation->tracks.size() != b.animation->tracks.size()) return false;
         for (std::size_t trackIndex = 0; trackIndex < a.animation->tracks.size(); ++trackIndex) {
@@ -146,6 +157,9 @@ void testTypedChronon3dLowering() {
     auto v3 = lowerToRenderPlan(scene, options);
     check(v3.schema == chronon3d::render_plan::kRenderPlanSchemaV3,
           "typed lowering supports Chronon3D V3");
+    check(v3.layers.size() == 1 && v3.layers[0].transform_samples.size() == 31 &&
+              !v3.layers[0].animation,
+          "V3 lowering always emits resolved transform samples without the migration flag");
     const auto repeatedV3 = lowerToRenderPlan(scene, options);
     check(sameLoweredPlan(v3, repeatedV3),
           "typed V3 lowering repeats every emitted transform and keyframe bit-exactly");
@@ -300,6 +314,7 @@ void testTypedChronon3dLowering() {
     meshLayer.source.clear();
     meshLayer.time_remap.reset();
     meshLayer.animation.reset();
+    meshLayer.transform_samples.clear();
     chronon3d::render_plan::InlineMeshPlan triangle;
     triangle.vertices = {
         {{{-1.f, -1.f, 0.f}}, {{0.f, 0.f, 1.f}}, {{0.f, 0.f}}},
@@ -737,6 +752,7 @@ void testTypedChronon3dLowering() {
     lightPlan.layers[0].source.clear();
     lightPlan.layers[0].time_remap.reset();
     lightPlan.layers[0].animation.reset();
+    lightPlan.layers[0].transform_samples.clear();
     lightPlan.layers[0].light = chronon3d::render_plan::LightLayerPlan{};
     check(renderPlanEmissionProblem(lightPlan).empty(),
           "a typed scene light is accepted by the common RenderPlan emitter");
@@ -777,6 +793,7 @@ void testTypedChronon3dLowering() {
         layer.type = chronon3d::render_plan::LayerType::Mesh;
         layer.source.clear();
         layer.animation.reset();
+        layer.transform_samples.clear();
         layer.time_remap.reset();
         layer.enable_3d = true;
         layer.color = std::array<float, 4>{0.8f, 0.7f, 0.6f, 1.f};
@@ -826,6 +843,9 @@ void testTypedChronon3dLowering() {
     semanticText.style->font = "fonts/roboto"; // content identity only; no extension to load
     semanticText.style->font_size = 32.f;
     semanticText.style->fill = "#FFFFFF";
+    semanticText.style->gel_surface = true;
+    semanticText.style->gel_light_azimuth_radians = 1.2f;
+    semanticText.style->gel_light_elevation = 0.05f;
     chronon3d::render_plan::TextSelectorPlan selector;
     selector.unit = "word";
     selector.shape = "square";
@@ -852,8 +872,17 @@ void testTypedChronon3dLowering() {
     check(semanticJson.at("layers").at(0).at("text_animators").at(0)
               .at("selectors").at(0).at("unit") == "word" &&
           semanticJson.at("layers").at(0).at("text_animators").at(0)
-              .at("properties").at(1).at("property") == "fill_color",
-          "V3 emitter preserves text unit selection and authored property order");
+              .at("properties").at(1).at("property") == "fill_color" &&
+          semanticJson.at("layers").at(0).at("style").at("gel_surface") == true &&
+          std::abs(semanticJson.at("layers").at(0).at("style").at("gel_light")
+              .at("azimuth_radians").get<float>() - 1.2f) < 1e-6f &&
+          std::abs(semanticJson.at("layers").at(0).at("style").at("gel_light")
+              .at("elevation").get<float>() - 0.05f) < 1e-6f,
+          "V3 emitter preserves text animation and gel lighting parameters");
+    auto invalidGelLight = semanticPlan;
+    invalidGelLight.layers[0].style->gel_surface = false;
+    check(!renderPlanEmissionProblem(invalidGelLight).empty(),
+          "gel light parameters fail closed without the gel surface material");
     auto v2TextAnimatorPlan = semanticPlan;
     v2TextAnimatorPlan.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
     check(!renderPlanEmissionProblem(v2TextAnimatorPlan).empty(),
@@ -1022,6 +1051,7 @@ void testTypedChronon3dLowering() {
     check(renderPlanToJson(cameraDofPlan) == cameraDofText,
           "camera depth-of-field JSON emission is byte-for-byte deterministic");
     auto cameraBlurPlan = slowedVideo;
+    cameraBlurPlan.layers[0].transform_samples.clear();
     cameraBlurPlan.temporal_motion_blur = chronon3d::render_plan::MotionBlurPlan{180.f, 4};
     check(renderPlanEmissionProblem(cameraBlurPlan).empty(),
           "global temporal motion blur is supported by the V3 plan emitter");
@@ -1784,4 +1814,253 @@ void testTypedChronon3dLowering() {
         tooManyOptions.cameraRig = &tooMany;
         (void)lowerToRenderPlan(emptyScene, tooManyOptions);
     }), "camera-only output obeys the RenderPlan camera keyframe budget");
+}
+
+void testPrecompRenderPlanFlattening() {
+    using namespace chronon3d::render_plan;
+    section("nested composition flattening into RenderPlan");
+
+    const auto findLayer = [](const RenderPlan& plan, const std::string& id) -> const LayerPlan* {
+        for (const auto& layer : plan.layers)
+            if (layer.id == id) return &layer;
+        return nullptr;
+    };
+    const auto findTrack = [](const LayerPlan& layer, const char* property) -> const AnimationTrackPlan* {
+        if (!layer.animation) return nullptr;
+        for (const auto& track : layer.animation->tracks)
+            if (track.property == property) return &track;
+        return nullptr;
+    };
+
+    auto nested = std::make_shared<MotionScene>("nested", 24.f);
+    nested->addNull(100, "nested controller").transform.position.set(1.f, 2.f, 0.f);
+    auto& child = nested->addContent(
+        101, "nested child", ContentRef::image("nested.png", Vector2(20.f, 10.f)), 100);
+    child.transform.position.set(2.f, 0.f, 0.f);
+    child.transform.opacity = 0.8f;
+    child.lifetime = FrameRange::between(0, 2);
+    child.tracks.position.add(0.f, Vector3(2.f, 0.f, 0.f));
+    child.tracks.position.add(1.f, Vector3(12.f, 0.f, 0.f));
+    auto& nestedLight = nested->addPointLight(120, "nested key", 100);
+    nestedLight.transform.position.set(0.f, 0.f, 0.f);
+    nestedLight.intensity = 10.f;
+    nestedLight.range = 40.f;
+    nestedLight.decay = 2.f;
+    nestedLight.intensityTrack.add(0.f, 10.f);
+    nestedLight.intensityTrack.add(1.f, 20.f);
+    nested->addAmbientLight(121, "nested ambient");
+
+    MotionScene outer("outer", 24.f);
+    auto& precomp = outer.addNull(50, "precomp");
+    precomp.precomp = CompositionRef{nested, 24.f};
+    precomp.transform.position.set(5.f, 0.f, 0.f);
+    precomp.transform.opacity = 0.5f;
+    precomp.timeRemap.stretch = 2.f;
+    precomp.tracks.position.add(0.f, Vector3(5.f, 0.f, 0.f));
+    precomp.tracks.position.add(1.f, Vector3(5.f, 0.f, 0.f));
+    auto& second = outer.addNull(51, "precomp 2");
+    second.precomp = CompositionRef{nested, 24.f};
+    second.transform.position.set(15.f, 0.f, 0.f);
+    second.transform.opacity = 0.5f;
+    second.timeRemap.stretch = 2.f;
+    second.tracks.position.add(0.f, Vector3(15.f, 0.f, 0.f));
+    second.tracks.position.add(1.f, Vector3(15.f, 0.f, 0.f));
+
+    RenderPlanLoweringOptions options;
+    options.width = 640;
+    options.height = 360;
+    options.schema = kRenderPlanSchemaV2;
+    LayerPlan content;
+    content.type = LayerType::Image;
+    content.asset = "nested.png";
+    content.size = {20.f, 10.f};
+    content.size_dimensions = 2;
+    options.contentLayers.emplace("101", content);
+
+    const auto plan = lowerToRenderPlan(outer, options);
+    check(plan.layers.size() == 4,
+          "two precomp instances flatten their visual layers and nested point lights");
+    const LayerPlan* first = findLayer(plan, "50/101");
+    const LayerPlan* secondLayer = findLayer(plan, "51/101");
+    const LayerPlan* nestedLightLayer = findLayer(plan, "motion_light_50_120");
+    const LayerPlan* secondNestedLight = findLayer(plan, "motion_light_51_120");
+    check(first != nullptr && secondLayer != nullptr,
+          "flattened layers use deterministic path-qualified identities");
+    check(nestedLightLayer != nullptr && secondNestedLight != nullptr,
+          "nested lights flatten once per precomp instance with path-qualified identities");
+    check(findLayer(plan, "motion_light_50_121") == nullptr &&
+              findLayer(plan, "motion_light_51_121") == nullptr &&
+              std::count_if(plan.warnings.begin(), plan.warnings.end(),
+                  [](const std::string& warning) { return warning.find("Ambient") != std::string::npos; }) == 2,
+          "nested ambient lights are skipped with a warning instead of failing the precomp");
+    if (nestedLightLayer != nullptr) {
+        checkNear(nestedLightLayer->position[0], 6.f, 1e-4f,
+                  "nested light position composes the precomp and its in-precomp parent");
+        checkNear(nestedLightLayer->position[1], 2.f, 1e-4f,
+                  "nested light position preserves the in-precomp parent offset");
+        check(nestedLightLayer->light.has_value() &&
+                  std::abs(nestedLightLayer->light->intensity - 5.f) < 1e-5f,
+              "nested light intensity is attenuated by the precomp opacity");
+        const AnimationTrackPlan* intensityTrack = findTrack(*nestedLightLayer, "light_intensity");
+        check(intensityTrack != nullptr && intensityTrack->keyframes.size() == 25,
+              "nested light animation follows the outer timeline");
+        if (intensityTrack != nullptr)
+            checkNear(intensityTrack->keyframes[12].value[0], 6.25f, 1e-4f,
+                      "nested light intensity samples the precomp local time and opacity");
+    }
+    if (first != nullptr && secondLayer != nullptr) {
+        checkNear(first->position[0], 8.f, 1e-4f,
+                  "precomp flattening composes the nested parent and precomp world position");
+        checkNear(first->position[1], 2.f, 1e-4f,
+                  "precomp flattening preserves the nested vertical offset");
+        checkNear(first->opacity.value_or(-1.f), 0.4f, 1e-5f,
+                  "precomp flattening multiplies parent and child opacity");
+        const AnimationTrackPlan* positionTrack = findTrack(*first, "position");
+        const AnimationTrackPlan* opacityTrack = findTrack(*first, "opacity");
+        check(positionTrack != nullptr && positionTrack->keyframes.size() == 25,
+              "precomp flattening emits a dense outer-timeline transform animation");
+        check(opacityTrack != nullptr && opacityTrack->keyframes.size() == 25,
+              "precomp flattening emits a dense outer-timeline opacity animation");
+        if (positionTrack != nullptr)
+            checkNear(positionTrack->keyframes[12].value[0], 10.5f, 1e-4f,
+                      "nested time remap samples the child on its local timeline");
+        if (opacityTrack != nullptr)
+            checkNear(opacityTrack->keyframes[12].value[0], 0.f, 1e-5f,
+                      "nested lifetime visibility propagates into flattened opacity");
+        checkNear(secondLayer->position[0], 18.f, 1e-4f,
+                  "each precomp instance receives its own flattened world transform");
+    }
+
+    RenderPlanLoweringOptions resolvedOptions = options;
+    resolvedOptions.schema = kRenderPlanSchemaV3;
+    resolvedOptions.requireResolvedLayerSamples = true;
+    const auto resolvedPlan = lowerToRenderPlan(outer, resolvedOptions);
+    const LayerPlan* resolvedFirst = findLayer(resolvedPlan, "50/101");
+    check(resolvedFirst != nullptr && resolvedFirst->transform_samples.size() == 25 &&
+              !resolvedFirst->animation,
+          "precomp layers support resolved V3 transform samples without retained animation");
+    if (resolvedFirst != nullptr) {
+        const auto sample = std::find_if(resolvedFirst->transform_samples.begin(),
+            resolvedFirst->transform_samples.end(),
+            [](const LayerPlan::ResolvedTransformSample& value) { return value.frame == 12.0; });
+        check(sample != resolvedFirst->transform_samples.end() &&
+                  std::abs(sample->position[0] - 10.5f) < 1e-4f &&
+                  std::abs(sample->opacity) < 1e-5f,
+              "resolved precomp samples use the same local time and composed visibility");
+    }
+
+    MotionScene collision("collision", 24.f);
+    auto& top = collision.addContent(101, "top", ContentRef::image("top.png", Vector2(4.f, 4.f)));
+    top.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+    top.tracks.position.add(1.f, Vector3(0.f, 0.f, 0.f));
+    auto& collisionPrecomp = collision.addNull(50, "collision precomp");
+    collisionPrecomp.precomp = CompositionRef{nested, 24.f};
+    collisionPrecomp.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+    collisionPrecomp.tracks.position.add(1.f, Vector3(0.f, 0.f, 0.f));
+    RenderPlanLoweringOptions collisionOptions = options;
+    collisionOptions.contentLayers.clear();
+    LayerPlan topPlan;
+    topPlan.type = LayerType::Image;
+    topPlan.asset = "top.png";
+    topPlan.size = {4.f, 4.f};
+    topPlan.size_dimensions = 2;
+    LayerPlan nestedPlan = content;
+    collisionOptions.contentLayers.emplace("101", topPlan);
+    collisionOptions.contentLayers.emplace("50/101", nestedPlan);
+    const auto collisionPlan = lowerToRenderPlan(collision, collisionOptions);
+    check(findLayer(collisionPlan, "101") != nullptr && findLayer(collisionPlan, "50/101") != nullptr,
+          "a top-level id collision is resolved with exact path-qualified content mappings");
+    RenderPlanLoweringOptions missingNestedMapping = collisionOptions;
+    missingNestedMapping.contentLayers.erase("50/101");
+    check(throwsInvalid([&] { (void)lowerToRenderPlan(collision, missingNestedMapping); }),
+          "a colliding nested source id cannot silently reuse the top-level content plan");
+
+    auto masked = std::make_shared<MotionScene>("masked", 24.f);
+    masked->addContent(201, "mask source", ContentRef::image("mask.png", Vector2(8.f, 8.f)));
+    masked->addContent(202, "masked child", ContentRef::image("masked.png", Vector2(8.f, 8.f)));
+    MotionScene outerMask("outer mask", 24.f);
+    auto& maskPrecomp = outerMask.addNull(60, "mask precomp");
+    maskPrecomp.precomp = CompositionRef{masked, 24.f};
+    maskPrecomp.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+    maskPrecomp.tracks.position.add(1.f, Vector3(0.f, 0.f, 0.f));
+    RenderPlanLoweringOptions maskOptions;
+    maskOptions.width = 640;
+    maskOptions.height = 360;
+    LayerPlan maskedChild;
+    maskedChild.type = LayerType::Image;
+    maskedChild.asset = "masked.png";
+    maskedChild.size = {8.f, 8.f};
+    maskedChild.size_dimensions = 2;
+    maskedChild.track_matte = TrackMattePlan{"201", TrackMatteTypePlan::Alpha};
+    LayerPlan maskSource;
+    maskSource.type = LayerType::Image;
+    maskSource.asset = "mask.png";
+    maskSource.size = {8.f, 8.f};
+    maskSource.size_dimensions = 2;
+    maskOptions.contentLayers.emplace("202", maskedChild);
+    maskOptions.contentLayers.emplace("201", maskSource);
+    const auto maskPlan = lowerToRenderPlan(outerMask, maskOptions);
+    const LayerPlan* maskedOutput = findLayer(maskPlan, "60/202");
+    check(maskedOutput != nullptr && maskedOutput->track_matte &&
+              maskedOutput->track_matte->source == "60/201",
+          "track-matte references are remapped into the flattened precomp id space");
+
+    check(throwsInvalid([&] {
+        MotionScene bad("bad precomp", 24.f);
+        auto& layer = bad.addContent(70, "bad", ContentRef::image("bad.png", Vector2(1.f, 1.f)));
+        layer.precomp = CompositionRef{nested, 24.f};
+        layer.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+        layer.tracks.position.add(1.f, Vector3(0.f, 0.f, 0.f));
+        (void)lowerToRenderPlan(bad, options);
+    }), "a layer cannot simultaneously own content and a nested composition");
+
+    check(throwsInvalid([&] {
+        auto shuttered = std::make_shared<MotionScene>("shuttered", 24.f);
+        shuttered->setShutter(ShutterSettings{180.f, 2});
+        MotionScene outerShutter("outer shutter", 24.f);
+        auto& layer = outerShutter.addNull(81, "shutter precomp");
+        layer.precomp = CompositionRef{shuttered, 24.f};
+        layer.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+        layer.tracks.position.add(1.f, Vector3(0.f, 0.f, 0.f));
+        (void)lowerToRenderPlan(outerShutter, options);
+    }), "nested shutters fail closed instead of composing ambiguously");
+
+    check(throwsInvalid([&] {
+        auto remappedChild = std::make_shared<MotionScene>("remapped child", 24.f);
+        auto& remappedLayer = remappedChild->addContent(
+            301, "remapped child", ContentRef::image("remapped.png", Vector2(1.f, 1.f)));
+        remappedLayer.timeRemap.stretch = 2.f;
+        MotionScene outerRemap("outer remap", 24.f);
+        auto& layer = outerRemap.addNull(93, "remapped precomp");
+        layer.precomp = CompositionRef{remappedChild, 24.f};
+        layer.timeRemap.stretch = 2.f;
+        layer.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+        layer.tracks.position.add(1.f, Vector3(0.f, 0.f, 0.f));
+        (void)lowerToRenderPlan(outerRemap, options);
+    }), "composed time remaps fail closed when a child also remaps its source");
+
+    check(throwsInvalid([&] {
+        auto videoChild = std::make_shared<MotionScene>("video child", 24.f);
+        videoChild->addContent(401, "video", ContentRef::video("video.mp4", Vector2(16.f, 9.f)));
+        MotionScene outerVideo("outer video", 24.f);
+        auto& layer = outerVideo.addNull(94, "video precomp");
+        layer.precomp = CompositionRef{videoChild, 24.f};
+        layer.timeRemap.stretch = 2.f;
+        layer.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+        layer.tracks.position.add(1.f, Vector3(0.f, 0.f, 0.f));
+        (void)lowerToRenderPlan(outerVideo, options);
+    }), "time-dependent video playback inside a time-remapped precomp fails closed");
+
+    check(throwsInvalid([&] {
+        auto cycleA = std::make_shared<MotionScene>("cycle a", 24.f);
+        auto cycleB = std::make_shared<MotionScene>("cycle b", 24.f);
+        cycleA->addNull(90, "a").precomp = CompositionRef{cycleB, 24.f};
+        cycleB->addNull(91, "b").precomp = CompositionRef{cycleA, 24.f};
+        MotionScene cycleOuter("cycle outer", 24.f);
+        auto& layer = cycleOuter.addNull(92, "cycle precomp");
+        layer.precomp = CompositionRef{cycleA, 24.f};
+        layer.tracks.position.add(0.f, Vector3(0.f, 0.f, 0.f));
+        layer.tracks.position.add(1.f, Vector3(0.f, 0.f, 0.f));
+        (void)lowerToRenderPlan(cycleOuter, options);
+    }), "nested composition cycles fail closed");
 }

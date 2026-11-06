@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <map>
 #include <numeric>
@@ -19,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace chrononmotion::motion {
@@ -70,16 +72,224 @@ ResolvedPose resolvePose(const Matrix4& matrix, float opacity, bool visible,
     ensureFinite(result.rotation.x, "rotation");
     ensureFinite(result.rotation.y, "rotation");
     ensureFinite(result.rotation.z, "rotation");
+    result.world = matrix;
     return result;
 }
 
+constexpr std::size_t kMaximumPrecompDepth = 64;
 
+struct PrecompStep {
+    MotionScene* parentScene{};
+    Layer::Id precompId{Layer::kRoot};
+    MotionScene* childScene{};
+};
 
-std::vector<const Layer*> sceneLayers(const MotionScene& scene) {
-    std::vector<const Layer*> result;
-    result.reserve(scene.layerCount());
-    for (const auto& layer : scene.layers()) result.push_back(&layer);
-    return result;
+struct FlattenedLeafInfo {
+    Layer::Id sourceId{Layer::kRoot};
+    MotionScene* scene{};
+    std::vector<PrecompStep> path{};
+};
+
+struct FlattenedLightInfo {
+    Light::Id sourceId{Layer::kRoot};
+    MotionScene* scene{};
+    std::string outputId{};
+};
+
+struct FlattenedInstance {
+    MotionScene* scene{};
+    Layer::Id precompId{Layer::kRoot};
+    std::vector<std::size_t> leaves{};
+    std::vector<std::size_t> lights{};
+    std::vector<FlattenedInstance> children{};
+};
+
+struct FlattenedScene {
+    FlattenedInstance root{};
+    std::vector<FlattenedLayer> layers{};
+    std::vector<FlattenedLeafInfo> leaves{};
+    std::vector<FlattenedLightInfo> lights{};
+};
+
+MotionTime motionTimeFromDoubleFrame(double frame, float fps) {
+    if (!std::isfinite(frame) || !std::isfinite(fps) || fps <= 0.f)
+        throw std::invalid_argument("lowerToRenderPlan: invalid nested composition timestamp");
+    const double whole = std::floor(frame);
+    if (!std::isfinite(whole) || whole < std::numeric_limits<int>::min() ||
+        whole > std::numeric_limits<int>::max())
+        throw std::invalid_argument("lowerToRenderPlan: nested composition timestamp exceeds the frame range");
+    int frameIndex = static_cast<int>(whole);
+    float fraction = static_cast<float>(frame - whole);
+    if (fraction >= 1.f - 1e-6f) {
+        if (frameIndex == std::numeric_limits<int>::max())
+            throw std::invalid_argument("lowerToRenderPlan: nested composition timestamp exceeds the frame range");
+        ++frameIndex;
+        fraction = 0.f;
+    }
+    if (fraction < 0.f) fraction = 0.f;
+    return MotionTime{frameIndex, fps, fraction};
+}
+
+MotionTime motionTimeFromFrame(float frame, float fps) {
+    return motionTimeFromDoubleFrame(static_cast<double>(frame), fps);
+}
+
+FlattenedScene flattenScene(MotionScene& scene) {
+    FlattenedScene flat;
+    flat.root.scene = &scene;
+    std::unordered_set<std::string> topLevelIds;
+    for (const auto& layer : scene.layers())
+        topLevelIds.insert(std::to_string(layer.id));
+
+    std::unordered_set<const MotionScene*> activeScenes;
+    activeScenes.insert(&scene);
+    std::function<void(FlattenedInstance&, MotionScene&, const std::string&,
+                       const std::vector<PrecompStep>&, bool, std::size_t)> build;
+    build = [&](FlattenedInstance& instance, MotionScene& owner, const std::string& prefix,
+                const std::vector<PrecompStep>& path, bool ancestorRemapped, std::size_t depth) {
+        if (depth > kMaximumPrecompDepth)
+            throw std::invalid_argument("lowerToRenderPlan: nested composition depth exceeds the offline lowering limit");
+        instance.scene = &owner;
+        for (const auto& light : owner.lights()) {
+            FlattenedLightInfo info;
+            info.sourceId = light->id;
+            info.scene = &owner;
+            std::string path = prefix;
+            std::replace(path.begin(), path.end(), '/', '_');
+            info.outputId = "motion_light_" + path + std::to_string(light->id);
+            flat.lights.push_back(std::move(info));
+            instance.lights.push_back(flat.lights.size() - 1);
+        }
+        // Preserve the historical numeric light order for every scene instance;
+        // nested instances are new, but top-level plans must not reorder lights.
+        std::sort(instance.lights.begin(), instance.lights.end(),
+                  [&](std::size_t left, std::size_t right) {
+                      return flat.lights[left].sourceId < flat.lights[right].sourceId;
+                  });
+        for (const Layer& layer : owner.layers()) {
+            if (!layer.precomp.empty()) {
+                if (!layer.precomp.valid())
+                    throw std::invalid_argument("lowerToRenderPlan: layer " + std::to_string(layer.id) +
+                                                " has an invalid nested composition");
+                if (!layer.isNull())
+                    throw std::invalid_argument("lowerToRenderPlan: layer " + std::to_string(layer.id) +
+                                                " cannot own renderable content and a nested composition at the same time");
+                if (!std::isfinite(layer.precomp.localFps) || layer.precomp.localFps <= 0.f)
+                    throw std::invalid_argument("lowerToRenderPlan: nested composition local fps must be finite and positive");
+                MotionScene* child = layer.precomp.scene.get();
+                if (child == nullptr)
+                    throw std::invalid_argument("lowerToRenderPlan: nested composition has no scene");
+                if (activeScenes.contains(child))
+                    throw std::invalid_argument("lowerToRenderPlan: nested composition cycle detected at layer " +
+                                                std::to_string(layer.id));
+                if (child->hasShutter())
+                    throw std::invalid_argument("lowerToRenderPlan: nested compositions cannot author a second shutter");
+                const auto problems = child->validate();
+                if (!problems.empty())
+                    throw std::invalid_argument("lowerToRenderPlan: nested composition validation failed: " + problems.front());
+                activeScenes.insert(child);
+                const PrecompStep step{&owner, layer.id, child};
+                std::vector<PrecompStep> childPath = path;
+                childPath.push_back(step);
+                FlattenedInstance childInstance;
+                childInstance.precompId = layer.id;
+                build(childInstance, *child, prefix + std::to_string(layer.id) + "/", childPath,
+                      ancestorRemapped || hasMotionTimeRemap(layer), depth + 1);
+                activeScenes.erase(child);
+                instance.children.push_back(std::move(childInstance));
+                continue;
+            }
+            if (layer.isNull()) {
+                if (!prefix.empty() && layer.name == "Camera")
+                    throw std::invalid_argument("lowerToRenderPlan: a camera controller inside a nested composition is not representable; author the camera on the outer scene");
+                continue;
+            }
+            if (ancestorRemapped && hasMotionTimeRemap(layer))
+                throw std::invalid_argument("lowerToRenderPlan: time remap on layer " + std::to_string(layer.id) +
+                                            " inside a time-remapped nested composition is not representable");
+            if (ancestorRemapped && (layer.content.isVideo() || layer.content.isParticles()))
+                throw std::invalid_argument("lowerToRenderPlan: time-dependent content on layer " +
+                                            std::to_string(layer.id) +
+                                            " inside a time-remapped nested composition is not representable");
+            FlattenedLayer meta(layer);
+            meta.layer.precomp = {};
+            meta.layer.parentId = Layer::kRoot;
+            meta.outputId = prefix.empty() ? std::to_string(layer.id) : prefix + std::to_string(layer.id);
+            meta.sourceId = std::to_string(layer.id);
+            meta.pathPrefix = prefix;
+            meta.fromPrecomp = !prefix.empty();
+            meta.fallbackToSource = !meta.fromPrecomp || !topLevelIds.contains(meta.sourceId);
+            if (flat.layers.size() >= 1024)
+                throw std::invalid_argument("lowerToRenderPlan: flattened composition exceeds the RenderPlan layer limit");
+            const std::size_t index = flat.layers.size();
+            flat.layers.push_back(std::move(meta));
+            flat.leaves.push_back({layer.id, &owner, path});
+            instance.leaves.push_back(index);
+        }
+    };
+    build(flat.root, scene, {}, {}, false, 0);
+    return flat;
+}
+
+LightState composeLightState(const FlattenedLightInfo& info, const Matrix4& parentWorld,
+                             float parentOpacity, bool parentVisible, bool applyParent) {
+    LightState state = info.scene->lightState(info.sourceId);
+    if (applyParent) {
+        state.position = transformPoint(parentWorld, state.position);
+        state.direction.transformDirection(parentWorld);
+        if (state.direction.length() > 1e-8f) state.direction.normalize();
+        Matrix4 world;
+        world.multiplyMatrices(parentWorld, state.world);
+        state.world = world;
+    }
+    state.sample.intensity *= parentOpacity;
+    state.visible = parentVisible && state.visible;
+    if (!state.visible) state.sample.intensity = 0.f;
+    return state;
+}
+
+void resolveInstance(const FlattenedScene& flat, const FlattenedInstance& instance,
+                     const Matrix4& parentWorld, float parentOpacity, bool parentVisible,
+                     const RenderPlanLoweringOptions& options,
+                     std::vector<std::vector<ResolvedPose>>& samples,
+                     std::vector<std::vector<LightState>>* lightSamples = nullptr) {
+    if (lightSamples != nullptr) {
+        const bool applyParent = instance.precompId != Layer::kRoot;
+        for (const std::size_t index : instance.lights)
+            lightSamples->at(index).push_back(composeLightState(
+                flat.lights[index], parentWorld, parentOpacity, parentVisible, applyParent));
+    }
+    for (const std::size_t index : instance.leaves) {
+        const FlattenedLayer& meta = flat.layers[index];
+        const FlattenedLeafInfo& leaf = flat.leaves[index];
+        const LayerState& state = instance.scene->state(leaf.sourceId);
+        Matrix4 world;
+        world.multiplyMatrices(parentWorld, state.world);
+        const LayerPlan* supplied = findContentLayer(options, meta);
+        const bool checkAnchor = meta.layer.content.isParticles() ||
+            (supplied != nullptr &&
+             (supplied->type == LayerType::Text || supplied->type == LayerType::Shape ||
+              supplied->type == LayerType::Particles || supplied->type == LayerType::Light));
+        const bool allowReflection = supplied != nullptr && supplied->type == LayerType::Image;
+        samples[index].push_back(resolvePose(world, parentOpacity * state.worldOpacity,
+                                             parentVisible && state.visible, state.local.anchor,
+                                             checkAnchor, allowReflection));
+    }
+    for (const FlattenedInstance& child : instance.children) {
+        const LayerState& state = instance.scene->state(child.precompId);
+        Matrix4 world;
+        world.multiplyMatrices(parentWorld, state.world);
+        const Layer* precompLayer = instance.scene->findLayer(child.precompId);
+        if (precompLayer == nullptr)
+            throw std::invalid_argument("lowerToRenderPlan: nested composition source layer disappeared during evaluation");
+        const MotionTime& parentTime = instance.scene->lastEvaluatedTime();
+        const float localFrame = precompLayer->mapFrame(
+            static_cast<float>(parentTime.frame) + parentTime.subFrame, parentTime.pts());
+        const MotionTime childTime = motionTimeFromFrame(localFrame, child.scene->fps());
+        child.scene->evaluate(childTime);
+        resolveInstance(flat, child, world, parentOpacity * state.worldOpacity,
+                        parentVisible && state.visible, options, samples, lightSamples);
+    }
 }
 
 } // namespace
@@ -168,23 +378,19 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     if (lastFrame >= 1'000'000)
         throw std::invalid_argument("lowerToRenderPlan: dense bake exceeds the offline sample budget");
     const std::size_t frameCount = static_cast<std::size_t>(lastFrame) + 1;
-    if (frameCount > kMaximumBakedTransformSamples ||
-        (scene.layerCount() != 0 && frameCount > kMaximumBakedTransformSamples / scene.layerCount()) ||
-        frameCount > 1'000'000)
+    if (frameCount > kMaximumBakedTransformSamples || frameCount > 1'000'000)
         throw std::invalid_argument("lowerToRenderPlan: dense bake exceeds the offline sample budget");
-    const auto layerPointers = sceneLayers(scene);
-    std::vector<Layer> metadata;
-    metadata.reserve(layerPointers.size());
-    std::unordered_map<Layer::Id, std::size_t> indices;
-    for (std::size_t index = 0; index < layerPointers.size(); ++index) {
-        metadata.push_back(*layerPointers[index]);
-        indices.emplace(layerPointers[index]->id, index);
-    }
-    std::vector<std::vector<ResolvedPose>> samples(scene.layerCount());
+    const FlattenedScene flattened = flattenScene(scene);
+    const std::vector<FlattenedLayer>& metadata = flattened.layers;
+    if (metadata.size() > 1024 ||
+        (metadata.size() != 0 && frameCount > kMaximumBakedTransformSamples / metadata.size()))
+        throw std::invalid_argument("lowerToRenderPlan: dense bake exceeds the offline sample budget");
+    std::vector<std::vector<ResolvedPose>> samples(metadata.size());
     for (auto& layerSamples : samples) layerSamples.reserve(frameCount);
     std::vector<Matrix4> cameraParentWorlds;
     if (cameraParentId != Layer::kRoot) cameraParentWorlds.reserve(frameCount);
-    std::map<Layer::Id, std::vector<LightState>> lightSamples;
+    std::vector<std::vector<LightState>> lightSamples(flattened.lights.size());
+    for (auto& frames : lightSamples) frames.reserve(frameCount);
     const bool restoreEvaluation = scene.hasEvaluated();
     const MotionTime previousTime = scene.lastEvaluatedTime();
     struct SceneEvaluationRestore {
@@ -198,37 +404,12 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         if (cameraParentId != Layer::kRoot) {
             cameraParentWorlds.push_back(scene.worldMatrix(cameraParentId));
         }
-        const CompiledScene compiled = scene.compile();
-        for (const LightState& light : compiled.lights) {
-            auto& frames = lightSamples[light.sample.id];
-            if (frames.empty()) frames.reserve(frameCount);
-            frames.push_back(light);
-        }
-        if (compiled.transforms.size() != layerPointers.size())
-            throw std::invalid_argument("lowerToRenderPlan: compiled scene omitted authored layer transforms");
-        for (const auto& transform : compiled.transforms) {
-            const auto found = indices.find(transform.id);
-            if (found == indices.end())
-                throw std::invalid_argument("lowerToRenderPlan: compiled scene contains an unknown layer id");
-            const std::size_t index = found->second;
-            const auto supplied = options.contentLayers.find(std::to_string(transform.id));
-            const Layer* authoredLayer = scene.findLayer(transform.id);
-            if (authoredLayer == nullptr)
-                throw std::invalid_argument("lowerToRenderPlan: compiled transform has no authored layer");
-            if (authoredLayer->isNull() && supplied != options.contentLayers.end())
-                throw std::invalid_argument("lowerToRenderPlan: null/controller layers cannot own RenderPlan content");
-            const bool checkAnchor = authoredLayer->content.isParticles() ||
-                (supplied != options.contentLayers.end() &&
-                 (supplied->second.type == LayerType::Text || supplied->second.type == LayerType::Shape ||
-                  supplied->second.type == LayerType::Particles || supplied->second.type == LayerType::Light));
-            const bool allowReflection = supplied != options.contentLayers.end() &&
-                supplied->second.type == LayerType::Image;
-            const ResolvedPose pose = resolvePose(transform.world, transform.opacity, transform.visible,
-                                                  scene.state(transform.id).local.anchor, checkAnchor,
-                                                  allowReflection);
-            samples[index].push_back(pose);
-        }
+        resolveInstance(flattened, flattened.root, Matrix4{}, 1.f, true, options, samples,
+                        &lightSamples);
     }
+    for (const auto& layerSamples : samples)
+        if (layerSamples.size() != frameCount)
+            throw std::invalid_argument("lowerToRenderPlan: flattened composition sample count changed during evaluation");
     RenderPlanLoweringOptions resolvedOptions = options;
     if (primaryCameraRig) {
         if (options.camera && options.camera->type != "perspective")
@@ -244,14 +425,15 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         firstPose.roll = 0.f;
         resolvedOptions.camera = lowerCameraPose(firstPose, nearPlane, farPlane);
     } else if (!options.camera) {
-        for (const auto& layer : metadata) {
+        for (const auto& layer : scene.layers()) {
             if (layer.isNull() && layer.name == "Camera")
                 throw std::invalid_argument("lowerToRenderPlan: a MotionScene camera layer must be supplied through RenderPlanLoweringOptions::cameraRig");
         }
     }
     RenderPlan plan = lowering_detail::lowerSamplesToRenderPlan(
         scene.fps(), frameCount, resolvedOptions, metadata, samples);
-    for (const auto& [lightId, frames] : lightSamples) {
+    for (std::size_t lightIndex = 0; lightIndex < lightSamples.size(); ++lightIndex) {
+        const auto& frames = lightSamples[lightIndex];
         if (frames.size() != frameCount)
             throw std::invalid_argument("lowerToRenderPlan: light sample count changed during frame evaluation");
         const LightSample& firstSample = frames.front().sample;
@@ -261,7 +443,7 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
         }
 
         LayerPlan layer;
-        layer.id = "motion_light_" + std::to_string(lightId);
+        layer.id = flattened.lights[lightIndex].outputId;
         layer.type = LayerType::Light;
         layer.start_frame = chronon3d::Frame{0};
         layer.duration_frames = chronon3d::Frame{static_cast<std::int64_t>(frameCount)};
@@ -360,7 +542,11 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             throw std::invalid_argument("lowerToRenderPlan: explicit sample frames must include every shutter and presentation timestamp");
         }
     }
-    if (options.requireResolvedLayerSamples && sampleFrames.empty()) {
+    // V3 has no legacy integer-TRS path: even when the caller omits the
+    // migration flag, presentation frames are materialized as resolved
+    // transform samples. V2 remains the explicit legacy schema.
+    if ((options.requireResolvedLayerSamples || plan.schema == kRenderPlanSchemaV3) &&
+        sampleFrames.empty()) {
         sampleFrames.reserve(frameCount);
         for (std::size_t frame = 0; frame < frameCount; ++frame)
             sampleFrames.push_back(static_cast<double>(frame));
@@ -378,13 +564,23 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
     }
     if (!sampleFrames.empty()) {
         if (plan.schema != kRenderPlanSchemaV3 ||
-            (scene.layerCount() != 0 && sampleFrames.size() > kMaximumBakedTransformSamples / scene.layerCount()))
+            (metadata.size() != 0 && sampleFrames.size() > kMaximumBakedTransformSamples / metadata.size()))
             throw std::invalid_argument("lowerToRenderPlan: resolved transform bake requires bounded V3 samples");
+        std::unordered_map<std::string, std::size_t> outputIndexById;
+        for (std::size_t index = 0; index < metadata.size(); ++index)
+            outputIndexById.emplace(metadata[index].outputId, index);
+        std::vector<std::vector<ResolvedPose>> resolvedSamples(metadata.size());
+        for (auto& layerSamples : resolvedSamples) layerSamples.reserve(sampleFrames.size());
+        for (double frame : sampleFrames) {
+            scene.evaluate(motionTimeFromDoubleFrame(frame, scene.fps()));
+            resolveInstance(flattened, flattened.root, Matrix4{}, 1.f, true, options, resolvedSamples);
+        }
+        for (const auto& layerSamples : resolvedSamples)
+            if (layerSamples.size() != sampleFrames.size())
+                throw std::invalid_argument("lowerToRenderPlan: flattened resolved sample count changed during evaluation");
         for (auto& output : plan.layers) {
-            const auto authored = std::find_if(metadata.begin(), metadata.end(), [&](const Layer& layer) {
-                return std::to_string(layer.id) == output.id;
-            });
-            if (authored == metadata.end() || authored->isNull()) {
+            const auto found = outputIndexById.find(output.id);
+            if (found == outputIndexById.end()) {
                 if (output.type == LayerType::Light || output.type == LayerType::Mesh)
                     continue;
                 if (output.parent || output.animation || output.follow_path || output.auto_orient ||
@@ -403,9 +599,19 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
                 }
                 continue;
             }
-            if (output.type == LayerType::Light || output.type == LayerType::Mesh)
+            if (output.type == LayerType::Light)
                 throw std::invalid_argument(
-                    "lowerToRenderPlan: resolved layer samples support 2.5D visual layers, not light or mesh layers");
+                    "lowerToRenderPlan: resolved layer samples support 2.5D visual layers, not light layers");
+            if (output.type == LayerType::Mesh) {
+                const auto& poses = resolvedSamples[found->second];
+                const ResolvedPose& firstPose = poses.front();
+                for (const ResolvedPose& pose : poses)
+                    if (pose.position != firstPose.position || pose.scale != firstPose.scale ||
+                        pose.rotation != firstPose.rotation || pose.opacity != firstPose.opacity)
+                        throw std::invalid_argument(
+                            "lowerToRenderPlan: animated mesh transforms cannot be represented as resolved layer samples");
+                continue;
+            }
             if (output.animation) {
                 for (const auto& track : output.animation->tracks)
                     if (track.property != "position" && track.property != "scale" &&
@@ -414,30 +620,19 @@ RenderPlan lowerToRenderPlan(MotionScene& scene, const RenderPlanLoweringOptions
             }
             output.animation.reset();
             output.transform_samples.reserve(sampleFrames.size());
-            for (double frame : sampleFrames) {
-                const double wholeFrame = std::floor(frame);
-                int whole = static_cast<int>(wholeFrame);
-                float fraction = static_cast<float>(frame - wholeFrame);
-                if (fraction >= 1.f) { ++whole; fraction = 0.f; }
-                scene.evaluate(MotionTime{whole, scene.fps(), fraction});
-                const auto compiled = scene.compile();
-                const auto transform = std::find_if(compiled.transforms.begin(), compiled.transforms.end(),
-                    [&](const auto& value) { return value.id == authored->id; });
-                if (transform == compiled.transforms.end())
-                    throw std::invalid_argument("lowerToRenderPlan: missing resolved shutter layer");
-                const bool primitive = output.type == LayerType::Text || output.type == LayerType::Shape;
-                const auto pose = resolvePose(transform->world, transform->opacity, transform->visible,
-                    scene.state(authored->id).local.anchor, primitive, output.type == LayerType::Image);
+            const auto& poses = resolvedSamples[found->second];
+            for (std::size_t sampleIndex = 0; sampleIndex < sampleFrames.size(); ++sampleIndex) {
+                const ResolvedPose& pose = poses[sampleIndex];
                 // Reflect the complete world rotation, not just Euler Z.
                 // The consumer reconstructs qZ*qY*qX, so use its inverse.
                 Matrix4 rotation;
                 const float sx = pose.scale.x, sy = pose.scale.y, sz = pose.scale.z;
                 rotation.makeBasis(
-                    Vector3{transform->world.elements[0] / sx, transform->world.elements[1] / sx, -transform->world.elements[2] / sx},
-                    Vector3{transform->world.elements[4] / sy, transform->world.elements[5] / sy, -transform->world.elements[6] / sy},
-                    Vector3{-transform->world.elements[8] / sz, -transform->world.elements[9] / sz, transform->world.elements[10] / sz});
+                    Vector3{pose.world.elements[0] / sx, pose.world.elements[1] / sx, -pose.world.elements[2] / sx},
+                    Vector3{pose.world.elements[4] / sy, pose.world.elements[5] / sy, -pose.world.elements[6] / sy},
+                    Vector3{-pose.world.elements[8] / sz, -pose.world.elements[9] / sz, pose.world.elements[10] / sz});
                 const auto euler = chrononCameraEuler(rotation);
-                output.transform_samples.push_back({frame,
+                output.transform_samples.push_back({sampleFrames[sampleIndex],
                     {pose.position.x, pose.position.y, -pose.position.z},
                     {sx, sy, sz},
                     {math::radToDeg(euler[0]), math::radToDeg(euler[1]), math::radToDeg(euler[2])},

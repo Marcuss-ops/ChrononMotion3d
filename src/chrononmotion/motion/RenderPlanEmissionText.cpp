@@ -169,6 +169,23 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
             }
             writer.key("fill");
             writer.text(style.fill);
+            if (style.gel_surface) {
+                writer.key("gel_surface");
+                writer.boolean(true);
+            }
+            if (style.gel_light_azimuth_radians || style.gel_light_elevation) {
+                writer.key("gel_light");
+                writer.beginObject();
+                if (style.gel_light_azimuth_radians) {
+                    writer.key("azimuth_radians");
+                    writer.number(*style.gel_light_azimuth_radians);
+                }
+                if (style.gel_light_elevation) {
+                    writer.key("elevation");
+                    writer.number(*style.gel_light_elevation);
+                }
+                writer.endObject();
+            }
             if (style.glow) {
                 writer.key("glow");
                 writer.beginObject();

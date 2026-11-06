@@ -18,10 +18,10 @@ Measured against the checkout this fork starts from (library sources only:
 
 | | upstream threepp | ChrononMotion |
 |---|---|---|
-| files | ~2.160 | 125 |
-| lines | ~259.300 | ~17.700 (6.8%) |
+| files | ~2.160 | ~130 retained upstream files |
+| lines | ~259.300 | ~17.8k (6.9%) |
 | third-party deps at configure time | vcpkg features, FetchContent (GLFW, glslang, V-HACD, PhysX, pybind11, …) | none |
-| build products | shared/static lib, editor, player, Python module, examples, tests | one static library + twelve test executables + separately registered boundary gate |
+| build products | shared/static lib, editor, player, Python module, examples, tests | one static library + the test targets registered in CMakeLists + separately registered boundary gate |
 
 The deletions are **committed**, so this file is the ledger for them rather than
 a pending diff. Every removed file is still reachable from the history, and any
@@ -202,8 +202,8 @@ boundary. It does not allocate GPU resources or invoke a renderer, and the snaps
 for a future renderer or exporter to consume.
 
 `include/chrononmotion/motion/` is the *motion* half a deterministic compiler
-samples from — eleven headers, twelve translation units, no new dependency, and
-no content machinery:
+samples from — a header per responsibility, no new dependency, and no content
+machinery:
 
 | file | responsibility |
 |---|---|
@@ -361,7 +361,7 @@ with `include/` as its only include path and no dependency to fetch. Consumers
 link it and include `chrononmotion/chrononmotion.hpp` (the umbrella was trimmed to the
 keep-set and then extended with `motion/Motion.hpp`) or the individual headers.
 
-The compile-time contract is split across twelve test executables plus the separately registered boundary gate:
+The compile-time contract is split across the test targets registered by CMakeLists plus the separately registered boundary gate:
 
 * `chrononmotion_smoke` pins the fork itself — hierarchy and world transforms,
   `localToWorld`/`worldToLocal`, the camera vs node `lookAt` conventions, the
@@ -564,10 +564,13 @@ scenes; use the emission writer for hand-authored typed plans.
 4. **More geometry primitives.** Box, Plane and Sphere are re-imported as small,
    renderer-free `BufferGeometry` builders. The rest of upstream's geometry
    system (shape/extrusion and specialized primitives) remains deferred.
-5. **No serialization.** The loader/exporter pair is gone, so `uuid()`/`setUuid()`
-   and `Layers`-style filtering have no consumer yet. Any per-layer attachment
-   the engine needs later should be a typed field, not a return of the
-   `userData` bag.
+5. **Serialization is scene data only.** `MotionScene::toJson`,
+   `SceneExport` and `SceneImport` write and read the versioned
+   `chrononmotion.scene` document — layers, tracks, lights, precomps, shutter
+   and mesh attachments — with fail-closed validation. Content bytes, raster
+   data and decoded frames are never serialized. `uuid()`/`setUuid()` and
+   `Layers`-style filtering still have no consumer, and the `userData` bag was
+   not reintroduced: any per-layer attachment is a typed field.
 6. **Upstream's test suite.** The Catch2 tests were deleted with `tests/`.
    The pinned inventory and compatibility classification are in
    `docs/THREEPP_TEST_COMPATIBILITY.md` at threepp revision
@@ -690,5 +693,7 @@ retaining handoff/shake data and behavior under `motion::camera`. The focused
 sequence and shake tests, authoring suite (373 checks), and camera bake
 roundtrip (832 checks) pass. This reduces the extended inventory from 15 to 13
 headers (the ticket's 13-header target inventory excludes `AspectReframe` and
-`EyeTrace`); the applier-to-typed-preset migration and target of ≤6 remain open.
+`EyeTrace`); the applier-to-typed-preset migration and the target of ≤6 are
+deferred to v2.1 by the 2026-11-04 administrative closeout and are not
+current-milestone work.
 

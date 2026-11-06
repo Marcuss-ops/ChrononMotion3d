@@ -33,20 +33,6 @@ float easeInOut(float t) {
     t = clamp01(t);
     return t * t * (3.f - 2.f * t);
 }
-float easeOut(float t) {
-    t = clamp01(t);
-    return 1.f - (1.f - t) * (1.f - t) * (1.f - t);
-}
-Sample lerp(const Sample& a, const Sample& b, float t) {
-    const float e = easeInOut(t);
-    return {
-        a.x + (b.x - a.x) * e, a.y + (b.y - a.y) * e, a.z + (b.z - a.z) * e,
-        a.sx + (b.sx - a.sx) * e, a.sy + (b.sy - a.sy) * e, a.sz + (b.sz - a.sz) * e,
-        a.rx + (b.rx - a.rx) * e, a.ry + (b.ry - a.ry) * e, a.rz + (b.rz - a.rz) * e,
-        a.opacity + (b.opacity - a.opacity) * e
-    };
-}
-
 json vec3(float x, float y, float z) { return json::array({x, y, z}); }
 
 json sampleJson(int frame, const Sample& s) {
@@ -268,7 +254,7 @@ json carouselScene(int frames) {
         {"duration_frames", frames}
     });
     layers.push_back(imageLayer(5, "assets/glow_amber.png", 1200.f, 840.f, frames,
-        [&](float t) {
+        [&](float) {
             Sample s;
             s.x = 0.f;
             s.y = -40.f;

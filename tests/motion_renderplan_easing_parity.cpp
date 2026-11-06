@@ -38,28 +38,20 @@ void checkTrackParity(const char* name, const Easing& easing) {
     const auto plan = lowerToRenderPlan(scene, options);
     const auto layerPlan = std::find_if(plan.layers.begin(), plan.layers.end(),
         [](const auto& candidate) { return candidate.id == "41"; });
-    check(layerPlan != plan.layers.end() && layerPlan->animation.has_value(),
-          "lowered easing canary layer and animation exist");
-    if (layerPlan == plan.layers.end() || !layerPlan->animation) return;
-
-    const auto track = std::find_if(layerPlan->animation->tracks.begin(),
-                                    layerPlan->animation->tracks.end(),
-        [](const auto& candidate) { return candidate.property == "position"; });
-    check(track != layerPlan->animation->tracks.end(), "lowered position track exists");
-    if (track == layerPlan->animation->tracks.end()) return;
-    check(track->keyframes.size() == 31, "adapter emits one sample for every frame");
-    for (const auto& key : track->keyframes) {
-        const float seconds = static_cast<float>(key.frame.integral()) / fps;
+    check(layerPlan != plan.layers.end() && !layerPlan->transform_samples.empty(),
+          "lowered easing canary layer and resolved samples exist");
+    if (layerPlan == plan.layers.end()) return;
+    check(!layerPlan->animation, "V3 easing lowers without a legacy integer-TRS animation");
+    check(layerPlan->transform_samples.size() == 31,
+          "adapter emits one resolved sample for every frame");
+    for (const auto& sample : layerPlan->transform_samples) {
+        const float seconds = static_cast<float>(sample.frame) / fps;
         const Vector3 motionSample = layer.tracks.position.sample(seconds);
-        if (key.value.size() != 3) {
-            check(false, "lowered position sample retains three components");
-            continue;
-        }
-        checkNear(key.value[0], motionSample.x, 2e-4f, "RenderPlan X equals Motion sample");
-        checkNear(key.value[1], motionSample.y, 2e-4f, "RenderPlan Y equals Motion sample");
+        checkNear(sample.position[0], motionSample.x, 2e-4f, "RenderPlan X equals Motion sample");
+        checkNear(sample.position[1], motionSample.y, 2e-4f, "RenderPlan Y equals Motion sample");
         // The adapter mirrors Motion's -Z-forward depth into RenderPlan's
         // +Z-forward space, just as it does for static layers and cameras.
-        checkNear(key.value[2], -motionSample.z, 2e-4f, "RenderPlan Z equals mirrored Motion depth");
+        checkNear(sample.position[2], -motionSample.z, 2e-4f, "RenderPlan Z equals mirrored Motion depth");
     }
 }
 

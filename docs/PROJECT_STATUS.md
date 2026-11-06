@@ -1,6 +1,17 @@
 # ChrononMotion3D ticket status
 
-Updated 2026-11-01 from local source and recorded Release test evidence.
+> **Stato corrente (2026-11-05).** Le quattro schede V1 restano **COMPLETE e
+> archiviate**: `TICKET-GLTF-ANIMATED-V1` e `TICKET-HDRI-ENV-V1` il 2026-11-03,
+> `TICKET-LIGHT-RIG-V1` e `TICKET-PBR-MATERIALS-V1` il 2026-10-28. Il ticket cross-repo `TICKET-TEXT-2_5D-CAMERA` è **C3D-owned**: CM3D non ha
+> lavoro sul testo. L'autorità di stato è
+> [`docs/stato/chronon-motion3d.md`](../../docs/stato/chronon-motion3d.md); le
+> sezioni sotto sono lo snapshot storico del 2026-11-01 e non vanno usate per
+> decidere cosa è aperto.
+
+> **Historical snapshot — do not update.** Measurements recorded 2026-11-01;
+> current status and open gates live in
+> [`docs/stato/chronon-motion3d.md`](../../docs/stato/chronon-motion3d.md).
+> This file is kept only as the chronicle of the V1 closures.
 
 ## Camera checkpoint (2026-10-31)
 
@@ -24,7 +35,7 @@ Updated 2026-11-01 from local source and recorded Release test evidence.
   consecutive dumps. Focused tests `chrononmotion_light_rig` and
   `chrononmotion_authoring` pass.
 
-## Partial feature tickets
+## Historical snapshot — archived feature tickets (2026-11-01)
 
 - `TICKET-GLTF-ANIMATED-V1`: motion-only JSON import, deterministic skin /
   POSITION/NORMAL morph bake, CUBICSPLINE TRS/quaternion/morph-weight
@@ -79,7 +90,9 @@ Updated 2026-11-01 from local source and recorded Release test evidence.
   `--dump-golden` runs; the targeted Release tests for rig pipeline, HDRI,
   LightRig, authoring bridge, glTF, and all showcase cases pass 6/6.
 
-## Open feature tickets
+## Historical snapshot — closed feature tickets (2026-11-01)
+
+Nessuna di queste voci è aperta: vedi lo stato corrente sopra.
 
 - `TICKET-HDRI-ENV-V1`: reader and deterministic producer/consumer schema
   bridge implemented, and the quantitative specular golden is now closed
