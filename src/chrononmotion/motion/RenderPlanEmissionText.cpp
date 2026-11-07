@@ -173,6 +173,16 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 writer.key("gel_surface");
                 writer.boolean(true);
             }
+            if (style.extruded_text) {
+                writer.key("extruded_text");
+                writer.boolean(true);
+                writer.key("extrusion_depth");
+                writer.number(style.extrusion_depth);
+            }
+            if (!style.gel_transmission_enabled) {
+                writer.key("gel_transmission");
+                writer.boolean(false);
+            }
             if (style.gel_soft_fusion) {
                 writer.key("gel_soft_fusion");
                 writer.boolean(*style.gel_soft_fusion);
