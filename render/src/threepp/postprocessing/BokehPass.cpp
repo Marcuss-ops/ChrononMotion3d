@@ -14,7 +14,7 @@ using namespace threepp;
 
 
 BokehPass::BokehPass(Scene& scene, Camera& camera, float focus, float aperture, float maxblur)
-    : focus(focus), aperture(aperture), maxblur(maxblur), aspect(1.f),
+    : focus(focus), aperture(aperture), maxblur(maxblur), aspect(1.f), disk(false),
       scene_(&scene), camera_(&camera) {
 
     // Depth is packed into RGBA rather than sampled from a depth texture, so
@@ -47,6 +47,18 @@ BokehPass::BokehPass(Scene& scene, Camera& camera, float focus, float aperture, 
     bokehMaterial_->uniforms.at("tDepth").setValue(renderTargetDepth_->texture.get());
 
     fsQuad_ = std::make_unique<FullScreenQuad>(bokehMaterial_);
+}
+
+void BokehPass::setDisk(bool value) {
+
+    if (disk == value) return;
+    disk = value;
+    if (disk) {
+        bokehMaterial_->defines["DISK_BOKEH"] = "1";
+    } else {
+        bokehMaterial_->defines.erase("DISK_BOKEH");
+    }
+    bokehMaterial_->needsUpdate();
 }
 
 void BokehPass::setSize(unsigned int width, unsigned int height) {
