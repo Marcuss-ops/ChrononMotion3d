@@ -405,6 +405,20 @@ target_include_directories(chrononmotion_render_shadow_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
 target_link_libraries(chrononmotion_render_shadow_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
+add_executable(chrononmotion_render_layered_youtube spike/layered_youtube_cutout.cpp)
+target_include_directories(chrononmotion_render_layered_youtube PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_compile_definitions(chrononmotion_render_layered_youtube PRIVATE
+        CHRONONMOTION_SPIKE_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/spike/assets")
+target_link_libraries(chrononmotion_render_layered_youtube PRIVATE chrononmotion_render)
+add_executable(chrononmotion_render_layered_camera_dof spike/layered_youtube_camera_dof.cpp)
+target_include_directories(chrononmotion_render_layered_camera_dof PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_compile_definitions(chrononmotion_render_layered_camera_dof PRIVATE
+        CHRONONMOTION_SPIKE_ASSET_DIR="${CMAKE_CURRENT_SOURCE_DIR}/spike/assets")
+target_link_libraries(chrononmotion_render_layered_camera_dof PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_portrait_mesh spike/portrait_mesh.cpp)
 target_link_libraries(chrononmotion_render_portrait_mesh PRIVATE chrononmotion_render)
 add_executable(chrononmotion_render_mrbeast_rig spike/mrbeast_rig.cpp)

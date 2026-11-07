@@ -208,9 +208,10 @@
   `castsShadow`/`shadowRadius`/`shadowBias` (RenderPlanLowering.cpp:224-226).
   Chiusura = aggiungere emissione `shadow_blur/shadow_opacity` al lowering
   quando C3D espone i relativi per-layer kernel; NON duplicare i campi altrove.
-  Stato 2026-11-06: validazione, serializzazione e round-trip sono verdi lato
-  CM3D; l'emission resta **BLOCKED** sul kernel C3D. Non è un item reachable
-  in questa milestone.
+  Stato 2026-11-07: il kernel C3D per-layer esiste (`ShadowNode` con override
+  `shadow_blur`/`shadow_opacity` nel wire e nel graph builder); resta**BLOCKED**
+  solo l'emission CM3D, che questo documento vieta di duplicare altrove.
+  Non è un item reachable in questa milestone.
 
 ### F5 — Roving key: fuori scope V1, fail-closed (2026-11-06)
 - `Keyframe` non ha un flag roving e l'emission rifiuta un key di piano con

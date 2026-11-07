@@ -76,10 +76,26 @@ namespace threepp::shaders {
                     vec2 aspectcorrect = vec2( 1.0 / aspect, 1.0 );
                     vec2 dofblur = vec2( clamp( factor * aperture, -maxblur, maxblur ) );
 
-                    // A dense weighted Gaussian avoids separated silhouettes
-                    // and the cross-hatch left by sparse bokeh taps on text.
                     vec4 col = vec4( 0.0 );
                     float weightSum = 0.0;
+                    #ifdef DISK_BOKEH
+                    // Vogel spiral over the aperture disk: uniform area
+                    // coverage with a slight bright rim, closer to a physical
+                    // out-of-focus highlight than a Gaussian falloff.
+                    const int TAPS = 96;
+                    const float GOLDEN_ANGLE = 2.39996323;
+                    for ( int i = 0; i < TAPS; ++i ) {
+                        float fi = float( i );
+                        float r = sqrt( ( fi + 0.5 ) / float( TAPS ) );
+                        float theta = fi * GOLDEN_ANGLE;
+                        vec2 p = vec2( cos( theta ), sin( theta ) ) * r;
+                        float weight = 1.0 + 0.30 * smoothstep( 0.72, 1.0, r );
+                        col += texture2D( tColor, vUv.xy + ( p * aspectcorrect ) * dofblur ) * weight;
+                        weightSum += weight;
+                    }
+                    #else
+                    // Legacy dense weighted Gaussian: stable on text and thin
+                    // silhouettes, kept as the default for existing frames.
                     for ( int y = -10; y <= 10; ++y ) {
                         for ( int x = -10; x <= 10; ++x ) {
                             vec2 p = vec2( float( x ), float( y ) ) / 10.0;
@@ -88,6 +104,7 @@ namespace threepp::shaders {
                             weightSum += weight;
                         }
                     }
+                    #endif
                     // Filter RGBA together: forcing alpha opaque destroys
                     // transparent plates before downstream compositing.
                     gl_FragColor = col / weightSum;

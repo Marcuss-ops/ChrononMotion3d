@@ -40,6 +40,12 @@ namespace threepp {
         // round on a non-square frame. Follows setSize unless assigned.
         float aspect;
 
+        // Opt-in photographic disk kernel (Vogel spiral, 96 taps) instead of
+        // the legacy 21x21 Gaussian. Off by default so existing certification
+        // frames keep their exact pixels.
+        bool disk = false;
+        void setDisk(bool value);
+
         BokehPass(Scene& scene, Camera& camera,
                   float focus = 1.f,
                   float aperture = 0.025f,
