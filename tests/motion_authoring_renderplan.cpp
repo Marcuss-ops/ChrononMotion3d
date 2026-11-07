@@ -846,6 +846,7 @@ void testTypedChronon3dLowering() {
     semanticText.style->gel_surface = true;
     semanticText.style->gel_light_azimuth_radians = 1.2f;
     semanticText.style->gel_light_elevation = 0.05f;
+    semanticText.style->gel_soft_fusion = false;
     chronon3d::render_plan::TextSelectorPlan selector;
     selector.unit = "word";
     selector.shape = "square";
@@ -874,6 +875,7 @@ void testTypedChronon3dLowering() {
           semanticJson.at("layers").at(0).at("text_animators").at(0)
               .at("properties").at(1).at("property") == "fill_color" &&
           semanticJson.at("layers").at(0).at("style").at("gel_surface") == true &&
+          semanticJson.at("layers").at(0).at("style").at("gel_soft_fusion") == false &&
           std::abs(semanticJson.at("layers").at(0).at("style").at("gel_light")
               .at("azimuth_radians").get<float>() - 1.2f) < 1e-6f &&
           std::abs(semanticJson.at("layers").at(0).at("style").at("gel_light")
@@ -883,6 +885,10 @@ void testTypedChronon3dLowering() {
     invalidGelLight.layers[0].style->gel_surface = false;
     check(!renderPlanEmissionProblem(invalidGelLight).empty(),
           "gel light parameters fail closed without the gel surface material");
+    auto invalidGelFusion = semanticPlan;
+    invalidGelFusion.layers[0].style->gel_surface = false;
+    check(!renderPlanEmissionProblem(invalidGelFusion).empty(),
+          "gel soft fusion fails closed without the gel surface material");
     auto v2TextAnimatorPlan = semanticPlan;
     v2TextAnimatorPlan.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
     check(!renderPlanEmissionProblem(v2TextAnimatorPlan).empty(),

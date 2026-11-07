@@ -43,6 +43,17 @@ int main() try {
     check(plan.layers[0].animation->tracks.front().keyframes.size() == 31,
           "lowering produces the requested frame samples");
 
+    auto aeRig = lightRigPresets::make("soft_top");
+    aeRig.sources[0].falloff = LightFalloff::AeInverseSquareClamped;
+    chronon3d::render_plan::RenderPlan aePlan;
+    appendLightRigToRenderPlan(aePlan, aeRig, 30.f, 2);
+    check(aePlan.layers[0].light.has_value() &&
+              aePlan.layers[0].light->falloff ==
+                  chronon3d::render_plan::LightFalloffPlan::AeInverseSquareClamped,
+          "AE inverse-square-clamped falloff reaches the RenderPlan");
+    check(aeRig.serialize().find("ae_inverse_square_clamped") != std::string::npos,
+          "AE falloff is preserved by the light rig contract");
+
     auto invalid = rig;
     invalid.sources.resize(LightRig::kMaxSources + 1);
     bool rejected = false;

@@ -54,6 +54,9 @@ void appendLightRigToRenderPlan(chronon3d::render_plan::RenderPlan& plan,
         payload.direction = {first.direction.x, first.direction.y, -first.direction.z};
         payload.range = first.range;
         payload.decay = first.decay;
+        payload.falloff = first.falloff == LightFalloff::AeInverseSquareClamped
+            ? LightFalloffPlan::AeInverseSquareClamped
+            : LightFalloffPlan::SmoothInversePower;
         payload.angle = first.angle;
         payload.penumbra = first.penumbra;
         payload.cast_shadow = first.castsShadow;

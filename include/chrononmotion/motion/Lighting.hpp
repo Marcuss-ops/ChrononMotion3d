@@ -4,17 +4,47 @@
 #include "chrononmotion/math/Color.hpp"
 #include "chrononmotion/motion/Layer.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 namespace chrononmotion::motion {
+
+    /// After Effects authors a spot's Cone Angle as the full aperture in
+    /// degrees. The render-plan field is the half-angle in radians, so this is
+    /// the one conversion an AE authoring adapter needs. Rejects values that
+    /// would produce a degenerate or over-wide cone.
+    [[nodiscard]] inline float aeSpotHalfAngleRadians(float totalDegrees) {
+        if (!std::isfinite(totalDegrees) || totalDegrees <= 0.f || totalDegrees > 360.f) {
+            throw std::invalid_argument("aeSpotHalfAngleRadians: cone angle must be finite and in (0, 360] degrees");
+        }
+        return totalDegrees * 0.5f * 3.14159265358979323846f / 180.f;
+    }
+
+    /// After Effects Cone Feather is a percentage of the cone's half-angle.
+    /// The render-plan field is a normalized [0, 1] penumbra.
+    [[nodiscard]] inline float aeSpotPenumbra(float featherPercent) {
+        if (!std::isfinite(featherPercent) || featherPercent < 0.f || featherPercent > 100.f) {
+            throw std::invalid_argument("aeSpotPenumbra: feather must be finite and in [0, 100] percent");
+        }
+        return featherPercent * 0.01f;
+    }
 
     enum class LightKind {
         Ambient,
         Directional,
         Point,
         Spot
+    };
+
+    /// `SmoothInversePower` preserves the existing radius/decay curve.
+    /// `AeInverseSquareClamped` is After Effects' Inverse Square Clamped:
+    /// full strength inside `range`, then (range/d)^2.
+    enum class LightFalloff {
+        SmoothInversePower,
+        AeInverseSquareClamped
     };
 
     struct LightSample {
@@ -34,6 +64,7 @@ namespace chrononmotion::motion {
         float angle{0.f};
         float penumbra{0.f};
         float decay{1.f};
+        LightFalloff falloff{LightFalloff::SmoothInversePower};
     };
 
     /// Renderer-independent light authoring state. It owns no Object3D and no
@@ -50,6 +81,7 @@ namespace chrononmotion::motion {
         Id parentId{Layer::kRoot};
         Color color{};
         float intensity{1.f};
+        LightFalloff falloff{LightFalloff::SmoothInversePower};
         Transform transform{};
         Track<float> intensityTrack{};
         Track<Color> colorTrack{};
@@ -104,6 +136,19 @@ namespace chrononmotion::motion {
         explicit SpotLight(Id id, std::string name = "SpotLight");
 
         [[nodiscard]] LightSample sample(float seconds) const override;
+
+        /// Set the cone from AE's full Cone Angle in degrees.
+        SpotLight& setAeConeAngleDegrees(float totalDegrees) {
+            angle = aeSpotHalfAngleRadians(totalDegrees);
+            return *this;
+        }
+
+        /// Set the penumbra from AE's Cone Feather percentage.
+        SpotLight& setAeConeFeatherPercent(float featherPercent) {
+            penumbra = aeSpotPenumbra(featherPercent);
+            return *this;
+        }
+
         Id targetId{Layer::kRoot};
         float range{0.f};
         float angle{0.7853981633974483f};

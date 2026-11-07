@@ -45,6 +45,14 @@ void writeString(std::ostringstream& out, const std::string& value) {
     out << '"';
 }
 
+const char* falloffName(LightFalloff falloff) {
+    switch (falloff) {
+        case LightFalloff::SmoothInversePower: return "smooth_inverse_power";
+        case LightFalloff::AeInverseSquareClamped: return "ae_inverse_square_clamped";
+    }
+    throw std::invalid_argument("LightRig: unknown falloff model");
+}
+
 const char* kindName(LightKind kind) {
     switch (kind) {
         case LightKind::Directional: return "directional";
@@ -106,6 +114,7 @@ std::vector<LightSample> LightRig::sample(float seconds) const {
         sample.intensity = source.intensity;
         sample.range = source.range;
         sample.decay = source.decay;
+        sample.falloff = source.falloff;
         sample.angle = source.angle;
         sample.penumbra = source.penumbra;
         sample.castsShadow = source.castsShadow;
@@ -143,7 +152,8 @@ std::string LightRig::serialize() const {
         out << ",\"direction\":"; writeVec(out, s.direction);
         out << ",\"color\":[" << s.color.r << ',' << s.color.g << ',' << s.color.b << ",1"
             << "],\"intensity\":" << s.intensity << ",\"range\":" << s.range
-            << ",\"decay\":" << s.decay << ",\"angle\":" << s.angle
+            << ",\"decay\":" << s.decay << ",\"falloff\":\"" << falloffName(s.falloff)
+            << "\",\"angle\":" << s.angle
             << ",\"penumbra\":" << s.penumbra << ",\"casts_shadow\":"
             << (s.castsShadow ? "true" : "false") << '}';
     }

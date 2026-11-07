@@ -173,6 +173,10 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 writer.key("gel_surface");
                 writer.boolean(true);
             }
+            if (style.gel_soft_fusion) {
+                writer.key("gel_soft_fusion");
+                writer.boolean(*style.gel_soft_fusion);
+            }
             if (style.gel_light_azimuth_radians || style.gel_light_elevation) {
                 writer.key("gel_light");
                 writer.beginObject();

@@ -376,6 +376,13 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_link_libraries(chrononmotion_view PRIVATE chrononmotion)
     add_test(NAME chrononmotion_view COMMAND chrononmotion_view)
 
+    # CM3D-side AE authoring contracts: zoom/FOV, two-node camera at the pole,
+    # and Cone Angle/Feather unit conversion. Renderer kernels stay outside
+    # this target.
+    add_executable(chrononmotion_ae_parity tests/motion_ae_parity.cpp)
+    target_link_libraries(chrononmotion_ae_parity PRIVATE chrononmotion)
+    add_test(NAME chrononmotion_ae_parity COMMAND chrononmotion_ae_parity)
+
     add_executable(chrononmotion_presets
             tests/motion_presets.cpp
             tests/motion_presets_inout.cpp

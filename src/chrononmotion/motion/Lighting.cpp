@@ -28,6 +28,7 @@ namespace chrononmotion::motion {
         result.local = sampleTransform(seconds);
         result.color = sampleColor(seconds);
         result.intensity = sampleIntensity(seconds);
+        result.falloff = falloff;
         result.castsShadow = castsShadow;
         result.shadowBias = shadowBiasTrack.empty() ? shadowBias : shadowBiasTrack.sample(seconds);
         result.shadowNormalBias = shadowNormalBiasTrack.empty() ? shadowNormalBias : shadowNormalBiasTrack.sample(seconds);

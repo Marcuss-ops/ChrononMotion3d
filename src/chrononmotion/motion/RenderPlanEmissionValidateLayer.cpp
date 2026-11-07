@@ -59,6 +59,8 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
             if ((style.gel_light_azimuth_radians || style.gel_light_elevation) &&
                 !style.gel_surface)
                 return owner + " carries gel light parameters without gel_surface";
+            if (style.gel_soft_fusion && !style.gel_surface)
+                return owner + " carries gel_soft_fusion without gel_surface";
             constexpr float kPi = 3.14159265358979323846f;
             if ((style.gel_light_azimuth_radians &&
                  (!std::isfinite(*style.gel_light_azimuth_radians) ||
