@@ -19,6 +19,7 @@ namespace chrononmotion::motion {
         float intensity{1.f};
         float range{0.f};
         float decay{1.f};
+        LightFalloff falloff{LightFalloff::SmoothInversePower};
         float angle{0.7853981633974483f};
         float penumbra{0.f};
         bool castsShadow{false};

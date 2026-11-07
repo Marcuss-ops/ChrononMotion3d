@@ -170,8 +170,70 @@ namespace chrononmotion::motion {
 
     void CameraRig::lookAtPose(CameraPose& pose, const Vector3& target) {
 
+        Vector3 backward;
+        backward.subVectors(pose.position, target);
+        const float distanceSquared = backward.lengthSq();
+        if (distanceSquared < 1e-12f) {
+            // Eye and target coincide: there is no view axis to derive. Keep the
+            // authored orientation instead of inventing a frame or emitting NaN.
+            return;
+        }
+        backward.multiplyScalar(1.f / std::sqrt(distanceSquared));
+
+        Vector3 worldRight;
+        worldRight.crossVectors(Vector3(0.f, 1.f, 0.f), backward);
+        const float worldRightSquared = worldRight.lengthSq();
+        if (worldRightSquared > 1e-12f) {
+            worldRight.multiplyScalar(1.f / std::sqrt(worldRightSquared));
+        }
+
+        // Near the vertical singularity the fixed-up cross product collapses and
+        // its direction flips sign across the pole. Project the authored local +X
+        // onto the plane orthogonal to the view axis and blend towards it, so the
+        // roll reaches the pole without an instantaneous 180-degree change.
+        Vector3 fallbackRight(1.f, 0.f, 0.f);
+        fallbackRight.applyQuaternion(pose.orientation);
+        fallbackRight.addScaledVector(backward, -fallbackRight.dot(backward));
+        float fallbackSquared = fallbackRight.lengthSq();
+        if (fallbackSquared < 1e-12f) {
+            fallbackRight.set(0.f, 0.f, 1.f);
+            fallbackRight.addScaledVector(backward, -fallbackRight.dot(backward));
+            fallbackSquared = fallbackRight.lengthSq();
+        }
+        if (fallbackSquared < 1e-12f) {
+            fallbackRight.set(1.f, 0.f, 0.f);
+            fallbackRight.addScaledVector(backward, -fallbackRight.dot(backward));
+            fallbackSquared = fallbackRight.lengthSq();
+        }
+        if (fallbackSquared > 1e-12f) {
+            fallbackRight.multiplyScalar(1.f / std::sqrt(fallbackSquared));
+        }
+
+        // |backward.y| is 1 at the pole. The last 0.001 of the sine of the
+        // angle to the pole (about 2.56 degrees) is the blend band.
+        constexpr float kSingularityBand = 1e-3f;
+        const float vertical = std::abs(backward.y);
+        float blend = 0.f;
+        if (vertical > 1.f - kSingularityBand) {
+            blend = (vertical - (1.f - kSingularityBand)) / kSingularityBand;
+            blend = blend * blend * (3.f - 2.f * blend);
+        }
+
+        Vector3 right;
+        if (worldRightSquared > 1e-12f) right.addScaledVector(worldRight, 1.f - blend);
+        if (fallbackSquared > 1e-12f) right.addScaledVector(fallbackRight, blend);
+        if (right.lengthSq() < 1e-12f) {
+            right = worldRightSquared > 1e-12f ? worldRight : fallbackRight;
+        }
+        if (right.lengthSq() < 1e-12f) return;
+        right.normalize();
+
+        Vector3 up;
+        up.crossVectors(backward, right);
+        up.normalize();
+
         Matrix4 aim;
-        aim.lookAt(pose.position, target, Vector3(0.f, 1.f, 0.f));
+        aim.makeBasis(right, up, backward);
         pose.orientation.setFromRotationMatrix(aim);
     }
 
