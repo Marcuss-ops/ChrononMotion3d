@@ -51,6 +51,38 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                     return owner + " carries an effect time control, which this emitter does not write";
                 switch (effect.kind) {
                     case LayerPlan::EffectKindPlan::Catalog: {
+                        if (effect.canonical_effect_id == "generate.fill") {
+                            // Native fill pass on extruded text/shape backings:
+                            // amount + RGB, exactly the parameters Chronon3D's
+                            // catalog row consumes.
+                            static constexpr std::array<const char*, 4> kFillParams{
+                                "amount", "color.r", "color.g", "color.b"};
+                            if (effect.canonical_params.size() != kFillParams.size())
+                                return owner + " carries generate.fill parameters other than amount + RGB";
+                            for (std::size_t i = 0; i < kFillParams.size(); ++i) {
+                                const auto& param = effect.canonical_params[i];
+                                if (param.param != kFillParams[i])
+                                    return owner + " carries generate.fill parameters in an unexpected order";
+                                if (!std::isfinite(param.value) || param.value < 0.f || param.value > 1.f)
+                                    return owner + " carries generate.fill values outside [0, 1]";
+                            }
+                            break;
+                        }
+                        if (effect.canonical_effect_id == "light.lens_flare") {
+                            static constexpr std::array<const char*, 6> kFlareParams{
+                                "threshold", "intensity", "radius", "halo", "ghost", "streak"};
+                            if (effect.canonical_params.size() != kFlareParams.size())
+                                return owner + " carries light.lens_flare parameters other than the six optics controls";
+                            for (std::size_t i = 0; i < kFlareParams.size(); ++i) {
+                                const auto& param = effect.canonical_params[i];
+                                if (param.param != kFlareParams[i])
+                                    return owner + " carries light.lens_flare parameters in an unexpected order";
+                                const float upper = i == 0 ? 1.f : 4.f;
+                                if (!std::isfinite(param.value) || param.value < 0.f || param.value > upper)
+                                    return owner + " carries light.lens_flare values outside supported ranges";
+                            }
+                            break;
+                        }
                         if (effect.canonical_effect_id != "color.saturation" &&
                             effect.canonical_effect_id != "color.contrast")
                             return owner + " carries unsupported catalog effect '" + effect.canonical_effect_id + "'";

@@ -525,7 +525,11 @@ RenderPlan lowerSamplesToRenderPlan(
                     std::abs(pose.position.z) > 1e-5f || std::abs(pose.rotation.x) > 1e-5f ||
                     std::abs(pose.rotation.y) > 1e-5f || std::abs(pose.rotation.z) > 1e-5f;
         }
-        const bool flatEmission = !layer.is3D && !leavesCanvasPlane;
+        // Screen-pinned layers keep canvas coordinates even when the content
+        // is a 3D text surface (extruded_text needs the 3D flag). Position
+        // dimensions stay 2 so the consumer uses its screen-space path.
+        const bool screenPinned = supplied != nullptr && supplied->screen_space;
+        const bool flatEmission = screenPinned || (!layer.is3D && !leavesCanvasPlane);
         output.position = planPosition(first, output.type, options.width, options.height);
         output.position_dimensions = flatEmission ? 2 : 3;
         const bool staticPlanWasProvided = supplied != nullptr;
@@ -560,7 +564,8 @@ RenderPlan lowerSamplesToRenderPlan(
         // opt-in to camera-backed projection, even when its Z/tilt components
         // are zero. The lowerer always emits three-component TRS vectors, so
         // mark those layers explicitly rather than producing undecodable plans.
-        output.enable_3d = output.position_dimensions >= 3 || output.scale_dimensions >= 3 ||
+        output.enable_3d = (screenPinned && layer.is3D) ||
+                           output.position_dimensions >= 3 || output.scale_dimensions >= 3 ||
                            output.rotation_dimensions >= 3 ||
                            std::abs(first.rotation.x) > 1e-5f || std::abs(first.rotation.y) > 1e-5f ||
                            std::abs(first.position.z) > 1e-5f;

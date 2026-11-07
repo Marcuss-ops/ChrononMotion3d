@@ -110,20 +110,31 @@ namespace chrononmotion::motion {
                 writer.key("size");
                 writeFloats(writer, layer.size, layer.size_dimensions);
             }
-            if (layer.position_dimensions != 0) {
+            // Screen-pinned layers are composed in canvas coordinates. Their
+            // 3D flag may stay set for extruded text, but serialising a third
+            // position/scale component (or resolved 3D samples) would opt the
+            // consumer back into camera projection.
+            const std::size_t position_dimensions = layer.screen_space
+                ? (layer.position_dimensions > 2 ? 2 : layer.position_dimensions)
+                : layer.position_dimensions;
+            const std::size_t scale_dimensions = layer.screen_space
+                ? (layer.scale_dimensions > 2 ? 2 : layer.scale_dimensions)
+                : layer.scale_dimensions;
+            const std::size_t rotation_dimensions = layer.screen_space ? 0 : layer.rotation_dimensions;
+            if (position_dimensions != 0) {
                 writer.key("position");
-                writeFloats(writer, layer.position, layer.position_dimensions);
+                writeFloats(writer, layer.position, position_dimensions);
             }
-            if (layer.scale_dimensions != 0) {
+            if (scale_dimensions != 0) {
                 writer.key("scale");
-                writeFloats(writer, layer.scale, layer.scale_dimensions);
+                writeFloats(writer, layer.scale, scale_dimensions);
             }
-            if (layer.rotation_dimensions != 0) {
+            if (rotation_dimensions != 0) {
                 writer.key("rotation");
-                writeFloats(writer, layer.rotation, layer.rotation_dimensions);
+                writeFloats(writer, layer.rotation, rotation_dimensions);
             }
 
-            if (!layer.transform_samples.empty()) {
+            if (!layer.screen_space && !layer.transform_samples.empty()) {
                 writer.key("transform_samples");
                 writer.beginArray();
                 for (const auto& sample : layer.transform_samples) {
