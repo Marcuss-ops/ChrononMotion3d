@@ -151,6 +151,17 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                             !std::isfinite(effect.chromatic_blue_offset) || std::abs(effect.chromatic_blue_offset) > 128.f)
                             return owner + " carries chromatic-aberration offsets outside [-128, 128]";
                         break;
+                    case LayerPlan::EffectKindPlan::LightRays:
+                        if (!std::isfinite(effect.light_rays_origin[0]) || effect.light_rays_origin[0] < 0.f || effect.light_rays_origin[0] > 1.f ||
+                            !std::isfinite(effect.light_rays_origin[1]) || effect.light_rays_origin[1] < 0.f || effect.light_rays_origin[1] > 1.f ||
+                            !std::isfinite(effect.light_rays_length) || effect.light_rays_length < 0.f || effect.light_rays_length > 100000.f ||
+                            !std::isfinite(effect.light_rays_density) || effect.light_rays_density < 0.f || effect.light_rays_density > 8.f ||
+                            !std::isfinite(effect.light_rays_decay) || effect.light_rays_decay < 0.f || effect.light_rays_decay > 1.f ||
+                            std::any_of(effect.light_rays_color.begin(), effect.light_rays_color.end(), [](float v) {
+                                return !std::isfinite(v) || v < 0.f || v > 1.f;
+                            }))
+                            return owner + " carries light-ray values outside supported ranges";
+                        break;
                     case LayerPlan::EffectKindPlan::LensDistortion:
                         if (!std::isfinite(effect.lens_curvature) || effect.lens_curvature < -1.f || effect.lens_curvature > 1.f ||
                             !std::isfinite(effect.lens_scale) || effect.lens_scale < 0.1f || effect.lens_scale > 4.f ||
@@ -189,6 +200,7 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                         case LayerPlan::EffectKindPlan::GaussianBlur: return chronon3d::effects::ids::BlurGaussian;
                         case LayerPlan::EffectKindPlan::DropShadow: return chronon3d::effects::ids::LightDropShadow;
                         case LayerPlan::EffectKindPlan::ChromaticAberration: return chronon3d::effects::ids::StylizeChromaticAberration;
+                        case LayerPlan::EffectKindPlan::LightRays: return chronon3d::effects::ids::GenerateLightRays;
                         case LayerPlan::EffectKindPlan::LensDistortion: return chronon3d::effects::ids::DistortLensDistortion;
                         default: break;
                     }
