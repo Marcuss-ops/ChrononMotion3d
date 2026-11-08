@@ -487,6 +487,25 @@ if(CHRONONMOTION_BUILD_TESTS)
     endif()
     add_test(NAME chrononmotion_procedural_certification COMMAND chrononmotion_procedural_certification)
 
+    # Six-mechanics acceptance suite: each mechanic is an isolated, dependency-
+    # free geometry/cinematics contract. The kernels mirror what the renderer
+    # consumes, but the tests own no renderer and no content decoding.
+    foreach(_mechanics_test
+            motion_2p5d_parallax
+            motion_spline_network
+            motion_badge_spring
+            motion_deckled_desk
+            motion_ink_wipe
+            motion_dust_field)
+        add_executable(chrononmotion_${_mechanics_test} tests/${_mechanics_test}.cpp)
+        target_link_libraries(chrononmotion_${_mechanics_test} PRIVATE chrononmotion)
+        target_compile_options(chrononmotion_${_mechanics_test} PRIVATE -Wall -Wextra)
+        if(CHRONONMOTION_WERROR)
+            target_compile_options(chrononmotion_${_mechanics_test} PRIVATE -Werror)
+        endif()
+        add_test(NAME chrononmotion_${_mechanics_test} COMMAND chrononmotion_${_mechanics_test})
+    endforeach()
+
     add_executable(chrononmotion_geospatial
             tests/motion_geospatial.cpp
             tests/motion_geospatial_camera.cpp)
