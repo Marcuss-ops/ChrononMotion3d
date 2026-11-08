@@ -183,6 +183,14 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                         writer.key("red_offset"); writer.number(effect.chromatic_red_offset);
                         writer.key("blue_offset"); writer.number(effect.chromatic_blue_offset);
                         break;
+                    case LayerPlan::EffectKindPlan::LightRays:
+                        writer.key("type"); writer.token("light_rays");
+                        writer.key("origin"); writeFloats(writer, effect.light_rays_origin, effect.light_rays_origin.size());
+                        writer.key("length"); writer.number(effect.light_rays_length);
+                        writer.key("density"); writer.number(effect.light_rays_density);
+                        writer.key("decay"); writer.number(effect.light_rays_decay);
+                        writer.key("color"); writeFloats(writer, effect.light_rays_color, effect.light_rays_color.size());
+                        break;
                     case LayerPlan::EffectKindPlan::LensDistortion:
                         writer.key("type"); writer.token("lens_distortion");
                         writer.key("curvature"); writer.number(effect.lens_curvature);
