@@ -156,6 +156,13 @@ file(GLOB_RECURSE renderSources CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/src/threepp/*.cpp"
 )
 
+# The debug pass consumes the preview layer's command buffer. Keep the render
+# library buildable without preview by excluding that one source; the normal
+# build has both targets.
+if(NOT TARGET chrononmotion_preview)
+    list(FILTER renderSources EXCLUDE REGEX ".*/debug/DebugDrawRenderer\\.cpp$")
+endif()
+
 list(LENGTH renderSources renderSourcesCount)
 message(STATUS "render: ${renderSourcesCount} threepp sources")
 add_library(chrononmotion_render STATIC
@@ -226,6 +233,9 @@ target_include_directories(chrononmotion_render BEFORE PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/libwebp/src"
 )
 target_link_libraries(chrononmotion_render PUBLIC glfw chrononmotion)
+if(TARGET chrononmotion_preview)
+    target_link_libraries(chrononmotion_render PUBLIC chrononmotion_preview)
+endif()
 target_compile_features(chrononmotion_render PUBLIC cxx_std_20)
 
 # Headless pixel-level invariants for perspective compensation, random-access
@@ -246,6 +256,22 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_test(NAME chrononmotion_render_pixel_certification COMMAND chrononmotion_render_pixel_certification)
     set_tests_properties(chrononmotion_render_pixel_certification PROPERTIES
             ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
+
+    if(TARGET chrononmotion_preview)
+        add_executable(chrononmotion_render_debug_draw_pixels tests/debug_draw_pixels.cpp)
+        target_link_libraries(chrononmotion_render_debug_draw_pixels PRIVATE
+                chrononmotion_render chrononmotion_preview)
+        target_compile_options(chrononmotion_render_debug_draw_pixels PRIVATE -Wall -Wextra)
+        if(CHRONONMOTION_WERROR)
+            target_compile_options(chrononmotion_render_debug_draw_pixels PRIVATE
+                    -Werror -Wno-error=unused-parameter -Wno-error=reorder
+                    -Wno-error=missing-field-initializers)
+        endif()
+        add_test(NAME chrononmotion_render_debug_draw_pixels
+                COMMAND chrononmotion_render_debug_draw_pixels)
+        set_tests_properties(chrononmotion_render_debug_draw_pixels PROPERTIES
+                ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
+    endif()
 
     add_executable(chrononmotion_t16_camera_truth tests/t16_camera_truth.cpp)
     target_include_directories(chrononmotion_t16_camera_truth PRIVATE

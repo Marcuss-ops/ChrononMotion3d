@@ -16,6 +16,7 @@ option(CHRONONMOTION_BUILD_TESTS "Build the ChrononMotion smoke tests" ${PROJECT
 option(CHRONONMOTION_BUILD_BENCHMARKS "Build the standalone evaluation benchmark" OFF)
 option(CHRONONMOTION_WERROR "Turn compiler warnings into errors" OFF)
 option(CHRONONMOTION_BUILD_RENDER "Build the offscreen GL render module (explicit opt-in; headless core is the default)" OFF)
+option(CHRONONMOTION_BUILD_PREVIEW "Build the preview application layer (asset server, task pools, playback, debug draw, diagnostics)" ON)
 set(CHRONON3D_INCLUDE_DIR "" CACHE PATH "Optional sibling Chronon3D include root for building the offline RenderPlan adapter")
 set(CHRONON3D_DEPENDENCY_INCLUDE_DIR "" CACHE PATH "Optional Chronon3D dependency include root")
 
@@ -254,6 +255,14 @@ if(CHRONON3D_INCLUDE_DIR)
     target_link_libraries(chrononmotion_plan_particles_showcase PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
     target_compile_features(chrononmotion_plan_particles_showcase PRIVATE cxx_std_20)
     chrononmotion_set_target_warnings(chrononmotion_plan_particles_showcase)
+
+    # Production character command: a rigged GLB plus one clip becomes a V3
+    # RenderPlan whose inline mesh carries the full baked animation, plus a
+    # manifest. It is the only tool that consumes `applyRigGeometryBake`.
+    add_executable(chrononmotion_character_plan tools/rigged_glb_to_renderplan.cpp)
+    target_link_libraries(chrononmotion_character_plan PRIVATE chrononmotion chrononmotion_chronon3d_adapter)
+    target_compile_features(chrononmotion_character_plan PRIVATE cxx_std_20)
+    chrononmotion_set_target_warnings(chrononmotion_character_plan)
 endif()
 
 if(CHRONONMOTION_BUILD_BENCHMARKS)
@@ -617,6 +626,11 @@ if(CHRONONMOTION_BUILD_TESTS)
                 -DMOTION_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_renderplan_camera_parity.cmake)
     endif()
+endif()
+
+# Preview application layer (separate library; the core stays renderer-free).
+if(CHRONONMOTION_BUILD_PREVIEW)
+    add_subdirectory(preview)
 endif()
 
 # Offscreen GL render module (separate library; the core stays renderer-free).

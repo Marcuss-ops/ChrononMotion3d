@@ -40,8 +40,7 @@ namespace chrononmotion::motion::camera {
             sequence.focusTravelFrames < 2) {
             throw std::invalid_argument("applyFocusSequence: invalid timing or lens values");
         }
-        if (sequence.irisBlades != 0 &&
-            (sequence.irisBlades < 3 || sequence.irisBlades > 12))
+        if (sequence.irisBlades != 0)
             throw std::invalid_argument("applyFocusSequence: polygonal iris bokeh is not supported by the render contract");
         int priorFocus = -1;
         for (const auto& subject : sequence.subjects) {

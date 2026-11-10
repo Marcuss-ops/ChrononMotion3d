@@ -1,0 +1,33 @@
+{
+  "animation_samples": 150,
+  "bake_signature": 15382456531100992501,
+  "canvas": [
+    1080,
+    1920
+  ],
+  "clip": "Idle2",
+  "fps": 30,
+  "frames": 150,
+  "geometry_id": 1,
+  "indices": 7632,
+  "mesh": {
+    "bytes": 887788,
+    "fnv1a64": "7ecbfa45aa5b46a3",
+    "path": "lowpoly_base.glb"
+  },
+  "plan": {
+    "bytes": 180637852,
+    "fnv1a64": "9a2d00b0deaf2b32",
+    "path": "lowpoly_idle.plan.json"
+  },
+  "rig": {
+    "bytes": 928760,
+    "fnv1a64": "677ba43cd78bbb90",
+    "motion_attributes_only": true,
+    "path": "/home/pierone/src/go-master/projects/Pyt/VeloxEditing/.tmp/character/../../ChrononMotion3D/render/spike/assets/scene03/low-poly_man.glb",
+    "stripped_materials": true
+  },
+  "schema": "chrononmotion.character-plan.manifest.v1",
+  "tool": "chrononmotion_character_plan",
+  "vertices": 5088
+}

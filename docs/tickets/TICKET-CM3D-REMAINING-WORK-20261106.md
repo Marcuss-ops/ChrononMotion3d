@@ -18,7 +18,7 @@ grosse. Lo stato di autorità dichiara ancora questi gate aperti:
 - `RenderPlan / highlight bridge` — **PARTIAL**;
 - gate camera ADR **2–6** — **OPEN**;
 - `THREEPP_CERTIFICATION` — **PARTIAL** su T01–T12 e T15, T13 parziale;
-- `MATERIAL_PBR_V1` — sampling software V3 **OPEN** lato C3D;
+- `MATERIAL_PBR_V1` — sampling software V3 **fatto**; resta la lane Vulkan (E1);
 - demolition debt del bake integer TRS — **V3 rimossa; resta la lane V2 legacy e l'equivalenza consumer**;
 - S2/S5 — **DEFERRED v2.1**.
 
@@ -168,8 +168,10 @@ Fonte: `docs/stato/chronon-motion3d.md` §3; `docs/BOUNDARY_C3D.md`.
    (frame vuoto senza errore); è un difetto C3D tracciato in
    `docs/stato/chronon3d.md` §11. Non è un residuo CM3D, ma blocca
    l'accettazione del bridge.
-9. **`MATERIAL_PBR_V1`**: sampling software C3D della texture
-   metallic-roughness V3 ancora aperto (§7).
+9. **`MATERIAL_PBR_V1`**: il sampling software C3D della texture
+   metallic-roughness V3 è **fatto**; resta la lane Vulkan, che ignora la
+   texture MR e valida il materiale solo per-vertex
+   ([E1](../../../Chronon3d/docs/tickets/TICKET-VULKAN-INLINE-MESH-PBR-20261109.md), §7).
 10. **Ticket C3D aperti**: `TICKET-RENDER-PLAN-FEATURE-ACCEPTANCE` e
     `TICKET-RENDER-PLAN-REMAINING-FEATURES` restano PARTIAL.
 
@@ -273,16 +275,20 @@ software/llvmpipe per un gate GPU. Non usare un contact sheet al posto della
 review del playback. Non dichiarare T13 completo senza decode alpha
 GPU-native.
 
-## 7. `MATERIAL_PBR_V1` — OPEN lato C3D
+## 7. `MATERIAL_PBR_V1` — OPEN lato C3D (solo lane Vulkan)
 
 Fonte: `docs/MATERIAL_PBR_V1.md`.
 
 - Il producer CM3D emette i fattori PBR, le texture base-color e
   metallic-roughness, il fingerprint e i limiti condivisi.
-- Il renderer software C3D campiona base-color e alpha e applica il cutoff
-  MASK.
-- **Manca:** il sampling software C3D della texture metallic-roughness V3
-  inline (`inline_mesh.metallic_roughness_texture`). Non è un lavoro CM3D.
+- Il renderer software C3D campiona base-color e alpha, applica il cutoff
+  MASK e campiona la texture metallic-roughness V3 inline (canale G roughness,
+  B metallic: `software_mesh_processor.cpp:101-132`). La formulazione
+  precedente di questo ticket diceva il contrario ed era stale.
+- **Manca:** la stessa cosa sulla lane **Vulkan** strict-native, che usa solo i
+  fattori scalari per-vertex, ignora la texture MR e non copia emissive
+  ([E1](../../../Chronon3d/docs/tickets/TICKET-VULKAN-INLINE-MESH-PBR-20261109.md)).
+  Non è un lavoro CM3D.
 - **Fuori scope dichiarato:** normal e occlusion texture. Non vanno
   aggiunte senza un ticket e un contratto dedicati.
 
