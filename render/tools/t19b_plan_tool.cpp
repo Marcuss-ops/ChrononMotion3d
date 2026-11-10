@@ -81,10 +81,6 @@ static std::vector<CameraSample> readSamples(const fs::path& path) {
     return samples;
 }
 
-static void centerOverlay(json& p,const std::string& id,float x,float y) {
-    for(auto& l:p["layers"]) if(l.value("id","")==id) { l["position"][0]=x; l["position"][1]=y; }
-}
-
 int main(int argc,char**argv) try {
     if(argc!=4) { std::cerr<<"usage: t19b_plan_tool <scene-source.v3.json> <camera-samples.csv> <output-dir>\n"; return 2; }
     const fs::path source=argv[1], samplePath=argv[2], out=argv[3], assets=source.parent_path();

@@ -38,7 +38,7 @@ void write_png(const fs::path& path, const std::vector<unsigned char>& rgb) {
     const size_t stride = size_t(W) * 3;
     for (int y = 0; y < H; ++y)
         std::copy_n(rgb.data() + size_t(H - 1 - y) * stride, stride, top.data() + size_t(y) * stride);
-    if (!stbi_write_png(path.c_str(), W, H, 3, top.data(), int(stride)))
+    if (!stbi_write_png(path.string().c_str(), W, H, 3, top.data(), int(stride)))
         throw std::runtime_error("failed to write diagnostic PNG: " + path.string());
 }
 
@@ -180,6 +180,8 @@ int run(const std::string& id, const fs::path& out) {
 
     const std::string filename = id == "T01" ? "T01_geometry_camera_1080p30.mp4" : "T09_camera_depth_1080p30.mp4";
     chrononmotion::certification::GlCudaNvencEncoder encoder(W, H, FPS, (out / filename).string());
+    if (!encoder.zero_copy_input_enabled())
+        throw std::runtime_error(id + " requires the GPU-resident GL PBO -> CUDA -> NVENC input lane");
     for (int f = 0; f < FRAMES; ++f) {
         bridge.evaluateAndSync(scene, f, &camera);
         renderer.render(*bridge.scene(), *bridge.camera());
@@ -298,7 +300,7 @@ int run(const std::string& id, const fs::path& out) {
            << "  \"layers\": " << scene.layerCount() << ",\n  \"lights\": " << scene.lightCount() << "\n}\n";
     std::ofstream meta(out / "metadata.json");
     meta << std::fixed << std::setprecision(4)
-         << "{\n  \"test_id\": \"" << id << "\",\n  \"status\": \"PARTIAL\",\n"
+         << "{\n  \"test_id\": \"" << id << "\",\n  \"status\": \"COMPLETE\",\n"
          << "  \"technical_checks_passed\": true,\n  \"pipeline\": \"MotionScene -> MotionSceneBridge -> threepp GLRenderer -> GL PBO -> CUDA -> NVENC\",\n"
          << "  \"width\": 1920,\n  \"height\": 1080,\n  \"fps\": 30,\n  \"frames\": 150,\n"
          << "  \"gl_renderer\": \"" << glName << "\",\n  \"gpu_device\": \"" << encoder.device_name() << "\",\n"
@@ -318,10 +320,12 @@ int run(const std::string& id, const fs::path& out) {
                           << "],[" << t09ObjectPixels[1][0] << ',' << t09ObjectPixels[1][1] << ',' << t09ObjectPixels[1][2]
                           << "],[" << t09ObjectPixels[2][0] << ',' << t09ObjectPixels[2][1] << ',' << t09ObjectPixels[2][2] << "]]"
                           << ",\n  \"max_projected_object_bounds_overlap_pixels\": " << maxProjectedOcclusionOverlap;
-    meta << ",\n  \"gpu_resident_zero_copy\": false,\n  \"vram_bytes\": null\n}\n";
+    meta << ",\n  \"gpu_resident_zero_copy\": " << (encoder.zero_copy_input_enabled() ? "true" : "false")
+         << ",\n  \"explicit_cuda_d2d_copies_per_encoded_frame\": "
+         << encoder.explicit_cuda_d2d_copies_per_frame() << ",\n  \"vram_bytes\": null\n}\n";
     if (!meta || !config) throw std::runtime_error("failed to write T01/T09 metadata or scene config");
     renderer.dispose();
-    std::cout << id << " PARTIAL GPU encode verified; coverage=" << minCoverage << ".." << maxCoverage
+    std::cout << id << " COMPLETE zero-copy GPU encode verified; coverage=" << minCoverage << ".." << maxCoverage
               << " diffs=" << d0 << ',' << d1 << " random=" << randomAccess << '\n';
     return 0;
 }

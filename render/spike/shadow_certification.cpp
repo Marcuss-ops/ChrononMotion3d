@@ -12,8 +12,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <sys/resource.h>
-#include <sys/wait.h>
+#include "chrononmotion/platform/ResourceUsage.hpp"
 #include <vector>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -48,7 +47,7 @@ namespace {
             std::copy_n(rgb.data() + std::size_t(H - y - 1) * stride, stride,
                         top.data() + std::size_t(y) * stride);
         }
-        if (!stbi_write_png(path.c_str(), W, H, 3, top.data(), int(stride))) {
+        if (!stbi_write_png(path.string().c_str(), W, H, 3, top.data(), int(stride))) {
             throw std::runtime_error("failed to write PNG: " + path.string());
         }
     }

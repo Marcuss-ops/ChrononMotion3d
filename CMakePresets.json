@@ -71,15 +71,43 @@
     {
       "name": "windows-gpu-adapter",
       "inherits": "windows-core",
-      "generator": "Visual Studio 18 2026",
+      "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "displayName": "Windows Chronon3D RenderPlan adapter",
       "description": "MSVC authoring tools and RenderPlan adapter for the sibling Windows GPU build.",
       "binaryDir": "${sourceDir}/build/windows-gpu-adapter",
       "cacheVariables": {
-        "CHRONON3D_INCLUDE_DIR": "${sourceDir}/../Chronon3d-mainfix/include",
-        "CHRONON3D_DEPENDENCY_INCLUDE_DIR": "${sourceDir}/../Chronon3d-mainfix/vcpkg_installed/win-gpu/x64-windows/include",
-        "CMAKE_PREFIX_PATH": "${sourceDir}/../Chronon3d-mainfix/vcpkg_installed/win-gpu/x64-windows"
+        "CHRONON3D_INCLUDE_DIR": "${sourceDir}/../Chronon3d-windows-j14/include",
+        "CHRONON3D_DEPENDENCY_INCLUDE_DIR": "${sourceDir}/../Chronon3d-windows-j14/vcpkg_installed/win-release/x64-windows/include",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/../Chronon3d-windows-j14/vcpkg_installed/win-release/x64-windows"
+      }
+    },
+    {
+      "name": "windows-render-validation",
+      "inherits": "windows-core",
+      "binaryDir": "${sourceDir}/build/windows-render-validation",
+      "displayName": "Windows core, tests and OpenGL renderer",
+      "description": "MSVC Release build and tests for the deterministic core and the optional GLFW/OpenGL renderer.",
+      "cacheVariables": {
+        "CHRONONMOTION_BUILD_TESTS": "ON",
+        "CHRONONMOTION_BUILD_RENDER": "ON",
+        "CHRONONMOTION_WERROR": "OFF",
+        "CHRONON3D_INCLUDE_DIR": "${sourceDir}/../Chronon3d-windows-j14/include",
+        "CHRONON3D_DEPENDENCY_INCLUDE_DIR": "${sourceDir}/../Chronon3d-windows-j14/vcpkg_installed/win-release/x64-windows/include",
+        "CMAKE_PREFIX_PATH": "${sourceDir}/../Chronon3d-windows-j14/vcpkg_installed/win-release/x64-windows"
+      }
+    },
+    {
+      "name": "linux-render-validation",
+      "inherits": "release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-render-validation",
+      "displayName": "Linux core, tests, OpenGL and CUDA/NVENC discovery",
+      "description": "Release gate for the motion core, full test suite and optional offscreen renderer/GPU interop.",
+      "cacheVariables": {
+        "CHRONONMOTION_BUILD_TESTS": "ON",
+        "CHRONONMOTION_BUILD_RENDER": "ON",
+        "CHRONONMOTION_WERROR": "ON"
       }
     }
   ],
@@ -114,7 +142,18 @@
       "configurePreset": "windows-gpu-adapter",
       "configuration": "Release",
       "targets": ["chrononmotion_plan_optical_studio"],
-      "jobs": 8
+      "jobs": 14
+    },
+    {
+      "name": "windows-render-validation",
+      "configurePreset": "windows-render-validation",
+      "configuration": "Release",
+      "jobs": 14
+    },
+    {
+      "name": "linux-render-validation",
+      "configurePreset": "linux-render-validation",
+      "jobs": 14
     }
   ],
   "testPresets": [
@@ -142,6 +181,20 @@
     {
       "name": "release-fast",
       "configurePreset": "release-fast",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-render-validation",
+      "configurePreset": "windows-render-validation",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-render-validation",
+      "configurePreset": "linux-render-validation",
       "output": {
         "outputOnFailure": true
       }

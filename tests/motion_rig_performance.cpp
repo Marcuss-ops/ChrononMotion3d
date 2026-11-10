@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <new>
-#include <sys/resource.h>
+#include "chrononmotion/platform/ResourceUsage.hpp"
 
 namespace {
     std::atomic<bool> measuring{false};

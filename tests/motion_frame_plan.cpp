@@ -522,7 +522,12 @@ namespace {
         const std::string json = fixtureJson();
         std::ifstream input(CHRONONMOTION_FRAME_PLAN_GOLDEN, std::ios::binary);
         check(input.good(), "the committed frame plan golden is not readable");
-        const std::string golden((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        std::string golden((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        // Git commonly checks this committed JSON out with CRLF on Windows;
+        // the schema serializer intentionally emits canonical LF on every OS.
+        for (std::size_t carriageReturn = 0;
+             (carriageReturn = golden.find("\r\n", carriageReturn)) != std::string::npos;)
+            golden.erase(carriageReturn, 1);
         if (golden == json) {
             ++checks;
             return;

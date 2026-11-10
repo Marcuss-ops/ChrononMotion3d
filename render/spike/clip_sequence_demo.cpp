@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 // Clip sequence demo: Fox.glb walk -> survey -> run through
 // MotionSceneBridge::bindLayerClipSequence with linear crossfades.
 // Usage: chrononmotion_render_clip_sequence_demo out.mp4 [asset.glb]
@@ -113,7 +114,7 @@ int main(int argc, char** argv) try {
     const std::string cmd = "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size " +
                             std::to_string(W) + "x" + std::to_string(H) + " -framerate " + std::to_string(FPS) +
                             " -i - -an -c:v libx264 -pix_fmt yuv420p '" + out.string() + "'";
-    FILE* pipe = popen(cmd.c_str(), "w");
+    FILE* pipe = chrononmotion::platform::openCommandPipe(cmd.c_str(), "w");
     if (!pipe) throw std::runtime_error("failed to open ffmpeg pipe");
 
     std::vector<unsigned char> prev;
@@ -129,7 +130,7 @@ int main(int argc, char** argv) try {
             std::copy_n(pixels.data() + std::size_t(H - y - 1) * row, row, flipped.data() + std::size_t(y) * row);
         }
         if (std::fwrite(flipped.data(), 1, flipped.size(), pipe) != flipped.size()) {
-            pclose(pipe);
+            chrononmotion::platform::closeCommandPipe(pipe);
             throw std::runtime_error("ffmpeg pipe write failed");
         }
 
@@ -143,7 +144,7 @@ int main(int argc, char** argv) try {
         }
         prev = std::move(pixels);
     }
-    const int rc = pclose(pipe);
+    const int rc = chrononmotion::platform::closeCommandPipe(pipe);
     if (rc != 0) throw std::runtime_error("ffmpeg exited with status " + std::to_string(rc));
     std::cout << "wrote " << out << " (" << FRAMES << " frames)\n";
     return 0;

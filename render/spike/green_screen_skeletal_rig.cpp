@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 // Chroma-keyed image puppets skinned to real joint chains and rendered headlessly.
 // Modes: hand (finger flex), head (neck-attached sway), wave (connected arm wave).
 
@@ -320,8 +321,9 @@ int renderGlbHand(const std::string& outPath, int width, int height, int frames)
             if (!joints[d*3+j-1]) throw std::runtime_error("missing finger bone: "+digits[d]+"_0"+std::to_string(j)+"_r");
         }
     }
-    std::array<Quaternion,15> fingerRest{};
-    for(std::size_t i=0;i<joints.size();++i) fingerRest[i]=joints[i]->quaternion.clone();
+    std::vector<Quaternion> fingerRest;
+    fingerRest.reserve(joints.size());
+    for (const auto* joint : joints) fingerRest.push_back(joint->quaternion.clone());
     Canvas canvas(Canvas::Parameters().size(width,height).headless(true));
     GLRenderer renderer(canvas);
     renderer.setClearColor(Color(0x00ff00));
@@ -355,9 +357,9 @@ int renderGlbHand(const std::string& outPath, int width, int height, int frames)
         if(std::abs(int(first[i])-int(middle[i]))>8 || std::abs(int(first[i+1])-int(middle[i+1]))>8 || std::abs(int(first[i+2])-int(middle[i+2]))>8) ++changed;
     if(changed<2500) throw std::runtime_error("finger pose change too small in preview");
     const std::string cmd="ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size "+std::to_string(width)+"x"+std::to_string(height)+" -framerate 30 -i - -vf vflip -c:v libx264 -crf 16 -pix_fmt yuv420p \""+outPath+"\"";
-    FILE* pipe=popen(cmd.c_str(),"w"); if(!pipe) throw std::runtime_error("ffmpeg pipe failed");
+    FILE* pipe=chrononmotion::platform::openCommandPipe(cmd.c_str(),"w"); if(!pipe) throw std::runtime_error("ffmpeg pipe failed");
     for(int f=0;f<frames;++f){const auto pixels=renderFrame(f);std::fwrite(pixels.data(),1,pixels.size(),pipe);}
-    const int rc=pclose(pipe); if(rc!=0) throw std::runtime_error("ffmpeg encoder failed");
+    const int rc=chrononmotion::platform::closeCommandPipe(pipe); if(rc!=0) throw std::runtime_error("ffmpeg encoder failed");
     std::cout<<"skeletal_rig: hand GLB finger joints changed_pixels="<<changed<<" wrote "<<outPath<<"\n";
     std::cout.flush(); std::_Exit(0);
 }
@@ -401,9 +403,9 @@ int renderGlbWave(const std::string& outPath, int width, int height, int frames)
         if(std::abs(int(first[i])-int(middle[i]))>8 || std::abs(int(first[i+1])-int(middle[i+1]))>8 || std::abs(int(first[i+2])-int(middle[i+2]))>8) ++changed;
     if(changed<4000) throw std::runtime_error("arm wave motion too small in preview");
     const std::string cmd="ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size "+std::to_string(width)+"x"+std::to_string(height)+" -framerate 30 -i - -vf vflip -c:v libx264 -crf 16 -pix_fmt yuv420p \""+outPath+"\"";
-    FILE* pipe=popen(cmd.c_str(),"w"); if(!pipe) throw std::runtime_error("ffmpeg pipe failed");
+    FILE* pipe=chrononmotion::platform::openCommandPipe(cmd.c_str(),"w"); if(!pipe) throw std::runtime_error("ffmpeg pipe failed");
     for(int f=0;f<frames;++f){const auto pixels=renderFrame(f);std::fwrite(pixels.data(),1,pixels.size(),pipe);}
-    const int rc=pclose(pipe); if(rc!=0) throw std::runtime_error("ffmpeg encoder failed");
+    const int rc=chrononmotion::platform::closeCommandPipe(pipe); if(rc!=0) throw std::runtime_error("ffmpeg encoder failed");
     std::cout<<"skeletal_rig: MrBeast GLB arm wave changed_pixels="<<changed<<" wrote "<<outPath<<"\n";
     std::cout.flush(); std::_Exit(0);
 }
@@ -463,10 +465,10 @@ int main(int argc,char** argv) {
     if (delta<4000) { std::cerr<<"skeletal_rig: expected visible articulated motion\n"; return 1; }
     const std::string cmd="ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size "+
         std::to_string(width)+"x"+std::to_string(height)+" -framerate 30 -i - -vf vflip -c:v libx264 -crf 16 -pix_fmt yuv420p \""+outPath+"\"";
-    FILE* pipe=popen(cmd.c_str(),"w");
+    FILE* pipe=chrononmotion::platform::openCommandPipe(cmd.c_str(),"w");
     if(!pipe){std::cerr<<"skeletal_rig: ffmpeg pipe failed\n";return 1;}
     for(int f=0;f<frames;++f){auto pixels=renderFrame(f);std::fwrite(pixels.data(),1,pixels.size(),pipe);}
-    const int rc=pclose(pipe);
+    const int rc=chrononmotion::platform::closeCommandPipe(pipe);
     if(rc!=0){std::cerr<<"skeletal_rig: ffmpeg failed\n";return 1;}
     std::cout<<"skeletal_rig: wrote "<<frames<<" frames to "<<outPath<<"\n";
     std::cout.flush();

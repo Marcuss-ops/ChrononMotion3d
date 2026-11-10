@@ -17,8 +17,8 @@ evidence log.
 **A cross-platform motion engine, forked from [threepp](https://github.com/markaren/threepp).**
 
 The dependency-free core and optional Chronon3D RenderPlan adapter build on
-Linux and Windows. The Windows GPU-adapter preset uses the sibling
-`Chronon3d-mainfix` `win-gpu` dependency install. The preview renderer and
+Linux and Windows. The Windows renderer and optional GPU certification path
+use the sibling Windows Chronon3D dependency install. The preview renderer and
 certification tools remain platform-specific.
 
 ChrononMotion keeps the half of threepp that a deterministic motion/transform
@@ -185,11 +185,24 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-On Windows, build the core with `cmake --build --preset windows-core`. After
-the sibling Chronon3D `win-gpu` dependencies are installed, configure and build
-the GPU-connected optical-studio authoring tool with
-`cmake --preset windows-gpu-adapter` and
+On Windows, build the core with `cmake --build --preset windows-core`. To build
+the Chronon3D RenderPlan adapter and the native GLFW/OpenGL renderer, use
+`cmake --preset windows-render-validation` and
+`cmake --build --preset windows-render-validation`. This preset expects the
+sibling `Chronon3d-windows-j14` checkout and its `win-release/x64-windows`
+vcpkg install. OpenGL rendering uses the Windows display adapter; when the
+CUDA Toolkit and FFmpeg with NVENC are discoverable, certification tools also
+enable the GL PBO → CUDA → NVENC path. To build only the adapter authoring tool,
+use `cmake --preset windows-gpu-adapter` and
 `cmake --build --preset windows-gpu-adapter`.
+
+The GPU certification executables are opt-in. Configure the Windows renderer
+with `-DCHRONONMOTION_BUILD_SPIKE_PROGRAMS=ON`, build
+`chrononmotion_render_camera_certification`, and run it with `T01` or `T09` plus
+an output directory. This proof requires NVIDIA OpenGL, CUDA interop and
+`h264_nvenc`; it uses the certified GPU-resident GL PBO → CUDA → NVENC input
+path by default. Set `CHRONON_GLCUDA_ZERO_COPY=0` only to diagnose the D2D
+fallback; the certification rejects that fallback.
 
 ```shell
 cmake --preset release        # -Wall -Wextra -Werror, the gate a change must pass

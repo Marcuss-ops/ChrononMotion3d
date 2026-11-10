@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 // Render a 45-second, nine-effect post-processing showcase from one image.
 #include <array>
 #include <algorithm>
@@ -106,7 +107,7 @@ int main(int argc, char** argv) try {
     composer.addPass(finish);
 
     const std::string command = "ffmpeg -hide_banner -loglevel error -y -f rawvideo -pixel_format rgb24 -video_size 1920x1080 -framerate 24 -i - -an -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p -movflags +faststart " + quote(outputPath);
-    FILE* encoder = popen(command.c_str(), "w");
+    FILE* encoder = chrononmotion::platform::openCommandPipe(command.c_str(), "w");
     if (!encoder) throw std::runtime_error("could not start FFmpeg encoder");
     std::vector<unsigned char> topDown(std::size_t(kWidth) * kHeight * 3);
     const std::size_t rowBytes = std::size_t(kWidth) * 3;
@@ -141,7 +142,7 @@ int main(int argc, char** argv) try {
                 throw std::runtime_error("FFmpeg stopped accepting video frames");
         }
     }
-    const int encoderStatus = pclose(encoder);
+    const int encoderStatus = chrononmotion::platform::closeCommandPipe(encoder);
     if (encoderStatus != 0) throw std::runtime_error("FFmpeg failed while encoding the showcase");
     std::cout << "Wrote " << outputPath << " (45 s, 1920x1080, 24 fps)\n";
     renderer.dispose();

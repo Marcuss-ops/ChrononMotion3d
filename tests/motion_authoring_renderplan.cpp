@@ -1624,9 +1624,9 @@ void testTypedChronon3dLowering() {
     const auto physicalDofCamera = lowerCameraPose(cameraPose, 0.1f, 2000.f);
     check(physicalDofCamera.f_stop == 2.8f && physicalDofCamera.dof_enabled,
           "camera lowering preserves physical f-stop and enables the RenderPlan physical DoF contract");
-    cameraPose.irisBlades = 6;
+    cameraPose.irisBlades = 2;
     check(throwsInvalid([&] { (void)lowerCameraPose(cameraPose, 0.1f, 2000.f); }),
-          "camera lowering rejects unsupported iris blades before emission"); // boundary-guardrail: allowed — geometric iris shaping, unrelated to content shaping
+          "camera lowering rejects an invalid iris blade count before emission"); // boundary-guardrail: allowed — geometric iris shaping, unrelated to content shaping
     cameraPose.irisBlades = 0;
     cameraPose.highlightGain = 1.f;
     check(lowerCameraPose(cameraPose, 0.1f, 2000.f).dof_highlight_gain == 1.f,
@@ -1784,13 +1784,16 @@ void testTypedChronon3dLowering() {
     CameraRig staticLensRig(28, 50.f, 16.f / 9.f, 0.1f, 2000.f);
     staticLensRig.setPosition({0.f, 0.f, -8.f});
     staticLensRig.setFocusDistance(480.f).setMaxBlur(30.f);
-    staticLensRig.setFStop(2.8f).setIrisBlades(6).setHighlightGain(1.5f);
+    staticLensRig.setFStop(2.8f).setIrisBlades(2).setHighlightGain(1.5f);
     auto staticLensOptions = animatedDofOptions;
     staticLensOptions.cameraRig = &staticLensRig;
     check(throwsInvalid([&] { (void)lowerToRenderPlan(cameraOnlyScene, staticLensOptions); }),
-          "a static unsupported iris lens is rejected before renderer admission");
-    // Highlight weighting is the supported shaped axis: clearing the blades must
-    // let the authored gain through the whole lowering path instead of failing.
+          "a static invalid iris lens is rejected before renderer admission");
+    staticLensRig.setIrisBlades(6);
+    const auto polygonalLensPlan = lowerToRenderPlan(cameraOnlyScene, staticLensOptions);
+    check(polygonalLensPlan.camera && polygonalLensPlan.camera->iris_blades == 6,
+          "a supported polygonal iris is preserved by the RenderPlan lowering path");
+    // Clearing the blades must still let authored highlight weighting through.
     staticLensRig.setIrisBlades(0);
     const auto highlightLensPlan = lowerToRenderPlan(cameraOnlyScene, staticLensOptions);
     check(highlightLensPlan.camera && highlightLensPlan.camera->dof_highlight_gain == 1.5f,

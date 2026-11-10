@@ -20,7 +20,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <sys/resource.h>
+#include "chrononmotion/platform/ResourceUsage.hpp"
 #include <vector>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -63,7 +63,7 @@ void writePng(const fs::path& p, const std::vector<unsigned char>& rgb) {
     std::vector<unsigned char> top(rgb.size());
     const size_t row = size_t(W) * 3;
     for (int y = 0; y < H; ++y) std::copy_n(rgb.data() + size_t(H - y - 1) * row, row, top.data() + size_t(y) * row);
-    if (!stbi_write_png(p.c_str(), W, H, 3, top.data(), int(row))) throw std::runtime_error("PNG write failed");
+    if (!stbi_write_png(p.string().c_str(), W, H, 3, top.data(), int(row))) throw std::runtime_error("PNG write failed");
 }
 
 bool differs(const std::vector<unsigned char>& a, size_t i, const std::vector<unsigned char>& b) {
