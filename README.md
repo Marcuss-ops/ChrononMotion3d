@@ -111,6 +111,7 @@ MotionScene        hierarchy (Parent, Null) + deterministic frame/PTS evaluation
 MotionPath         line / cubic Bézier / Catmull-Rom + orient-to-path
 MotionPlane        2.5D text and image planes, Z depth, perspective + parallax
 CameraRig          perspective, look-at, dolly/pan/tilt/orbit/roll, FOV/focal
+Compositing        authored stack or camera-depth sort, resolved back-to-front
 Presets            the YouTube presets, built on the primitives above
 ```
 
@@ -135,6 +136,11 @@ The composition rules, in one place:
   arrival/departure animations are keyed from those two frames rather than from
   hand-picked ones: an in/out animation cannot drift from the range the layer is
   visible for;
+* compositing is a resolved order, not a renderer flag: `Stack` keeps the
+  authored order, `Depth` sorts the drawable layers by the anchor's camera-space
+  depth so an object stays in front of the text behind it whatever order they
+  were added in; a depth-mode frame plan carries the order as `composite_order`,
+  and a stack-mode plan omits the field;
 * `evaluate(frame)` is a pure function of `(scene, frame, fps)`: the same frame
   always produces the same matrices, whatever was evaluated before it;
 * **text and image planes are the same type.** The only difference between a text
@@ -271,6 +277,7 @@ The result is one static library, `chrononmotion` (alias
 | `chrononmotion_interaction` | anchor picking, exact gizmo deltas and the deterministic scrub session |
 | `chrononmotion_retarget` | FK motion transfer between rigs, bind fallback and validation |
 | `chrononmotion_gltf` | static glTF/GLB geometry import and fail-closed validation |
+| `chrononmotion_compositing` | the resolved draw order: authored stack vs camera-depth sort, the AE object/text case, and the `composite_order` plan field |
 | `chrononmotion_upstream_regressions` | adapted retained threepp math/core/animation regression assertions |
 
 Upstream threepp test provenance and compatibility are tracked in

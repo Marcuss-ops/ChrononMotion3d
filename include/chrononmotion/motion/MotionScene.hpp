@@ -10,6 +10,7 @@
 #define CHRONONMOTION_MOTION_MOTIONSCENE_HPP
 
 #include "chrononmotion/motion/Layer.hpp"
+#include "chrononmotion/motion/Compositing.hpp"
 #include "chrononmotion/motion/Lighting.hpp"
 #include "chrononmotion/motion/AuthoringPolicy.hpp"
 
@@ -220,6 +221,20 @@ namespace chrononmotion::motion {
         [[nodiscard]] float fps() const { return fps_; }
         MotionScene& setFps(float fps);
 
+        /// How visible layers are ordered for compositing. `Stack` (the
+        /// default) is the authored order, back to front — byte-identical to
+        /// every plan emitted before this setting existed. `Depth` sorts the
+        /// drawable layers by the camera-space depth of their anchor, far to
+        /// near, so an object and the text behind it do not depend on the order
+        /// the layers were inserted in.
+        [[nodiscard]] CompositeMode compositeMode() const { return compositeMode_; }
+        MotionScene& setCompositeMode(CompositeMode mode) {
+            if (mode != CompositeMode::Stack && mode != CompositeMode::Depth)
+                throw std::invalid_argument("MotionScene::setCompositeMode: unknown mode");
+            compositeMode_ = mode;
+            return *this;
+        }
+
         /// Full-scene shutter (single authored unit for temporal motion blur).
         /// Fails closed on a shutter angle outside (0, 360] or samples outside
         /// [2, 64], mirroring the RenderPlan V3 `temporal_motion_blur` contract.
@@ -326,6 +341,7 @@ namespace chrononmotion::motion {
 
         std::string name_{};
         float fps_{24.f};
+        CompositeMode compositeMode_{CompositeMode::Stack};
         std::optional<ShutterSettings> shutter_{};
         AuthoringPolicy policy_{};
         bool sealed_{false};

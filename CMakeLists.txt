@@ -104,6 +104,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/MotionScene_layers.cpp
         src/chrononmotion/motion/MotionScene_evaluation.cpp
         src/chrononmotion/motion/MotionScene_validation.cpp
+        src/chrononmotion/motion/Compositing.cpp
         src/chrononmotion/motion/SceneExport.cpp
         src/chrononmotion/motion/SceneExportContent.cpp
         src/chrononmotion/motion/SceneExportTracks.cpp
@@ -316,6 +317,13 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_compile_definitions(chrononmotion_frame_plan PRIVATE
         CHRONONMOTION_FRAME_PLAN_GOLDEN="${CMAKE_CURRENT_SOURCE_DIR}/tests/frame_plan_golden.json")
     add_test(NAME chrononmotion_frame_plan COMMAND chrononmotion_frame_plan)
+
+    # The compositing order: authored stack vs camera-depth sort, the resolved
+    # stack in the frame plan, and the fail-closed rules.
+    add_executable(chrononmotion_compositing tests/motion_compositing.cpp)
+    target_link_libraries(chrononmotion_compositing PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_compositing PRIVATE -Wall -Wextra -Werror)
+    add_test(NAME chrononmotion_compositing COMMAND chrononmotion_compositing)
 
     add_executable(chrononmotion_hdri tests/motion_hdri.cpp)
     target_link_libraries(chrononmotion_hdri PRIVATE chrononmotion)
@@ -560,6 +568,26 @@ if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_scene_import tests/motion_scene_import.cpp)
     target_link_libraries(chrononmotion_scene_import PRIVATE chrononmotion)
     add_test(NAME chrononmotion_scene_import COMMAND chrononmotion_scene_import)
+
+    # The one instancing contract: one layer, a bounded batch of local
+    # placements, exact random access and an unchanged document when absent.
+    add_executable(chrononmotion_instance_batch tests/motion_instance_batch.cpp)
+    target_link_libraries(chrononmotion_instance_batch PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_instance_batch PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_instance_batch PRIVATE -Werror)
+    endif()
+    add_test(NAME chrononmotion_instance_batch COMMAND chrononmotion_instance_batch)
+
+    # Physical material values: explicit ranges, neutral defaults, compile
+    # handoff and the scene round-trip.
+    add_executable(chrononmotion_physical_material tests/motion_physical_material.cpp)
+    target_link_libraries(chrononmotion_physical_material PRIVATE chrononmotion)
+    target_compile_options(chrononmotion_physical_material PRIVATE -Wall -Wextra)
+    if(CHRONONMOTION_WERROR)
+        target_compile_options(chrononmotion_physical_material PRIVATE -Werror)
+    endif()
+    add_test(NAME chrononmotion_physical_material COMMAND chrononmotion_physical_material)
 
     # Tool-builder interaction: picking, gizmo deltas and the scrub session.
     add_executable(chrononmotion_interaction tests/motion_interaction.cpp)

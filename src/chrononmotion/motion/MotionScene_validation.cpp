@@ -324,6 +324,7 @@ using scene_detail::saturatedAdd;
             descriptor.assetId = mesh.assetId.empty() ? layers_[index].content.id : mesh.assetId;
             descriptor.geometry = mesh.geometry;
             descriptor.material = mesh.material;
+            descriptor.instances = mesh.instances;
             result.addMesh(std::move(descriptor));
         }
 

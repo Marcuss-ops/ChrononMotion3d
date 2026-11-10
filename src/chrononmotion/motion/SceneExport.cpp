@@ -245,6 +245,13 @@ namespace chrononmotion::motion {
             writer.key("fps");
             writer.number(scene.fps());
 
+            // Only when the scene departed from the authored stack: the default
+            // record is "no opinion", and writing it would change every export.
+            if (scene.compositeMode() != CompositeMode::Stack) {
+                writer.key("compositeMode");
+                writer.text(std::string(compositeModeName(scene.compositeMode())));
+            }
+
             writer.key("layers");
             writer.beginArray();
             ancestors.push_back(&scene);

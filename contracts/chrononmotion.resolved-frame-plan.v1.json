@@ -125,6 +125,14 @@
           }
         }
       },
+      "composite_order": {
+        "type": "array",
+        "description": "Optional. Present only when the scene authorises depth compositing. Exactly one entry per timeline entry; each entry lists the drawable layer ids back-to-front: exactly the non-null layers visible at that instant, without duplicates. A stack-mode scene omits the key and keeps layers[] as the draw order.",
+        "items": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 }
+        }
+      },
       "layers": {
         "type": "array",
         "description": "Parents first. order equals the list position; parent is either 0 (scene root) or an earlier layer id.",
@@ -191,6 +199,6 @@
     "shutter_offsets", "shutter_coverage", "camera_count", "camera_time",
     "camera_pose", "camera_optics", "layer_order", "layer_parent", "layer_kind",
     "layer_asset", "layer_samples", "layer_timestamp", "layer_transform",
-    "layer_opacity", "digest"
+    "layer_opacity", "composite_order", "digest"
   ]
 }

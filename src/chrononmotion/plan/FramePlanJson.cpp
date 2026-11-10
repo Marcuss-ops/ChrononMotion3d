@@ -205,6 +205,23 @@ namespace chrononmotion::plan::detail {
         }
         writer.endArray();
 
+        // Opt-in: a stack-mode plan omits the key entirely, so the document a
+        // consumer already parses does not change shape.
+        if (!plan.compositeOrder.empty()) {
+            writer.key("composite_order");
+            writer.beginArray();
+            for (const std::vector<std::uint32_t>& frame : plan.compositeOrder) {
+                writer.item();
+                writer.beginArray();
+                for (const std::uint32_t id : frame) {
+                    writer.item();
+                    writer.unsignedInteger(id);
+                }
+                writer.endArray();
+            }
+            writer.endArray();
+        }
+
         writer.key("layers");
         writer.beginArray();
         for (const PlanLayer& layer : plan.layers) {

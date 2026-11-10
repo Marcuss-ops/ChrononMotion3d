@@ -9,13 +9,19 @@ using detail::indexValue;
 using detail::rejectUnknownKeys;
 using detail::required;
         MotionScene readScene(const JsonValue& value, std::string_view where, int depth) {
-            rejectUnknownKeys(value, {"format", "version", "name", "fps", "temporal_motion_blur", "layers", "lights"}, where);
+            rejectUnknownKeys(value, {"format", "version", "name", "fps", "compositeMode", "temporal_motion_blur", "layers", "lights"}, where);
             if (required(value, "format", where).string("scene format") != "chrononmotion.scene")
                 reject(where, "is not a chrononmotion.scene document");
             if (indexValue(required(value, "version", where), "scene version") != 1)
                 reject(where, "declares an unsupported version");
             MotionScene scene(required(value, "name", where).string("scene name"),
                               floatValue(required(value, "fps", where), "scene fps"));
+            if (const JsonValue* mode = find(value, "compositeMode")) {
+                const std::string name = mode->string("scene compositeMode");
+                const auto parsed = parseCompositeMode(name);
+                if (!parsed) reject(where, "declares an unknown compositeMode");
+                scene.setCompositeMode(*parsed);
+            }
             std::set<std::uint32_t> seenLayers;
             for (const auto& item : required(value, "layers", where).array("scene layers")) {
                 Layer layer = readLayer(item, "scene layer", depth);

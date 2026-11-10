@@ -437,6 +437,21 @@ RenderPlan lowerSamplesToRenderPlan(
                         throw std::invalid_argument("lowerToRenderPlan: inline mesh index exceeds its position vertex count");
                 const auto& descriptor = layer.mesh.material;
                 descriptor.validate();
+                // RenderPlan V3 carries one inline mesh per layer and no
+                // instance-batch record. Refuse instead of drawing one copy.
+                if (layer.mesh.instances) {
+                    throw std::invalid_argument(
+                            "lowerToRenderPlan: RenderPlan V3 has no instance-batch contract; "
+                            "render the scene through MotionSceneBridge or flatten the batch");
+                }
+                // The compact inline-mesh material has no transmission, IOR,
+                // thickness, dispersion or clearcoat slot. Refuse the lowering
+                // instead of emitting a silently different (opaque) surface.
+                if (descriptor.hasPhysicalProperties()) {
+                    throw std::invalid_argument(
+                            "lowerToRenderPlan: inline mesh material cannot express physical "
+                            "transmission/ior/thickness/dispersion/clearcoat properties");
+                }
                 for (const float component : {descriptor.baseColor.r, descriptor.baseColor.g,
                                               descriptor.baseColor.b})
                     if (!std::isfinite(component) || component < 0.f || component > 1.f)

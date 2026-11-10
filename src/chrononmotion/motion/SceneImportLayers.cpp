@@ -26,7 +26,8 @@ namespace chrononmotion::motion::scene_import_detail {
 
         MaterialDescriptor readMaterial(const JsonValue& value, std::string_view where) {
             rejectUnknownKeys(value, {"name", "kind", "baseColor", "emissiveColor", "emissiveStrength", "roughness",
-                                      "metalness", "opacity", "transparent", "doubleSided", "alphaCutoff"},
+                                      "metalness", "opacity", "transparent", "doubleSided", "alphaCutoff",
+                                      "physical"},
                               where);
             MaterialDescriptor material;
             material.name = required(value, "name", where).string("material name");
@@ -47,13 +48,27 @@ namespace chrononmotion::motion::scene_import_detail {
                 material.doubleSided = twoSided->boolean("material doubleSided");
             if (const auto* cutoff = find(value, "alphaCutoff"))
                 material.alphaCutoff = floatValue(*cutoff, "material alphaCutoff");
+            if (const auto* physical = find(value, "physical")) {
+                rejectUnknownKeys(*physical,
+                                  {"transmission", "ior", "thickness", "dispersion", "clearcoat"},
+                                  "material physical");
+                material.transmission = floatValue(required(*physical, "transmission", "material physical"),
+                                                   "material transmission");
+                material.ior = floatValue(required(*physical, "ior", "material physical"), "material ior");
+                material.thickness = floatValue(required(*physical, "thickness", "material physical"),
+                                                "material thickness");
+                material.dispersion = floatValue(required(*physical, "dispersion", "material physical"),
+                                                 "material dispersion");
+                material.clearcoat = floatValue(required(*physical, "clearcoat", "material physical"),
+                                                "material clearcoat");
+            }
             material.validate();
             return material;
         }
 
         MeshAttachment readMesh(const JsonValue& value, std::string_view where) {
             if (std::holds_alternative<std::nullptr_t>(value.value)) return MeshAttachment{};
-            rejectUnknownKeys(value, {"assetId", "baseColorTextureAsset", "metallicRoughnessTextureAsset", "geometry", "material"}, where);
+            rejectUnknownKeys(value, {"assetId", "baseColorTextureAsset", "metallicRoughnessTextureAsset", "geometry", "material", "instances"}, where);
             // Vertex buffers are never serialized: a mesh that carried geometry
             // cannot be rebuilt from the record, so it fails instead of
             // reappearing with silently different pixels.
@@ -66,6 +81,24 @@ namespace chrononmotion::motion::scene_import_detail {
             if (const auto* texture = find(value, "metallicRoughnessTextureAsset"))
                 mesh.metallicRoughnessTextureAsset = texture->string("mesh metallic-roughness texture");
             mesh.material = readMaterial(required(value, "material", where), "mesh material");
+            if (const auto* instances = find(value, "instances")) {
+                rejectUnknownKeys(*instances, {"localTransforms"}, "mesh instances");
+                const auto& transforms = required(*instances, "localTransforms", "mesh instances")
+                                                 .array("mesh instance transforms");
+                InstanceBatch batch;
+                batch.localTransforms.reserve(transforms.size());
+                for (const JsonValue& transform : transforms) {
+                    const auto& values = transform.array("mesh instance transform");
+                    if (values.size() != 16)
+                        reject("mesh instance transform", "must carry exactly 16 row-major elements");
+                    Matrix4 local;
+                    for (std::size_t index = 0; index < values.size(); ++index)
+                        local.elements[index] = floatValue(values[index], "mesh instance element");
+                    batch.localTransforms.push_back(local);
+                }
+                batch.validate();
+                mesh.instances = std::move(batch);
+            }
             return mesh;
         }
 

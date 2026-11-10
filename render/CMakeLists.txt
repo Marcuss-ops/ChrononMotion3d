@@ -410,6 +410,19 @@ target_include_directories(chrononmotion_render_glb_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
 target_link_libraries(chrononmotion_render_glb_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
+
+# Physical glass + InstanceBatch GPU proof: the two new Motion contracts must
+# survive the production GL PBO -> CUDA -> NVENC path.
+add_executable(chrononmotion_render_physical_instancing_certification spike/physical_instancing_certification.cpp)
+target_include_directories(chrononmotion_render_physical_instancing_certification PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad")
+target_link_libraries(chrononmotion_render_physical_instancing_certification PRIVATE chrononmotion_render chrononmotion_gl_cuda_nvenc)
+target_compile_options(chrononmotion_render_physical_instancing_certification PRIVATE -Wall -Wextra)
+if(CHRONONMOTION_WERROR)
+    target_compile_options(chrononmotion_render_physical_instancing_certification PRIVATE
+            -Werror -Wno-error=reorder -Wno-error=unused-parameter -Wno-error=missing-field-initializers)
+endif()
 add_executable(chrononmotion_render_camera_certification spike/camera_certification.cpp)
 target_include_directories(chrononmotion_render_camera_certification PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"

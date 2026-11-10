@@ -259,6 +259,12 @@ The public surface is unchanged: `motion/Presets.hpp` is still the whole list.
   declared lifetime rather than to frames an author picked by hand. A window the
   lifetime cannot hold is reported absent and left un-keyed — never moved to a
   frame the layer is not alive for.
+* **Compositing order is resolved.** `Stack` is the authored order, back to
+  front; `Depth` sorts the drawable layers by the camera-space depth of their
+  anchor, far to near, with the authored stack as the tie-break. The order is a
+  value (`resolveCompositeStack`), not a renderer flag, and a depth-mode frame
+  plan carries it as `composite_order`. A stack-mode plan omits the field, so the
+  documents emitted before this contract keep their bytes.
 * **Orientation is a quaternion, not Euler.** It is slerped, and `slerpQuaternions`
   fixes the antipodal sign, so an orientation track never takes the long way
   through ±180°. `rotation` stays XYZ Euler because that is what an author edits.

@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -48,6 +49,9 @@ namespace chrononmotion::motion {
         /// the content side. Either this or `geometry` must be present; the
         /// descriptor is the whole of what crosses the boundary.
         std::string assetId{};
+
+        /// Per-layer instance placements, already validated at authoring time.
+        std::optional<InstanceBatch> instances{};
     };
 
     /// Immutable-by-convention data plane handed to a future renderer. The
@@ -76,6 +80,7 @@ namespace chrononmotion::motion {
                 throw std::invalid_argument("CompiledScene::addMesh: a geometry or an asset id is required");
             }
             mesh.material.validate();
+            if (mesh.instances) mesh.instances->validate();
             meshes.push_back(std::move(mesh));
         }
     };
