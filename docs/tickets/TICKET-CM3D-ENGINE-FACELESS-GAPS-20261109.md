@@ -14,14 +14,12 @@
 
 ---
 
-## 1. Verdetto secco
+## 1. Verdetto secco**A livello di engine, per i sei formati faceless non manca "tutto".** Resta un pezzo nuovo aperto (E2); E1 è chiuso localmente e E3 ha un primo percorso di produzione:
 
-**A livello di engine, per i sei formati faceless non manca "tutto".**
-Restano due pezzi nuovi aperti; il terzo ha ora un primo percorso di produzione:
-
-1. **Vulkan non consuma la texture MR né il materiale per-pixel della mesh
-   inline**: i fattori scalari metallic/roughness restano per-vertex, emissive
-   non viene copiato e la texture MR è ignorata. Il software sì. → E1 OPEN.
+1. **Vulkan consuma ora la texture MR e il materiale per-pixel della mesh
+   inline**: fattori per-pixel, emissive e doppio lato sono sulla lane nativa, e
+   la MR non viene più persa sui piani con `primitive`. → E1 CLOSED locally
+   2026-11-10; certificazione same-SHA in E10.
 2. **Non esiste un volto**: niente jaw/occhi/palpebre/brow, niente viseme,
    niente lip-sync. Il morph mixer c'è, ma non è un face rig. → E2 OPEN,
    obbligatorio solo se il personaggio deve recitare con la faccia.
@@ -39,7 +37,7 @@ Il resto o è già tracciato, o è una scelta di confine, o non è engine.
 
 | ID | Gap | Pri | Stato | Scheda | Impatto |
 |---|---|---:|---|---|---|
-| E1 | Vulkan inline mesh ignora la texture MR; i fattori scalari restano per-vertex | P1 | OPEN | [TICKET-VULKAN-INLINE-MESH-PBR-20261109](../../../Chronon3d/docs/tickets/TICKET-VULKAN-INLINE-MESH-PBR-20261109.md) | Night File/Deep Dive su lane GPU: texture MR divergente in silenzio |
+| E1 | Vulkan inline mesh ignora la texture MR; i fattori scalari restano per-vertex | P1 | CLOSED locally 2026-11-10 — pixel gate PASS; same-SHA in E10 | [TICKET-VULKAN-INLINE-MESH-PBR-20261109](../../../Chronon3d/docs/tickets/TICKET-VULKAN-INLINE-MESH-PBR-20261109.md) | Night File/Deep Dive su lane GPU: texture MR divergente in silenzio |
 | E2 | Nessun face rig / viseme / lip-sync | P1 se recita; P2 se faceless | OPEN | [TICKET-CM3D-FACIAL-RIG-VISEME-20261109](TICKET-CM3D-FACIAL-RIG-VISEME-20261109.md) | Personaggio con occhi/bocca: recitazione rigida, niente parlato |
 | E3 | Comando rigged GLB → RenderPlan atterrato ma incompleto (multi-gesto, input malformati, evidenza del piano) | P1 | PARTIAL — comando atterrato; run reale 150 frame PASS; restano due gesti/input malformati/same-SHA | [TICKET-CM3D-RIGGED-GLB-TO-RENDERPLAN-20261109](TICKET-CM3D-RIGGED-GLB-TO-RENDERPLAN-20261109.md) | Il percorso esiste e produce un manifest, ma non è ancora coperto da regressione multi-gesto né da manifest SHA256/same-SHA |
 | E4 | Rotta stills `-o file.png` non disegna mesh inline | P1 | OPEN, già tracciato | [TICKET-RENDER-STACK-HARDENING](../../../Chronon3d/docs/tickets/TICKET-RENDER-STACK-HARDENING-20261106.md) W3 | QA/contact sheet e review non possono usare still del personaggio |
@@ -96,7 +94,7 @@ ripetuto come se il software fosse cieco.
 
 Si può dire "engine pronto per i faceless shorts" solo quando:
 
-- [ ] E1 chiuso con pixel gate software/Vulkan su materiale MR.
+- [x] E1 chiuso localmente il 2026-11-10 con pixel gate software/Vulkan su materiale MR (`Chronon3d/docs/evidence/inline-mesh-pbr-vulkan-20261110`).
 - [ ] E3 chiuso con un comando che produce un piano V3 e 150 frame non vuoti.
 - [ ] E4/E5 chiusi o formalmente deferiti con owner e impatto.
 - [ ] E2 chiuso **oppure** dichiarato non-goal di prodotto per il formato.
