@@ -3,6 +3,7 @@
 #include "FramePlanInternal.hpp"
 
 #include "chrononmotion/motion/CameraRig.hpp"
+#include "chrononmotion/motion/Compositing.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
 
 #include <algorithm>
@@ -14,6 +15,7 @@
 #include <string>
 #include <unordered_set>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace chrononmotion::plan {
@@ -234,6 +236,13 @@ namespace chrononmotion::plan {
         const float sceneFps = scene.fps();
         plan.camera.reserve(static_cast<std::size_t>(plan.frameCount));
 
+        // Depth compositing is authored, not inferred: a stack-mode scene keeps
+        // emitting exactly the document it emitted before this contract existed.
+        const bool resolveCompositeOrder =
+            scene.compositeMode() == motion::CompositeMode::Depth;
+        if (resolveCompositeOrder)
+            plan.compositeOrder.reserve(static_cast<std::size_t>(plan.frameCount));
+
         for (int index = 0; index < plan.frameCount; ++index) {
             const PlanTimestamp& clock = plan.timeline[static_cast<std::size_t>(index)];
 
@@ -269,6 +278,16 @@ namespace chrononmotion::plan {
                 sample.opacity = state.worldOpacity;
                 sample.visible = state.visible;
                 layer.samples.push_back(sample);
+            }
+
+            if (resolveCompositeOrder) {
+                const motion::CompositeStack stack =
+                    motion::resolveCompositeStack(scene, pose);
+                std::vector<std::uint32_t> order;
+                order.reserve(stack.size());
+                for (const motion::CompositeDraw& draw : stack.backToFront)
+                    order.push_back(draw.layerId);
+                plan.compositeOrder.push_back(std::move(order));
             }
         }
 

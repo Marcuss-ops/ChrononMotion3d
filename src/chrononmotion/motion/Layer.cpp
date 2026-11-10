@@ -307,4 +307,25 @@ namespace chrononmotion::motion {
         return *this;
     }
 
+    void InstanceBatch::validate() const {
+
+        if (localTransforms.empty()) {
+            throw std::invalid_argument("InstanceBatch: at least one local transform is required");
+        }
+        if (localTransforms.size() > kMaxInstances) {
+            throw std::invalid_argument("InstanceBatch: instance count exceeds the 65536 ceiling");
+        }
+        for (const Matrix4& local : localTransforms) {
+            for (const float value : local.elements) {
+                if (!std::isfinite(value)) {
+                    throw std::invalid_argument("InstanceBatch: local transform must be finite");
+                }
+            }
+            const float determinant = local.determinant();
+            if (!std::isfinite(determinant) || std::fabs(determinant) < 1e-8f) {
+                throw std::invalid_argument("InstanceBatch: local transform must be non-singular");
+            }
+        }
+    }
+
 }// namespace chrononmotion::motion

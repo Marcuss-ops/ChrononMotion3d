@@ -51,6 +51,36 @@ for prepared meshes. Software sampling of that V3 inline asset remains open.
 
 Normal and occlusion textures remain out of scope.
 
+## Physical extension (V1.1)
+
+`MaterialDescriptor` also carries the physical values a glass or coated surface
+needs. They are neutral by default, so an ordinary PBR descriptor is unchanged:
+
+| Field          | Range        | Neutral | Meaning                         |
+| -------------- | ------------ | ------- | ------------------------------- |
+| `transmission` | `[0, 1]`     | `0`     | refracted light fraction        |
+| `ior`          | `[1, 2.5]`   | `1.5`   | index of refraction             |
+| `thickness`    | `[0, 1000]`  | `0`     | volume thickness                |
+| `dispersion`   | `[0, 1]`     | `0`     | chromatic dispersion            |
+| `clearcoat`    | `[0, 1]`     | `0`     | coating layer                   |
+
+`validate()` rejects non-finite values and every out-of-range value.
+`hasPhysicalProperties()` reports whether any field departs from neutral.
+
+Rendering split:
+
+- The threepp bridge maps a non-neutral descriptor to `MeshPhysicalMaterial`
+  (`transmission`, `setIor`, `thickness`, `dispersion`, `clearcoat`); a neutral
+  descriptor stays on `MeshStandardMaterial`.
+- RenderPlan V3 has no physical slots. `lowerToRenderPlan` therefore **refuses**
+  a physical descriptor instead of emitting an opaque approximation.
+- Scene export writes the values under `material.physical` only when
+  non-neutral, so existing documents keep their exact bytes; the importer
+  restores and re-validates them.
+
+The Vulkan transmission/clearcoat pass and an OpenGL/Vulkan parity measurement
+remain open; no renderer in this tree claims them from this contract alone.
+
 ## Determinism
 
 Material values are serialized as JSON numbers in a fixed field order by the

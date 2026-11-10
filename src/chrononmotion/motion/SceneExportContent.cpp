@@ -106,7 +106,42 @@ namespace chrononmotion::motion {
             writer.boolean(mesh.material.doubleSided);
             writer.key("alphaCutoff");
             writer.number(mesh.material.alphaCutoff);
+            // Physical extension: omitted while neutral so existing scene
+            // documents keep their exact bytes.
+            if (mesh.material.hasPhysicalProperties()) {
+                writer.key("physical");
+                writer.beginObject();
+                writer.key("transmission");
+                writer.number(mesh.material.transmission);
+                writer.key("ior");
+                writer.number(mesh.material.ior);
+                writer.key("thickness");
+                writer.number(mesh.material.thickness);
+                writer.key("dispersion");
+                writer.number(mesh.material.dispersion);
+                writer.key("clearcoat");
+                writer.number(mesh.material.clearcoat);
+                writer.endObject();
+            }
             writer.endObject();
+            if (mesh.instances) {
+                mesh.instances->validate();
+                writer.key("instances");
+                writer.beginObject();
+                writer.key("localTransforms");
+                writer.beginArray();
+                for (const Matrix4& local : mesh.instances->localTransforms) {
+                    writer.item();
+                    writer.beginArray();
+                    for (const float value : local.elements) {
+                        writer.item();
+                        writer.number(value);
+                    }
+                    writer.endArray();
+                }
+                writer.endArray();
+                writer.endObject();
+            }
             writer.endObject();
         }
 

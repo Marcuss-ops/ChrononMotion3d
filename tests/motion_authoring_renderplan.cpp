@@ -457,6 +457,20 @@ void testTypedChronon3dLowering() {
               std::abs(emittedMaterial.at("alpha_cutoff").get<float>() - pbrDescriptor.alphaCutoff) < 1e-6f,
               "PBR exact properties survive deterministic RenderPlan serialization");
     }
+    MotionScene physicalMeshScene("physical mesh contract", 30.f);
+    MaterialDescriptor glassDescriptor = MaterialDescriptor::pbr(11, Color(0xffffff), 0.05f, 0.f);
+    glassDescriptor.transmission = 1.f;
+    glassDescriptor.thickness = 0.4f;
+    glassDescriptor.clearcoat = 1.f;
+    glassDescriptor.dispersion = 0.02f;
+    glassDescriptor.validate();
+    physicalMeshScene.addMesh(74, "glass triangle", MeshAttachment{
+        .geometry = proceduralTriangle, .material = glassDescriptor}).alive(0, 1);
+    proceduralMeshOptions.contentLayers.clear();
+    proceduralMeshOptions.contentLayers.emplace("74", proceduralMeshContent);
+    check(throwsInvalid([&] { (void)lowerToRenderPlan(physicalMeshScene, proceduralMeshOptions); }),
+          "physical transmission/clearcoat properties fail closed instead of lowering to an opaque inline mesh");
+
     MotionScene animatedMeshScene("animated mesh contract", 30.f);
     Layer& animatedMesh = animatedMeshScene.addMesh(
         72, "animated triangle", MeshAttachment{.geometry = proceduralTriangle});

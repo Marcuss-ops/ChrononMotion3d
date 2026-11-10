@@ -30,6 +30,13 @@ namespace chrononmotion {
         float roughness{1.f};
         float metalness{0.f};
         float opacity{1.f};
+        // Physical extension, versioned by these neutral defaults. Consumers that
+        // do not know a field still validate and carry it unchanged.
+        float transmission{0.f};
+        float ior{1.5f};
+        float thickness{0.f};
+        float dispersion{0.f};
+        float clearcoat{0.f};
         bool transparent{false};
         bool doubleSided{false};
         float alphaCutoff{0.f};
@@ -50,6 +57,21 @@ namespace chrononmotion {
             if (!std::isfinite(alphaCutoff) || alphaCutoff < 0.f || alphaCutoff > 1.f) {
                 throw std::invalid_argument("MaterialDescriptor: alphaCutoff must be in [0, 1]");
             }
+            if (!std::isfinite(transmission) || transmission < 0.f || transmission > 1.f) {
+                throw std::invalid_argument("MaterialDescriptor: transmission must be in [0, 1]");
+            }
+            if (!std::isfinite(ior) || ior < 1.f || ior > 2.5f) {
+                throw std::invalid_argument("MaterialDescriptor: ior must be in [1, 2.5]");
+            }
+            if (!std::isfinite(thickness) || thickness < 0.f || thickness > 1000.f) {
+                throw std::invalid_argument("MaterialDescriptor: thickness must be in [0, 1000]");
+            }
+            if (!std::isfinite(dispersion) || dispersion < 0.f || dispersion > 1.f) {
+                throw std::invalid_argument("MaterialDescriptor: dispersion must be in [0, 1]");
+            }
+            if (!std::isfinite(clearcoat) || clearcoat < 0.f || clearcoat > 1.f) {
+                throw std::invalid_argument("MaterialDescriptor: clearcoat must be in [0, 1]");
+            }
             for (const float channel : {baseColor.r, baseColor.g, baseColor.b,
                                         emissiveColor.r, emissiveColor.g, emissiveColor.b}) {
                 if (!std::isfinite(channel) || channel < 0.f) {
@@ -61,6 +83,13 @@ namespace chrononmotion {
                     throw std::invalid_argument("MaterialDescriptor: emissive output must be in [0, 10000]");
                 }
             }
+        }
+
+        /// True when any physical property departs from its neutral default, so
+        /// a consumer can pick the physical path without guessing from `kind`.
+        [[nodiscard]] bool hasPhysicalProperties() const {
+            return transmission != 0.f || ior != 1.5f || thickness != 0.f ||
+                   dispersion != 0.f || clearcoat != 0.f;
         }
 
         [[nodiscard]] static MaterialDescriptor unlit(std::uint32_t id, Color color = Color(0xffffff)) {

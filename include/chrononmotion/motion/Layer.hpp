@@ -11,6 +11,7 @@
 #include "chrononmotion/core/BufferGeometry.hpp"
 #include "chrononmotion/core/Object3D.hpp"
 #include "chrononmotion/materials/Descriptors.hpp"
+#include "chrononmotion/math/Matrix4.hpp"
 #include "chrononmotion/motion/Content.hpp"
 #include "chrononmotion/motion/Particles.hpp"
 #include "chrononmotion/motion/Track.hpp"
@@ -103,6 +104,27 @@ namespace chrononmotion::motion {
         std::uint32_t parentId{0};
     };
 
+    /// A deterministic batch of placements for one mesh layer.
+    ///
+    /// This is the *only* instancing contract in the motion model: a layer keeps
+    /// one transform (the batch root, sampled per frame) and the batch keeps the
+    /// instance-local transforms. It never animates on its own, so random access
+    /// is exact: frame N is always `layer.world(N) * localTransforms[i]`.
+    struct InstanceBatch {
+        /// Upper bound mirrored by the renderer adapter; keeps one batch within
+        /// a bounded GPU upload and rejects accidental million-instance layers.
+        static constexpr std::size_t kMaxInstances = 65536;
+
+        std::vector<Matrix4> localTransforms{};
+
+        [[nodiscard]] bool empty() const { return localTransforms.empty(); }
+
+        /// Reject an empty batch, an unbounded batch, non-finite elements and
+        /// singular placements. A negative determinant is legal (a mirrored
+        /// instance); a zero one is not, because it cannot be inverted or shaded.
+        void validate() const;
+    };
+
     /// The renderer-facing half of a mesh layer.
     ///
     /// Chronon still owns the model's bytes; this side carries only the opaque
@@ -122,6 +144,9 @@ namespace chrononmotion::motion {
         std::string baseColorTextureAsset{};
         /// Mounted-root-relative linear metallic-roughness image.
         std::string metallicRoughnessTextureAsset{};
+
+        /// Optional per-layer instance placements. Absent means one instance.
+        std::optional<InstanceBatch> instances{};
 
         [[nodiscard]] bool empty() const { return assetId.empty() && !geometry; }
     };

@@ -32,6 +32,7 @@ calendario. Il frame plan è quella risoluzione, materializzata in un valore:
 | `shutter` | angolo e finestra di campionamento in unità sub-frame, o `null` |
 | `camera[]` | una posa per frame: posizione, quaternione, fov, ottica |
 | `layers[]` | per layer: identità, genitore, ordine e una matrice mondo per frame |
+| `composite_order[]` | solo in depth mode: per frame, gli id drawable visibili dal fondo al fronte |
 | `digest` | FNV-1a-64 del contenuto risolto |
 
 Non contiene: content bytes, font, pixel, geometria, materiali, luci, pass,
@@ -68,6 +69,25 @@ timeline è stretto e crescente, non "non negativo".
 - matrici mondo **row-major**, 16 float, traslazione agli indici 3, 7, 11.
   Motion memorizza column-major: il producer traspone, e il golden lo pinna.
 
+## Ordine di compositing
+
+Il campo `composite_order` è **opzionale** e compare solo quando la scena
+dichiara `compositeMode: depth` (contratto in
+[COMPOSITING.md](COMPOSITING.md)). Contiene una voce per frame, ciascuna con
+gli id dei layer drawable visibili a quell'istante, **dal fondo al fronte**.
+
+Regole verificate dal consumer:
+
+- una voce per ogni entrata del `timeline`;
+- nessun id duplicato, sconosciuto, Null o non visibile a quel frame;
+- la lista contiene esattamente tutti i layer non-Null visibili a quel frame.
+
+In `Stack` il campo è assente: `layers[]` è già l'ordine, e il documento resta
+byte-identico a quello emesso prima del contratto. Il digest copre
+`composite_order` quando presente. La decisione non è un flag del renderer: è
+un valore risolto da `resolveCompositeStack()` sulla scena già valutata e sulla
+posa camera mondo.
+
 ## Shutter
 
 La finestra è simmetrica attorno al frame, estremi inclusi: 180° a 12 campioni è
@@ -86,7 +106,7 @@ localizzato (`camera[3].lens.f_stop is 0.2, expected 0 (not authored) or
 `shutter_shape`, `shutter_offsets`, `shutter_coverage`, `camera_count`,
 `camera_time`, `camera_pose`, `camera_optics`, `layer_order`, `layer_parent`,
 `layer_kind`, `layer_asset`, `layer_samples`, `layer_timestamp`,
-`layer_transform`, `layer_opacity`, `digest`.
+`layer_transform`, `layer_opacity`, `composite_order`, `digest`.
 
 Casi che restano espliciti e non vengono "aggiustati":
 

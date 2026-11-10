@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -42,6 +43,7 @@ namespace chrononmotion::plan {
             case FramePlanProblem::LayerTimestamp: return "layer_timestamp";
             case FramePlanProblem::LayerTransform: return "layer_transform";
             case FramePlanProblem::LayerOpacity: return "layer_opacity";
+            case FramePlanProblem::CompositeOrder: return "composite_order";
             case FramePlanProblem::Digest: return "digest";
         }
         return "unknown";
@@ -263,6 +265,59 @@ namespace chrononmotion::plan {
             return std::nullopt;
         }
 
+        /// `composite_order`, when present, is a complete permutation of the
+        /// drawable layers visible at each frame. It is not repaired: a missing,
+        /// duplicated, unknown, null or hidden layer is a rejection.
+        [[nodiscard]] std::optional<FramePlanDiagnostic> verifyCompositeOrder(
+                const ResolvedFramePlan& plan) {
+
+            if (plan.compositeOrder.empty()) return std::nullopt;
+
+            const auto expectedFrames = static_cast<std::size_t>(plan.frameCount);
+            if (plan.compositeOrder.size() != expectedFrames)
+                return reject(FramePlanProblem::CompositeOrder,
+                              "composite_order holds " +
+                                  std::to_string(plan.compositeOrder.size()) +
+                                  " entries for frame_count " +
+                                  std::to_string(plan.frameCount));
+
+            std::unordered_map<std::uint32_t, const PlanLayer*> byId;
+            for (const PlanLayer& layer : plan.layers) byId.emplace(layer.id, &layer);
+
+            for (std::size_t frame = 0; frame < plan.compositeOrder.size(); ++frame) {
+                const auto where = "composite_order[" + std::to_string(frame) + "]";
+                const std::vector<std::uint32_t>& order = plan.compositeOrder[frame];
+                std::unordered_set<std::uint32_t> seen;
+
+                for (const std::uint32_t id : order) {
+                    if (!seen.insert(id).second)
+                        return reject(FramePlanProblem::CompositeOrder,
+                                      where + " repeats layer " + std::to_string(id));
+                    const auto found = byId.find(id);
+                    if (found == byId.end())
+                        return reject(FramePlanProblem::CompositeOrder,
+                                      where + " names layer " + std::to_string(id) +
+                                          ", which is not in layers[]");
+                    if (found->second->kind == PlanLayerKind::Null)
+                        return reject(FramePlanProblem::CompositeOrder,
+                                      where + " names the null layer " + std::to_string(id));
+                    if (!found->second->samples[frame].visible)
+                        return reject(FramePlanProblem::CompositeOrder,
+                                      where + " names layer " + std::to_string(id) +
+                                          ", which is not visible at this frame");
+                }
+
+                std::size_t drawable = 0;
+                for (const PlanLayer& layer : plan.layers)
+                    if (layer.kind != PlanLayerKind::Null && layer.samples[frame].visible) ++drawable;
+                if (order.size() != drawable)
+                    return reject(FramePlanProblem::CompositeOrder,
+                                  where + " holds " + std::to_string(order.size()) + " of " +
+                                      std::to_string(drawable) + " drawable layers");
+            }
+            return std::nullopt;
+        }
+
         [[nodiscard]] std::optional<FramePlanDiagnostic> verifyLayers(const ResolvedFramePlan& plan) {
 
             const auto expectedSize = static_cast<std::size_t>(plan.frameCount);
@@ -357,6 +412,7 @@ namespace chrononmotion::plan {
         if (auto failure = verifyShutter(plan)) return failure;
         if (auto failure = verifyCamera(plan)) return failure;
         if (auto failure = verifyLayers(plan)) return failure;
+        if (auto failure = verifyCompositeOrder(plan)) return failure;
 
         if (plan.digest == 0)
             return reject(FramePlanProblem::Digest,

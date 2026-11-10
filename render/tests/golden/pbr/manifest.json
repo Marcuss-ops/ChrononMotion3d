@@ -1,0 +1,31 @@
+{
+  "schema": "chrononmotion.pbr-golden.v1",
+  "asset": "render/spike/assets/threepp-certification/CesiumMilkTruck.glb",
+  "asset_sha256": "09371b34608116de5842d23abe260bf11acf3e1554daf334a647eb566eee5c49",
+  "upstream": "Khronos glTF-Sample-Assets edc7c9e67c639d230715049ee31f9a96a6babbbe",
+  "frame": 75,
+  "width": 1920,
+  "height": 1080,
+  "image": "CesiumMilkTruck.frame75.png",
+  "image_sha256": "2620440f3a8e4c15bad8009975b5a185a12901d2d4b38df18d67b20f8f32acd8",
+  "pipeline": "GLTFLoader -> MotionScene -> MotionSceneBridge -> threepp GLRenderer -> diagnostic PNG",
+  "renderer": "NVIDIA RTX A4000/PCIe/SSE2, GL 3.3.0 NVIDIA 595.99.02, EGL headless",
+  "captured": "2026-11-10",
+  "scope": "Internal regression baseline produced by the certified renderer from a pinned Khronos asset. It is not the Khronos glTF Sample Viewer reference image and does not prove color-managed PBR parity against an independent viewer.",
+  "tolerance": {
+    "max_mae_rgb": 2.0,
+    "max_channel_delta": 48,
+    "max_pixels_over_threshold_fraction": 0.005,
+    "over_threshold": 16
+  },
+  "baseline_measurement": {
+    "mae_rgb": 0.0,
+    "max_channel_delta": 0,
+    "pixels_over_threshold_fraction": 0.0
+  },
+  "notes": [
+    "The frame is the middle diagnostic frame of a 150-frame 30 fps run.",
+    "The comparison is byte-identical on the same GPU and driver; the tolerance exists for driver/EGL variation, not for scene edits.",
+    "Any intentional visual change must regenerate the golden and update image_sha256 plus baseline_measurement."
+  ]
+}

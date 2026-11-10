@@ -30,3 +30,7 @@ render/spike/assets/layers_v2_1/layer_torso_prev.png
 CMakeFiles/
 .tmp/
 /Testing/
+
+# Python bytecode written by the local tooling scripts (2026-11-10).
+__pycache__/
+*.py[cod]

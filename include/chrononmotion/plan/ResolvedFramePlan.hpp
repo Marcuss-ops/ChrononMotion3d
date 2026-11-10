@@ -159,6 +159,14 @@ namespace chrononmotion::plan {
         std::vector<PlanCameraSample> camera{};
         std::vector<PlanLayer> layers{};
 
+        /// Back-to-front draw order, one entry per timeline frame, present only
+        /// when the scene authorises depth compositing (`compositeMode: depth`).
+        /// Each entry names exactly the drawable layers visible at that instant:
+        /// null controllers and lifetime-hidden layers are absent. Empty for a
+        /// stack-mode scene, whose order is the `layers[]` list itself — which
+        /// keeps every pre-existing plan byte-identical.
+        std::vector<std::vector<std::uint32_t>> compositeOrder{};
+
         /// FNV-1a-64 over every resolved value, stamped by the producer.
         std::uint64_t digest{0};
     };
@@ -191,6 +199,7 @@ namespace chrononmotion::plan {
         LayerTimestamp,
         LayerTransform,
         LayerOpacity,
+        CompositeOrder,
         Digest
     };
 

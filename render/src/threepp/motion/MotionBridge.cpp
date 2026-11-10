@@ -6,7 +6,9 @@
 #include "threepp/lights/SpotLight.hpp"
 #include "threepp/materials/MeshBasicMaterial.hpp"
 #include "threepp/materials/MeshLambertMaterial.hpp"
+#include "threepp/materials/MeshPhysicalMaterial.hpp"
 #include "threepp/materials/MeshStandardMaterial.hpp"
+#include "threepp/objects/InstancedMesh.hpp"
 #include "threepp/objects/SkinnedMesh.hpp"
 
 #include <algorithm>
@@ -56,6 +58,34 @@ namespace threepp::motion {
                 clonedSkin->bind(skeleton, sourceSkin->bindMatrix);
             }
             return root;
+        }
+
+        /// First InstancedMesh in a subtree. A bound instance object arrives
+        /// wrapped in a Group, so the batch has to find it rather than assume
+        /// the wrapper itself carries the instance buffer.
+        InstancedMesh* findInstancedMesh(Object3D& node) {
+            if (auto* instance = dynamic_cast<InstancedMesh*>(&node)) return instance;
+            for (const auto& child : node.children) {
+                if (!child) continue;
+                if (auto* instance = findInstancedMesh(*child)) return instance;
+            }
+            return nullptr;
+        }
+
+        /// Upload one authored batch. The layer wrapper already carries the
+        /// sampled frame transform, so only the instance-local placements change;
+        /// instance count is fixed per frame by the validated batch.
+        void syncInstanceBatch(InstancedMesh& mesh,
+                               const chrononmotion::motion::InstanceBatch& batch) {
+            batch.validate();
+            const std::size_t count = batch.localTransforms.size();
+            if (mesh.count() != count) mesh.setCount(count);
+            for (std::size_t index = 0; index < count; ++index) {
+                mesh.setMatrixAt(index, toThreeppMatrix4(batch.localTransforms[index]));
+            }
+            mesh.instanceMatrix()->needsUpdate();
+            mesh.computeBoundingBox();
+            mesh.computeBoundingSphere();
         }
 
     }// namespace
@@ -187,7 +217,21 @@ namespace threepp::motion {
                 return mat;
             }
             case chrononmotion::MaterialKind::PBR: {
-                auto mat = MeshStandardMaterial::create();
+                // The neutral descriptor keeps the cheaper Standard material. A
+                // descriptor carrying glass/coating data takes the physical path;
+                // the fields are already validated by descriptor.validate().
+                std::shared_ptr<MeshStandardMaterial> mat;
+                if (descriptor.hasPhysicalProperties()) {
+                    auto physical = MeshPhysicalMaterial::create();
+                    physical->transmission = descriptor.transmission;
+                    physical->setIor(descriptor.ior);
+                    physical->thickness = descriptor.thickness;
+                    physical->dispersion = descriptor.dispersion;
+                    physical->clearcoat = descriptor.clearcoat;
+                    mat = std::move(physical);
+                } else {
+                    mat = MeshStandardMaterial::create();
+                }
                 mat->name = descriptor.name;
                 mat->color = toThreeppColor(descriptor.baseColor);
                 mat->map = map;
@@ -197,7 +241,7 @@ namespace threepp::motion {
                 mat->emissive = toThreeppColor(descriptor.emissiveColor);
                 mat->emissiveIntensity = descriptor.emissiveStrength;
                 mat->opacity = effectiveOpacity;
-                mat->transparent = isTransparent;
+                mat->transparent = isTransparent || descriptor.transmission > 0.f;
                 return mat;
             }
             case chrononmotion::MaterialKind::Emissive: {
@@ -609,9 +653,16 @@ namespace threepp::motion {
                         cachedGeom = toThreeppGeometry(*meshDesc.geometry);
                     }
                     auto mat = toThreeppMaterial(meshDesc.material, 1.f, boundTex, boundNormalMap);
-                    auto meshNode = Mesh::create(cachedGeom, mat);
-                    meshNode->name = meshDesc.name;
-                    wrapper = std::move(meshNode);
+                    if (meshDesc.instances) {
+                        auto instanced = InstancedMesh::create(
+                                cachedGeom, mat, meshDesc.instances->localTransforms.size());
+                        instanced->name = meshDesc.name;
+                        wrapper = std::move(instanced);
+                    } else {
+                        auto meshNode = Mesh::create(cachedGeom, mat);
+                        meshNode->name = meshDesc.name;
+                        wrapper = std::move(meshNode);
+                    }
                 }
                 if (wrapper) {
                     scene_->add(wrapper);
@@ -620,6 +671,15 @@ namespace threepp::motion {
 
             if (wrapper) {
                 applyTransformToWrapper(*wrapper, t, meshDesc.material.opacity);
+                if (meshDesc.instances) {
+                    auto* instanced = findInstancedMesh(*wrapper);
+                    if (!instanced) {
+                        throw std::invalid_argument(
+                                "MotionSceneBridge: an instance batch needs explicit geometry or a bound "
+                                "InstancedMesh; asset-tree instancing is not supported");
+                    }
+                    syncInstanceBatch(*instanced, *meshDesc.instances);
+                }
             }
         }
 

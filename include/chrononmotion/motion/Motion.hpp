@@ -27,6 +27,7 @@
 #include "chrononmotion/motion/Track.hpp"
 #include "chrononmotion/motion/Layer.hpp"
 #include "chrononmotion/motion/MotionScene.hpp"
+#include "chrononmotion/motion/Compositing.hpp"
 #include "chrononmotion/motion/SceneExport.hpp"
 #include "chrononmotion/motion/SceneImport.hpp"
 #include "chrononmotion/motion/Interaction.hpp"
