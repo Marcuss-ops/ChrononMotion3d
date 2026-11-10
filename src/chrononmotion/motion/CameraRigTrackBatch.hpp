@@ -97,10 +97,22 @@ public:
 
 private:
     using Value = std::variant<Vector3, Quaternion, float>;
-    struct Event { Channel channel; float time; Value value; Easing easing; };
-    void push(Channel c, float t, const Vector3& v, const Easing& e) { events_.push_back({c, t, v, e}); maybeFlush(); }
-    void push(Channel c, float t, const Quaternion& v, const Easing& e) { events_.push_back({c, t, v, e}); maybeFlush(); }
-    void push(Channel c, float t, float v, const Easing& e) { events_.push_back({c, t, v, e}); maybeFlush(); }
+    struct Event {
+        Event(Channel channelValue, float timeValue, const Vector3& valueValue, const Easing& easingValue)
+            : channel(channelValue), time(timeValue), value(std::in_place_type<Vector3>, valueValue), easing(easingValue) {}
+        Event(Channel channelValue, float timeValue, const Quaternion& valueValue, const Easing& easingValue)
+            : channel(channelValue), time(timeValue), value(std::in_place_type<Quaternion>, valueValue), easing(easingValue) {}
+        Event(Channel channelValue, float timeValue, float valueValue, const Easing& easingValue)
+            : channel(channelValue), time(timeValue), value(std::in_place_type<float>, valueValue), easing(easingValue) {}
+
+        Channel channel;
+        float time;
+        Value value;
+        Easing easing;
+    };
+    void push(Channel c, float t, const Vector3& v, const Easing& e) { events_.emplace_back(c, t, v, e); maybeFlush(); }
+    void push(Channel c, float t, const Quaternion& v, const Easing& e) { events_.emplace_back(c, t, v, e); maybeFlush(); }
+    void push(Channel c, float t, float v, const Easing& e) { events_.emplace_back(c, t, v, e); maybeFlush(); }
     void maybeFlush() { if (rig_ && events_.size() >= 4096) applyAndClear(*rig_); }
     CameraRig* rig_{nullptr};
     std::vector<Event> events_;

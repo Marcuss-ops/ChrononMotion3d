@@ -189,14 +189,64 @@ option(CHRONONMOTION_BUILD_SPIKE_PROGRAMS
 # Keep CUDA/FFmpeg interop optional for build hosts without the NVIDIA SDK,
 # but never substitute a CPU encoder in the certification runner. Such hosts
 # can build ChrononMotion3D; T06/T14 then reports that the GPU route is absent.
-find_path(CHRONON_CUDA_INCLUDE_DIR cuda_gl_interop.h)
-find_library(CHRONON_CUDART_LIBRARY NAMES cudart)
-find_library(CHRONON_CUDA_DRIVER_LIBRARY NAMES cuda)
+set(_chronon_cuda_include_hints "$ENV{CUDA_PATH}/include" /usr/local/cuda/include)
+set(_chronon_cuda_library_hints "$ENV{CUDA_PATH}/lib/x64" "$ENV{CUDA_PATH}/lib64"
+        /usr/local/cuda/lib64 /usr/local/cuda/targets/x86_64-linux/lib)
+find_path(CHRONON_CUDA_INCLUDE_DIR cuda_gl_interop.h HINTS ${_chronon_cuda_include_hints})
+find_path(CHRONON_CUDA_CRT_INCLUDE_DIR crt/host_defines.h
+        HINTS "$ENV{CUDA_PATH}/include" "$ENV{CUDA_PATH}/targets/x86_64-linux/include"
+        /usr/local/cuda/include /usr/local/cuda/targets/x86_64-linux/include)
+set(_chronon_opengl_include_hints ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+if(WIN32)
+    file(GLOB _chronon_windows_sdk_um "C:/Program Files (x86)/Windows Kits/10/Include/*/um")
+    list(SORT _chronon_windows_sdk_um)
+    list(REVERSE _chronon_windows_sdk_um)
+    list(APPEND _chronon_opengl_include_hints ${_chronon_windows_sdk_um})
+endif()
+find_path(CHRONON_OPENGL_INCLUDE_DIR GL/gl.h HINTS ${_chronon_opengl_include_hints})
+find_library(CHRONON_CUDART_LIBRARY NAMES cudart HINTS ${_chronon_cuda_library_hints})
+find_library(CHRONON_CUDA_DRIVER_LIBRARY NAMES cuda nvcuda HINTS ${_chronon_cuda_library_hints})
 find_package(PkgConfig QUIET)
 if (PkgConfig_FOUND)
     pkg_check_modules(CHRONON_FFMPEG QUIET IMPORTED_TARGET libavcodec libavformat libavutil)
 endif ()
-if (CHRONON_CUDA_INCLUDE_DIR AND CHRONON_CUDART_LIBRARY AND CHRONON_CUDA_DRIVER_LIBRARY AND TARGET PkgConfig::CHRONON_FFMPEG)
+set(CHRONON_FFMPEG_AVAILABLE FALSE)
+if(TARGET PkgConfig::CHRONON_FFMPEG)
+    set(CHRONON_FFMPEG_AVAILABLE TRUE)
+    set(CHRONON_FFMPEG_LINK_TARGET PkgConfig::CHRONON_FFMPEG)
+elseif(WIN32 AND CHRONON3D_DEPENDENCY_INCLUDE_DIR)
+    get_filename_component(_chronon3d_dependency_root "${CHRONON3D_DEPENDENCY_INCLUDE_DIR}" DIRECTORY)
+    find_library(CHRONON_AVCODEC_LIBRARY NAMES avcodec HINTS "${_chronon3d_dependency_root}/lib")
+    find_library(CHRONON_AVFORMAT_LIBRARY NAMES avformat HINTS "${_chronon3d_dependency_root}/lib")
+    find_library(CHRONON_AVUTIL_LIBRARY NAMES avutil HINTS "${_chronon3d_dependency_root}/lib")
+    if(CHRONON_AVCODEC_LIBRARY AND CHRONON_AVFORMAT_LIBRARY AND CHRONON_AVUTIL_LIBRARY)
+        set(CHRONON_FFMPEG_AVAILABLE TRUE)
+        add_library(chrononmotion_ffmpeg INTERFACE)
+        target_include_directories(chrononmotion_ffmpeg INTERFACE "${CHRONON3D_DEPENDENCY_INCLUDE_DIR}")
+        target_link_libraries(chrononmotion_ffmpeg INTERFACE
+                "${CHRONON_AVFORMAT_LIBRARY}" "${CHRONON_AVCODEC_LIBRARY}" "${CHRONON_AVUTIL_LIBRARY}")
+        set(CHRONON_FFMPEG_LINK_TARGET chrononmotion_ffmpeg)
+    endif()
+endif()
+if(CHRONON_CUDA_INCLUDE_DIR AND CHRONON_CUDA_CRT_INCLUDE_DIR AND CHRONON_OPENGL_INCLUDE_DIR)
+    include(CheckCXXSourceCompiles)
+    unset(CHRONON_CUDA_GL_HEADERS_COMPILE CACHE)
+    set(_chronon_saved_required_includes "${CMAKE_REQUIRED_INCLUDES}")
+    set(CMAKE_REQUIRED_INCLUDES
+            "${CHRONON_CUDA_INCLUDE_DIR};${CHRONON_CUDA_CRT_INCLUDE_DIR};${CHRONON_OPENGL_INCLUDE_DIR}")
+    if(WIN32)
+        set(_chronon_cuda_gl_header_probe "#define NOMINMAX\n#include <windows.h>\n#include <cuda_gl_interop.h>\nint main() { return 0; }")
+    else()
+        set(_chronon_cuda_gl_header_probe "#include <cuda_gl_interop.h>\nint main() { return 0; }")
+    endif()
+    check_cxx_source_compiles("${_chronon_cuda_gl_header_probe}" CHRONON_CUDA_GL_HEADERS_COMPILE)
+    set(CMAKE_REQUIRED_INCLUDES "${_chronon_saved_required_includes}")
+else()
+    set(CHRONON_CUDA_GL_HEADERS_COMPILE FALSE)
+endif()
+if (CHRONON_CUDA_INCLUDE_DIR AND CHRONON_CUDA_CRT_INCLUDE_DIR AND CHRONON_CUDA_GL_HEADERS_COMPILE AND
+        CHRONON_OPENGL_INCLUDE_DIR AND CHRONON_CUDART_LIBRARY AND CHRONON_CUDA_DRIVER_LIBRARY AND
+        CHRONON_FFMPEG_AVAILABLE)
     set(CHRONON_GL_CUDA_NVENC_AVAILABLE TRUE)
     message(STATUS "threepp certification: enabling GL PBO -> CUDA -> NVENC path")
 else ()
@@ -205,19 +255,20 @@ endif ()
 add_library(chrononmotion_gl_cuda_nvenc INTERFACE)
 target_link_libraries(chrononmotion_gl_cuda_nvenc INTERFACE
         ${CHRONON_CUDART_LIBRARY} ${CHRONON_CUDA_DRIVER_LIBRARY})
-if (TARGET PkgConfig::CHRONON_FFMPEG)
-    target_link_libraries(chrononmotion_gl_cuda_nvenc INTERFACE PkgConfig::CHRONON_FFMPEG)
+if (CHRONON_FFMPEG_AVAILABLE)
+    target_link_libraries(chrononmotion_gl_cuda_nvenc INTERFACE ${CHRONON_FFMPEG_LINK_TARGET})
 endif ()
 if (CHRONON_GL_CUDA_NVENC_AVAILABLE)
-    target_include_directories(chrononmotion_gl_cuda_nvenc INTERFACE "${CHRONON_CUDA_INCLUDE_DIR}")
+    target_include_directories(chrononmotion_gl_cuda_nvenc INTERFACE
+            "${CHRONON_CUDA_INCLUDE_DIR}" "${CHRONON_CUDA_CRT_INCLUDE_DIR}" "${CHRONON_OPENGL_INCLUDE_DIR}")
     target_compile_definitions(chrononmotion_gl_cuda_nvenc INTERFACE CHRONONMOTION_HAS_GL_CUDA_NVENC=1)
 endif ()
 
-target_include_directories(chrononmotion_render PUBLIC
+target_include_directories(chrononmotion_render SYSTEM PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${RENDER_GENERATED_DIR}"
 )
-target_include_directories(chrononmotion_render PRIVATE
+target_include_directories(chrononmotion_render SYSTEM PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/glad"
         "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
@@ -236,6 +287,9 @@ target_link_libraries(chrononmotion_render PUBLIC glfw chrononmotion)
 if(TARGET chrononmotion_preview)
     target_link_libraries(chrononmotion_render PUBLIC chrononmotion_preview)
 endif()
+if(WIN32)
+    target_link_libraries(chrononmotion_render PUBLIC Psapi)
+endif()
 target_compile_features(chrononmotion_render PUBLIC cxx_std_20)
 
 # Headless pixel-level invariants for perspective compensation, random-access
@@ -244,28 +298,34 @@ target_compile_features(chrononmotion_render PUBLIC cxx_std_20)
 if(CHRONONMOTION_BUILD_TESTS)
     add_executable(chrononmotion_render_pixel_certification tests/pixel_certification.cpp)
     target_link_libraries(chrononmotion_render_pixel_certification PRIVATE chrononmotion_render)
-    target_compile_options(chrononmotion_render_pixel_certification PRIVATE -Wall -Wextra)
+    chrononmotion_set_target_warnings(chrononmotion_render_pixel_certification)
     if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_render_pixel_certification PRIVATE -Werror)
         # The pinned threepp headers trigger these warnings in consumer TUs;
         # keep this certification strict for its own code without promoting
         # those existing vendor-header diagnostics to errors.
-        target_compile_options(chrononmotion_render_pixel_certification PRIVATE
-                -Wno-error=reorder -Wno-error=unused-parameter)
+        if(NOT MSVC)
+            target_compile_options(chrononmotion_render_pixel_certification PRIVATE
+                    -Wno-error=reorder -Wno-error=unused-parameter)
+        endif()
     endif()
     add_test(NAME chrononmotion_render_pixel_certification COMMAND chrononmotion_render_pixel_certification)
-    set_tests_properties(chrononmotion_render_pixel_certification PROPERTIES
-            ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
+    if(UNIX)
+        set_tests_properties(chrononmotion_render_pixel_certification PROPERTIES
+                ENVIRONMENT "THREEPP_GLFW_PLATFORM=egl")
+    endif()
 
     if(TARGET chrononmotion_preview)
         add_executable(chrononmotion_render_debug_draw_pixels tests/debug_draw_pixels.cpp)
         target_link_libraries(chrononmotion_render_debug_draw_pixels PRIVATE
                 chrononmotion_render chrononmotion_preview)
-        target_compile_options(chrononmotion_render_debug_draw_pixels PRIVATE -Wall -Wextra)
+        chrononmotion_set_target_warnings(chrononmotion_render_debug_draw_pixels)
         if(CHRONONMOTION_WERROR)
-            target_compile_options(chrononmotion_render_debug_draw_pixels PRIVATE
-                    -Werror -Wno-error=unused-parameter -Wno-error=reorder
-                    -Wno-error=missing-field-initializers)
+            chrononmotion_set_target_warnings(chrononmotion_render_debug_draw_pixels TRUE)
+            if(NOT MSVC)
+                target_compile_options(chrononmotion_render_debug_draw_pixels PRIVATE
+                        -Wno-error=unused-parameter -Wno-error=reorder
+                        -Wno-error=missing-field-initializers)
+            endif()
         endif()
         add_test(NAME chrononmotion_render_debug_draw_pixels
                 COMMAND chrononmotion_render_debug_draw_pixels)
@@ -280,25 +340,27 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_compile_definitions(chrononmotion_t16_camera_truth PRIVATE
             CHRONONMOTION_T16_SUBJECT="${CMAKE_CURRENT_SOURCE_DIR}/spike/assets/mrbeast_chromo/mrbeast_cutout.png")
     target_link_libraries(chrononmotion_t16_camera_truth PRIVATE chrononmotion_render)
-    target_compile_options(chrononmotion_t16_camera_truth PRIVATE -Wall -Wextra)
+    chrononmotion_set_target_warnings(chrononmotion_t16_camera_truth)
     if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_t16_camera_truth PRIVATE -Werror
-                -Wno-error=reorder -Wno-error=unused-parameter
-                -Wno-error=missing-field-initializers)
+        chrononmotion_set_target_warnings(chrononmotion_t16_camera_truth TRUE)
+        if(NOT MSVC)
+            target_compile_options(chrononmotion_t16_camera_truth PRIVATE
+                    -Wno-error=reorder -Wno-error=unused-parameter
+                    -Wno-error=missing-field-initializers)
+        endif()
     endif()
     # Historical T16/MrBeast fixture: kept as a manual executable, not a
     # camera acceptance test. Its coverage must be replaced by the new scene.
 
     # Historical CAM-04 renderer for the T16 image-plane subset.
     add_executable(chrononmotion_cam04_renderplan_pixels tests/cam04_renderplan_pixels.cpp)
+    target_include_directories(chrononmotion_cam04_renderplan_pixels SYSTEM PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/nlohmann")
     target_link_libraries(chrononmotion_cam04_renderplan_pixels PRIVATE chrononmotion_render)
-    target_compile_options(chrononmotion_cam04_renderplan_pixels PRIVATE -Wall -Wextra)
+    chrononmotion_set_target_warnings(chrononmotion_cam04_renderplan_pixels)
     add_executable(chrononmotion_t19b_camera_rig_contract tests/t19b_camera_rig_contract.cpp)
     target_link_libraries(chrononmotion_t19b_camera_rig_contract PRIVATE chrononmotion)
-    target_compile_options(chrononmotion_t19b_camera_rig_contract PRIVATE -Wall -Wextra)
-    if(CHRONONMOTION_WERROR)
-        target_compile_options(chrononmotion_t19b_camera_rig_contract PRIVATE -Werror)
-    endif()
+    chrononmotion_set_target_warnings(chrononmotion_t19b_camera_rig_contract)
     add_test(NAME chrononmotion_t19b_camera_rig_contract
             COMMAND chrononmotion_t19b_camera_rig_contract
                     "${CMAKE_CURRENT_SOURCE_DIR}/spike/assets/t19b_apollo/camera_keys.csv"
@@ -306,14 +368,15 @@ if(CHRONONMOTION_BUILD_TESTS)
                     "${CMAKE_CURRENT_BINARY_DIR}/T19B_CameraRig_report.json")
 
     add_executable(chrononmotion_t19b_plan_tool tools/t19b_plan_tool.cpp)
-    target_include_directories(chrononmotion_t19b_plan_tool PRIVATE
-            "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb")
+    target_include_directories(chrononmotion_t19b_plan_tool SYSTEM PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/stb"
+            "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/nlohmann")
     if(CHRONON3D_DEPENDENCY_INCLUDE_DIR)
         target_include_directories(chrononmotion_t19b_plan_tool SYSTEM PRIVATE "${CHRONON3D_DEPENDENCY_INCLUDE_DIR}")
     endif()
     target_link_libraries(chrononmotion_t19b_plan_tool PRIVATE chrononmotion_render)
     target_compile_features(chrononmotion_t19b_plan_tool PRIVATE cxx_std_20)
-    target_compile_options(chrononmotion_t19b_plan_tool PRIVATE -Wall -Wextra)
+    chrononmotion_set_target_warnings(chrononmotion_t19b_plan_tool)
 endif()
 
 find_package(PkgConfig QUIET)

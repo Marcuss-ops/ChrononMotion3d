@@ -5,7 +5,11 @@ small deterministic C++ scenes with quantitative assertions. It is a motion-data
 suite, not a renderer: this repository cannot produce golden pixels on its own.
 Each supported case records a committed 64-bit FNV-1a signature over the
 length-delimited exported Motion JSON and sampled scene/solver output in
-`showcase_golden.json`. Assertions are evaluated independently of the signature.
+`showcase_golden.json` on Linux and `showcase_golden_windows.json` on Windows.
+The separate manifests account for platform math-library differences in a few
+floating-point snapshots; each case still runs the same tolerance-based
+behavioral assertions on both systems. Assertions are evaluated independently
+of the signature.
 Track easing is authored on the starting key because each key controls the curve
 into its next key. The signature is a compact regression tripwire, not a
 cryptographic integrity claim.

@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 // Rigid full-head neck pivot on a pure chroma-green field.
 //
 // Usage:
@@ -284,7 +285,7 @@ int main(int argc, char** argv) {
             "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size " +
             std::to_string(width) + "x" + std::to_string(height) +
             " -framerate 30 -i - -vf vflip -c:v libx264 -pix_fmt yuv420p \"" + outPath + "\"";
-        FILE* pipe = popen(cmd.c_str(), "w");
+        FILE* pipe = chrononmotion::platform::openCommandPipe(cmd.c_str(), "w");
         if (!pipe) {
             std::cerr << "green_screen_actor: failed to open ffmpeg pipe\n";
             return 1;
@@ -293,7 +294,7 @@ int main(int argc, char** argv) {
             const auto pixels = renderAtFrame(f);
             std::fwrite(pixels.data(), 1, pixels.size(), pipe);
         }
-        const int rc = pclose(pipe);
+        const int rc = chrononmotion::platform::closeCommandPipe(pipe);
         if (rc != 0) {
             std::cerr << "green_screen_actor: ffmpeg exited with " << rc << "\n";
             return 1;

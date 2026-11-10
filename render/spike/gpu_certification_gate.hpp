@@ -26,11 +26,17 @@ inline std::string require_nvenc_encoder() {
 }
 
 inline void prepare_nvidia_egl_headless() {
+#ifdef _WIN32
+    // GLFW's native Win32/WGL path owns the context on Windows; EGL is only
+    // the display-free selection used by Linux certification runs.
+    return;
+#else
     const char* x11 = std::getenv("DISPLAY");
     const char* wayland = std::getenv("WAYLAND_DISPLAY");
     const char* platform = std::getenv("THREEPP_GLFW_PLATFORM");
     if ((!x11 || !*x11) && (!wayland || !*wayland) && (!platform || !*platform))
         setenv("THREEPP_GLFW_PLATFORM", "egl", 0);
+#endif
 }
 
 } // namespace chrononmotion::certification

@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 // Documentary animation presets for the Character V2.1 multilayer rig.
 //
 // Each preset is a short, light-movement clip built from the same corrected
@@ -267,7 +268,7 @@ bool renderPreset(const Preset& p, threepp::GLRenderer& renderer, const std::str
         " -framerate " + std::to_string(static_cast<int>(fps)) +
         " -i - -vf \"" + filter + "\" -c:v libx264 -pix_fmt yuv420p \"" + outPath + "\"";
 
-    FILE* pipe = popen(cmd.c_str(), "w");
+    FILE* pipe = chrononmotion::platform::openCommandPipe(cmd.c_str(), "w");
     if (!pipe) {
         std::cerr << p.id << ": failed to open ffmpeg pipe\n";
         return false;
@@ -276,7 +277,7 @@ bool renderPreset(const Preset& p, threepp::GLRenderer& renderer, const std::str
         const auto px = renderFrame(f);
         std::fwrite(px.data(), 1, px.size(), pipe);
     }
-    const int rc = pclose(pipe);
+    const int rc = chrononmotion::platform::closeCommandPipe(pipe);
     if (rc != 0) {
         std::cerr << p.id << ": ffmpeg exited with " << rc << "\n";
         return false;

@@ -55,7 +55,7 @@ int main() try {
           "focus sequence preserves supported highlight weighting and circular bokeh");
 
     FocusSequence unsupportedShape = sequence;
-    unsupportedShape.irisBlades = 8;
+    unsupportedShape.irisBlades = 2;
     bool rejectedShape = false;
     try {
         CameraRig rejectedRig;
@@ -63,7 +63,12 @@ int main() try {
     } catch (const std::invalid_argument&) {
         rejectedShape = true;
     }
-    check(rejectedShape, "focus sequence rejects unsupported polygonal iris before authoring rig keys");
+    check(rejectedShape, "focus sequence rejects an invalid iris blade count before authoring rig keys");
+    unsupportedShape.irisBlades = 8;
+    CameraRig polygonalIrisRig;
+    applyFocusSequence(polygonalIrisRig, unsupportedShape, 30.f);
+    check(polygonalIrisRig.irisBlades() == 8 && polygonalIrisRig.sample(0.f).irisBlades == 8,
+          "focus sequence carries a supported polygonal iris through the camera rig");
     unsupportedShape.irisBlades = 0;
     unsupportedShape.highlightGain = 8.1f;
     rejectedShape = false;
@@ -96,8 +101,8 @@ int main() try {
                   near(planeFocusRig.sample(10.f / 30.f).focusDistance, 15.f),
           "CM3D resolves a world-plane rack focus along the optical axis");
 
-    // Boundary contract (CM3D <-> Chronon3d DOF unification): highlight gain
-    // is supported for circular bokeh; polygonal iris shaping remains rejected.
+    // Boundary contract (CM3D <-> Chronon3D DOF unification): highlight gain
+    // and regular 3..12 blade iris shapes are supported by the render path.
     // The default sequence leaves gain off and iris blades unset.
     check(near(FocusSequence{}.highlightGain, 0.f) && FocusSequence{}.irisBlades == 0,
           "default FocusSequence leaves optional highlight weighting off and iris unset");

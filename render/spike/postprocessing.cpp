@@ -12,8 +12,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <sys/resource.h>
-#include <sys/wait.h>
+#include "chrononmotion/platform/ResourceUsage.hpp"
 #include <utility>
 #include <vector>
 
@@ -66,7 +65,7 @@ namespace {
             std::copy_n(rgb.data() + std::size_t(kHeight - 1 - y) * rowBytes,
                         rowBytes, topDown.data() + std::size_t(y) * rowBytes);
         }
-        if (stbi_write_png(path.c_str(), static_cast<int>(kWidth), static_cast<int>(kHeight),
+        if (stbi_write_png(path.string().c_str(), static_cast<int>(kWidth), static_cast<int>(kHeight),
                            3, topDown.data(), static_cast<int>(rowBytes)) == 0) {
             throw std::runtime_error("failed to write PNG snapshot: " + path.string());
         }

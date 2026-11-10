@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 // Two-bone IK demo on the seated-desk mannequins.
 //
 // The clip library proves that imported performances reach the renderer; this
@@ -481,7 +482,7 @@ int main(int argc, char** argv) {
             std::to_string(static_cast<int>(kFps)) + " -i - -vf \"" + filter +
             "\" -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -movflags +faststart \"" +
             outPath + "\"";
-    FILE* pipe = popen(command.c_str(), "w");
+    FILE* pipe = chrononmotion::platform::openCommandPipe(command.c_str(), "w");
     if (!pipe) {
         std::cerr << "two_bone_demo: failed to open ffmpeg\n";
         return 1;
@@ -490,7 +491,7 @@ int main(int argc, char** argv) {
         const auto pixels = renderFrame(frame);
         std::fwrite(pixels.data(), 1, pixels.size(), pipe);
     }
-    const int rc = pclose(pipe);
+    const int rc = chrononmotion::platform::closeCommandPipe(pipe);
     if (rc != 0) {
         std::cerr << "two_bone_demo: ffmpeg exited with " << rc << "\n";
         return 1;

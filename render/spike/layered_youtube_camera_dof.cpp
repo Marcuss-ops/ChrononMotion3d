@@ -85,7 +85,7 @@ void writePng(const fs::path& path, const std::vector<unsigned char>& rgb) {
         std::copy_n(rgb.data() + std::size_t(H - y - 1) * stride, stride,
                     top.data() + std::size_t(y) * stride);
     }
-    if (!stbi_write_png(path.c_str(), W, H, 3, top.data(), int(stride))) {
+    if (!stbi_write_png(path.string().c_str(), W, H, 3, top.data(), int(stride))) {
         throw std::runtime_error("PNG write failed: " + path.string());
     }
 }
@@ -107,7 +107,7 @@ void writeRgbaPng(const fs::path& path, std::vector<unsigned char> rgba) {
         throw std::runtime_error("writeRgbaPng: unexpected RGBA size");
     }
     flipRgba(rgba);
-    if (!stbi_write_png(path.c_str(), W, H, 4, rgba.data(), W * 4)) {
+    if (!stbi_write_png(path.string().c_str(), W, H, 4, rgba.data(), W * 4)) {
         throw std::runtime_error("RGBA PNG write failed: " + path.string());
     }
 }
@@ -213,7 +213,9 @@ float focusDistance(const Vector3& camera, const Vector3& target, const Vector3&
 int main(int argc, char** argv) try {
     if (!std::getenv("DISPLAY") && !std::getenv("WAYLAND_DISPLAY") &&
         !std::getenv("THREEPP_GLFW_PLATFORM")) {
+#ifndef _WIN32
         setenv("THREEPP_GLFW_PLATFORM", "egl", 0);
+#endif
     }
 
     const fs::path out = argc > 1 ? fs::path(argv[1])

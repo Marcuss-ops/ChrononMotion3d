@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 // Proof & Tool: bone-rigged 3D MrBeast character with floating pack particles.
 //
 // Uses a transparent portrait mesh, subtle RigProgram head/chest deformation,
@@ -463,7 +464,7 @@ int main(int argc, char** argv) {
             "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size " +
             std::to_string(width) + "x" + std::to_string(height) +
             " -framerate 30 -i - -vf \"vflip,drawtext=text='MRBEAST  |  FLOATING PRIZES':fontsize=42:fontcolor=white:box=1:boxcolor=black@0.42:boxborderw=12:x=(w-text_w)/2:y=24,drawtext=text='TRUE 3D BONE RIG  |  PARTICLE PACKS':fontsize=25:fontcolor=0x35dcff:box=1:boxcolor=black@0.30:boxborderw=8:x=(w-text_w)/2:y=h-78\" -c:v libx264 -pix_fmt yuv420p \"" + outPath + "\"";
-        FILE* pipe = popen(cmd.c_str(), "w");
+        FILE* pipe = chrononmotion::platform::openCommandPipe(cmd.c_str(), "w");
         if (!pipe) {
             std::cerr << "mrbeast_particles: failed to open ffmpeg pipe\n";
             return 1;
@@ -472,7 +473,7 @@ int main(int argc, char** argv) {
             const auto pixels = renderAtFrame(f);
             std::fwrite(pixels.data(), 1, pixels.size(), pipe);
         }
-        const int rc = pclose(pipe);
+        const int rc = chrononmotion::platform::closeCommandPipe(pipe);
         if (rc != 0) {
             std::cerr << "mrbeast_particles: ffmpeg exited with " << rc << "\n";
             return 1;

@@ -1,5 +1,12 @@
 #pragma once
 
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 #include <cuda.h>
 #include <cuda_gl_interop.h>
 
@@ -76,13 +83,13 @@ public:
         cuda_check(cudaGraphicsGLRegisterBuffer(&graphics_resource_, pbo_, cudaGraphicsRegisterFlagsReadOnly),
                    "cudaGraphicsGLRegisterBuffer");
 
-        // Experimental zero-copy input lane: FFmpeg/NVENC receives the CUDA
-        // pointer mapped from a ring of GL PBOs directly. A frame-owned lease
-        // keeps each PBO mapped until libavcodec releases the input AVFrame.
-        // Keep the established D2D path as the fallback until the lane is
-        // explicitly enabled and certified on the target driver.
+        // FFmpeg/NVENC receives the CUDA pointer mapped from a ring of GL PBOs
+        // directly. A frame-owned lease keeps each PBO mapped until libavcodec
+        // releases the input AVFrame. This is the default after certification
+        // on the target driver; CHRONON_GLCUDA_ZERO_COPY=0 selects the D2D
+        // fallback for diagnosis.
         const char* zeroCopyEnv = std::getenv("CHRONON_GLCUDA_ZERO_COPY");
-        zero_copy_enabled_ = zeroCopyEnv && std::string(zeroCopyEnv) == "1";
+        zero_copy_enabled_ = !zeroCopyEnv || std::string(zeroCopyEnv) != "0";
         if (zero_copy_enabled_) {
             glDeleteBuffers(1, &pbo_);
             pbo_ = 0;

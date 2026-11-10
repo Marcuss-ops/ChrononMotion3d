@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 // Head-only 2.5D joint rig proof using the canonical ChrononMotion RigProgram
 // evaluator and MotionSceneBridge. The image alpha is visibility; vertex skin
 // weights provide torso, neck-transition and skull deformation.
@@ -317,14 +318,14 @@ int main(int argc, char** argv) {
         const std::string cmd = "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size " +
             std::to_string(width) + "x" + std::to_string(height) + " -framerate 30 -i - -vf vflip "
             "-c:v libx264 -crf 16 -pix_fmt yuv420p \"" + outPath + "\"";
-        FILE* pipe = popen(cmd.c_str(), "w");
+        FILE* pipe = chrononmotion::platform::openCommandPipe(cmd.c_str(), "w");
         if (!pipe) throw std::runtime_error("cannot start ffmpeg");
         for (int f = 0; f < frames; ++f) {
             const auto pixels = (f == 0 ? f0 : (f == 30 ? f30 : (f == 60 ? f60 :
                                   (f == 90 ? f90 : (f == frames - 1 ? f120 : renderAt(f))))));
             std::fwrite(pixels.data(), 1, pixels.size(), pipe);
         }
-        const int rc = pclose(pipe);
+        const int rc = chrononmotion::platform::closeCommandPipe(pipe);
         if (rc != 0) throw std::runtime_error("ffmpeg encoder failed");
         std::cout << "head_joint_rig: wrote " << frames << " frames to " << outPath << "\n";
         renderer.setRenderTarget(nullptr); renderer.dispose();

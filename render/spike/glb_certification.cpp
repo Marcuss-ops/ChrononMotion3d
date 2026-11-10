@@ -13,8 +13,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
-#include <sys/resource.h>
-#include <sys/wait.h>
+#include "chrononmotion/platform/ResourceUsage.hpp"
 #include <vector>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -53,7 +52,8 @@ namespace {
         const size_t stride = size_t(W) * 3;
         for (int y = 0; y < H; ++y)
             std::copy_n(rgb.data() + size_t(H - y - 1) * stride, stride, topDown.data() + size_t(y) * stride);
-        if (!stbi_write_png(path.c_str(), W, H, 3, topDown.data(), static_cast<int>(stride)))
+        const std::string narrowPath = path.string();
+        if (!stbi_write_png(narrowPath.c_str(), W, H, 3, topDown.data(), static_cast<int>(stride)))
             throw std::runtime_error("failed writing frame PNG");
     }
     size_t changedPixels(const std::vector<unsigned char>& p, const std::array<unsigned char, 3>& bg) {
@@ -372,7 +372,12 @@ int main(int argc, char** argv) try {
     const bool headlessEgl = platform && std::string_view(platform) == "egl";
     const bool gpuEncodeComplete = encoder.frames_submitted() == frameCount &&
                                    encoder.packets_written() == frameCount;
-    const char* testStatus = testId == "T14" && hardwareRenderer && headlessEgl &&
+    const bool supportedGpuContext = headlessEgl
+#ifdef _WIN32
+        || hardwareRenderer
+#endif
+        ;
+    const char* testStatus = testId == "T14" && hardwareRenderer && supportedGpuContext &&
                              !displayServerRequired && gpuEncodeComplete && randomAccess
         ? "PASS" : "PARTIAL";
     meta << std::fixed << std::setprecision(3)
@@ -393,7 +398,11 @@ int main(int argc, char** argv) try {
     }
     renderer.setRenderTarget(nullptr);
     renderer.dispose();
-    std::cout << testId << ' ' << testStatus << " (mesh import and bridge checks passed; texture/material golden comparison remains open) meshes=" << meshes << " standard=" << standard << " textured=" << textured << " coverage=" << minCoverage << ".." << maxCoverage << " temporal_diff=" << temporalDiff << " random_access=" << randomAccess << " renderer=" << (rendererName ? rendererName : "unknown") << "\n";
+    std::cout << testId << ' ' << testStatus << " (GPU render and encode checks "
+              << (gpuEncodeComplete ? "passed" : "incomplete") << "; texture/material visual review remains open) meshes="
+              << meshes << " standard=" << standard << " textured=" << textured << " coverage=" << minCoverage
+              << ".." << maxCoverage << " temporal_diff=" << temporalDiff << " random_access=" << randomAccess
+              << " renderer=" << (rendererName ? rendererName : "unknown") << "\n";
     return 0;
 #endif
 } catch (const std::exception& e) {

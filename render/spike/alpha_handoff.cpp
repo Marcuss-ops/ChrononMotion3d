@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 // T13 alpha handoff: threepp GLB RGBA readback -> alpha-bearing MOV.
 #include <algorithm>
 #include <array>
@@ -101,7 +102,7 @@ int main(int argc, char** argv) try {
 
     const fs::path video = output_dir / "T13_threepp_rgba_handoff_1080p30.mov";
     const std::string command = "ffmpeg -y -v error -f rawvideo -pixel_format rgba -video_size 1920x1080 -framerate 30 -i - -an -c:v qtrle -pix_fmt argb " + shell_quote(video);
-    FILE* pipe = popen(command.c_str(), "w");
+    FILE* pipe = chrononmotion::platform::openCommandPipe(command.c_str(), "w");
     if (!pipe) throw std::runtime_error("could not start alpha-capable FFmpeg encoder");
 
     std::vector<unsigned char> pixels(static_cast<size_t>(W) * H * 4);
@@ -113,18 +114,18 @@ int main(int argc, char** argv) try {
         auto encoded_order = top_down_rgba(pixels);
         if (frame == 75) {
             sample = encoded_order;
-            if (!stbi_write_png((output_dir / "frame-75-rgba.png").c_str(), W, H, 4,
+            if (!stbi_write_png((output_dir / "frame-75-rgba.png").string().c_str(), W, H, 4,
                                 sample.data(), W * 4)) {
-                pclose(pipe);
+                chrononmotion::platform::closeCommandPipe(pipe);
                 throw std::runtime_error("failed writing RGBA proof frame");
             }
         }
         if (std::fwrite(encoded_order.data(), 1, encoded_order.size(), pipe) != encoded_order.size()) {
-            pclose(pipe);
+            chrononmotion::platform::closeCommandPipe(pipe);
             throw std::runtime_error("short write to alpha-capable FFmpeg encoder");
         }
     }
-    const int encoder_status = pclose(pipe);
+    const int encoder_status = chrononmotion::platform::closeCommandPipe(pipe);
     if (encoder_status != 0) throw std::runtime_error("FFmpeg alpha video encoder failed");
 
     size_t transparent = 0, opaque = 0;

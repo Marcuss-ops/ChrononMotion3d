@@ -43,7 +43,7 @@ void writePng(const fs::path& path, const std::vector<unsigned char>& pixels) {
         std::copy_n(pixels.data() + std::size_t(height - 1 - y) * stride, stride,
                     topDown.data() + std::size_t(y) * stride);
     }
-    if (!stbi_write_png(path.c_str(), int(width), int(height), 3,
+    if (!stbi_write_png(path.string().c_str(), int(width), int(height), 3,
                         topDown.data(), int(stride))) {
         throw std::runtime_error("could not write preview " + path.string());
     }

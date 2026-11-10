@@ -1,3 +1,4 @@
+#include "chrononmotion/platform/SubprocessPipe.hpp"
 #include <iostream>
 #include <vector>
 #include <string>
@@ -483,7 +484,7 @@ int main(int argc, char** argv) {
                 std::to_string(width) + "x" + std::to_string(height) +
                 " -framerate 30 -i - -vf \"" + filter + "\" -c:v libx264 -pix_fmt yuv420p \"" + outPath + "\"";
 
-            FILE* pipe = popen(cmd.c_str(), "w");
+            FILE* pipe = chrononmotion::platform::openCommandPipe(cmd.c_str(), "w");
             if (!pipe) {
                 std::cerr << "creator_character_v2_1: failed to open ffmpeg pipe\n";
                 return 1;
@@ -492,7 +493,7 @@ int main(int argc, char** argv) {
                 const auto pixels = renderV21Frame(f);
                 std::fwrite(pixels.data(), 1, pixels.size(), pipe);
             }
-            const int rc = pclose(pipe);
+            const int rc = chrononmotion::platform::closeCommandPipe(pipe);
             if (rc != 0) {
                 std::cerr << "creator_character_v2_1: ffmpeg exited with " << rc << "\n";
                 return 1;
@@ -512,7 +513,7 @@ int main(int argc, char** argv) {
                 std::to_string(width) + "x" + std::to_string(height) +
                 " -framerate 30 -i - -vf \"" + filter + "\" -c:v libx264 -pix_fmt yuv420p \"" + outPath + "\"";
 
-            FILE* pipe = popen(cmd.c_str(), "w");
+            FILE* pipe = chrononmotion::platform::openCommandPipe(cmd.c_str(), "w");
             if (!pipe) {
                 std::cerr << "creator_character_v2_1: failed to open comparison ffmpeg pipe\n";
                 return 1;
@@ -540,7 +541,7 @@ int main(int argc, char** argv) {
                 }
                 std::fwrite(sideBySide.data(), 1, sideBySide.size(), pipe);
             }
-            const int rc = pclose(pipe);
+            const int rc = chrononmotion::platform::closeCommandPipe(pipe);
             if (rc != 0) {
                 std::cerr << "creator_character_v2_1: comparison ffmpeg exited with " << rc << "\n";
                 return 1;
