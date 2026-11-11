@@ -200,18 +200,18 @@
   11 tipi Motion contro il piano abbassato. Nessuna mappatura per-key va
   aggiunta al confine.
 
-### F4 — Layer shadow: authored e serializzato, non lowering-rizzato
+### F4 — Layer shadow: authored, serializzato ed emesso (CHIUSO 2026-11-11)
 - `Layer.hpp:146-148` e `CompiledScene.hpp:36-38` trasportano
   `acceptsShadow`/`shadowOpacity`/`shadowBlur`: sono dati autorevoli del
-  formato scena (import/update/validation/export) e NON codice morto — ma
-  il lowering al RenderPlan consume solo
-  `castsShadow`/`shadowRadius`/`shadowBias` (RenderPlanLowering.cpp:224-226).
-  Chiusura = aggiungere emissione `shadow_blur/shadow_opacity` al lowering
-  quando C3D espone i relativi per-layer kernel; NON duplicare i campi altrove.
-  Stato 2026-11-07: il kernel C3D per-layer esiste (`ShadowNode` con override
-  `shadow_blur`/`shadow_opacity` nel wire e nel graph builder); resta**BLOCKED**
-  solo l'emission CM3D, che questo documento vieta di duplicare altrove.
-  Non è un item reachable in questa milestone.
+  formato scena (import/update/validation/export) e NON codice morto.
+- Chiusura completata: emissione `shadow_blur` e `shadow_opacity` implementata nel
+  lowering V3 (`RenderPlanLoweringSamples.cpp`), serializzazione JSON
+  (`RenderPlanEmission.cpp`), e validazione fail-closed su range ([0, 192] blur,
+  [0, 1] opacity) e su schema V2 (`RenderPlanEmissionValidateLayer.cpp`).
+- Il kernel C3D per-layer consuma questi campi (`ShadowNode` con override
+  `shadow_blur`/`shadow_opacity` in `graph_builder_lighting_passes.cpp:111-122`).
+- Test di conformità e non-regressione verificati in `chrononmotion_authoring`
+  (`tests/motion_authoring_renderplan.cpp`, `tests/chronon3d_v3_bridge_regression.cpp`).
 
 ### F5 — Roving key: fuori scope V1, fail-closed (2026-11-06)
 - `Keyframe` non ha un flag roving e l'emission rifiuta un key di piano con

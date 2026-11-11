@@ -155,6 +155,22 @@ namespace chrononmotion::motion {
             writer.boolean(layer.screen_space);
             writer.key("loop");
             writer.boolean(layer.loop);
+            if (layer.casts_shadows) {
+                writer.key("casts_shadows");
+                writer.boolean(*layer.casts_shadows);
+            }
+            if (layer.accepts_shadows) {
+                writer.key("accepts_shadows");
+                writer.boolean(*layer.accepts_shadows);
+            }
+            if (layer.shadow_blur) {
+                writer.key("shadow_blur");
+                writer.number(*layer.shadow_blur);
+            }
+            if (layer.shadow_opacity) {
+                writer.key("shadow_opacity");
+                writer.number(*layer.shadow_opacity);
+            }
 
             if (layer.blend_mode) {
                 writer.key("blend_mode");

@@ -56,6 +56,37 @@ Camera values for a character of height `H` centred at `c`, filling `fit` of a
 The renderer's default lighting needs `--exposure` around 0.35 for a single
 character; the default 2.0 clips to white.
 
+## Rigged GLB → Chronon3D RenderPlan
+
+`chrononmotion_character_plan` lowers a rigged GLB directly to a V3
+`chronon.render-plan.v3` with the full baked geometry animation in
+`inline_mesh.animation`. It does not need the hand-stripped static copy
+anymore: when `--mesh` is omitted, the tool derives the static base from the
+same GLB in memory, preserving UVs and triangle indices. If `--mesh` is
+supplied, it may be a normal rigged/textured GLB; the tool strips skin, morph,
+animation and material blocks before reading it and fails closed unless the
+vertex count and index topology match the rig binding.
+
+```bash
+chrononmotion_character_plan \
+  --rig low-poly_man.glb --strip-rig-materials \
+  --sequence Idle2,Idle --crossfade 0.25 \
+  --fps 30 --width 1080 --height 1920 \
+  --texture lowpoly_diffuse.png \
+  --out character.plan.json --manifest character.manifest.json
+```
+
+A single clip uses `--clip <name> --frames <n>`; a sequence derives its length
+from the clip durations and does not accept `--frames`. The manifest is
+`chrononmotion.character-plan.manifest.v2` and records SHA-256 (and FNV-1a)
+digests of the rig, the optional base mesh and the plan, plus the clip/sequence,
+crossfade, frame range and bake signature.
+
+If `--texture` is omitted, the tool extracts the first embedded image from the
+same GLB next to the plan and references it by filename; the manifest records
+its size and SHA-256. External image URIs and images that are not base-color
+must still be passed explicitly with `--texture` (or copied by the caller).
+
 ## Limits
 
 - Weights are envelope + smoothing, not a heat solver: a character in an

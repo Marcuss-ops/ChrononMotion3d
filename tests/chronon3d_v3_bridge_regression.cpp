@@ -74,6 +74,10 @@ RenderPlan makeBridgePlan() {
     image.asset = "bridge-image";
     image.size = {320.f, 180.f};
     image.size_dimensions = 2;
+    image.casts_shadows = true;
+    image.accepts_shadows = false;
+    image.shadow_blur = 12.f;
+    image.shadow_opacity = 0.65f;
     LayerPlan::PathMaskPlan mask;
     mask.type = "rounded_rect";
     mask.mode = "intersect";
@@ -181,6 +185,18 @@ void checkWriterDrift() {
                        .at("keyframes").at(1).at("value") == 1.0;
         },
         "second effect parameter track keeps its sampled value");
+    checkJson(
+        [&] { return emitted.at("layers").at(0).at("casts_shadows") == true; },
+        "casts_shadows is written");
+    checkJson(
+        [&] { return emitted.at("layers").at(0).at("accepts_shadows") == false; },
+        "accepts_shadows is written");
+    checkJson(
+        [&] { return emitted.at("layers").at(0).at("shadow_blur") == 12.0; },
+        "shadow_blur is written");
+    checkJson(
+        [&] { return emitted.at("layers").at(0).at("shadow_opacity") == 0.65; },
+        "shadow_opacity is written");
     checkJson([&] { return emitted.at("layers").size() == 2; },
               "every layer in the plan is written");
 }
@@ -191,6 +207,18 @@ void checkWriterFailClosed() {
     const auto plan = makeBridgePlan();
 
     auto invalid = plan;
+    invalid.layers[0].shadow_blur = 200.f;
+    check(!renderPlanEmissionProblem(invalid).empty(), "out-of-bounds shadow_blur is reported");
+    checkThrowsInvalidArgument([&] { (void)renderPlanToJson(invalid); },
+                               "out-of-bounds shadow_blur is refused at write time");
+
+    invalid = plan;
+    invalid.layers[0].shadow_opacity = -0.1f;
+    check(!renderPlanEmissionProblem(invalid).empty(), "out-of-bounds shadow_opacity is reported");
+    checkThrowsInvalidArgument([&] { (void)renderPlanToJson(invalid); },
+                               "out-of-bounds shadow_opacity is refused at write time");
+
+    invalid = plan;
     invalid.layers[0].masks[0].size[0] = -1.f;
     check(!renderPlanEmissionProblem(invalid).empty(), "negative mask size is reported");
     checkThrowsInvalidArgument([&] { (void)renderPlanToJson(invalid); },

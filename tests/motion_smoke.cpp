@@ -372,6 +372,34 @@ namespace {
         check(sphere->boundingSphere.has_value(), "the sphere computes a bounding sphere");
         checkNear(sphere->boundingSphere->radius, 2.f, 1e-3f, "whose radius matches the geometry");
 
+        // Re-imported procedural primitives
+        auto cylinder = CylinderGeometry::create(1.f, 1.f, 2.f, 16, 1);
+        check(cylinder->type() == "CylinderGeometry", "a CylinderGeometry reports its type");
+        check(cylinder->getAttribute("position") != nullptr, "cylinder carries position attribute");
+        check(cylinder->getAttribute("normal") != nullptr, "cylinder carries normal attribute");
+        check(cylinder->getAttribute("uv") != nullptr, "cylinder carries uv attribute");
+        check(cylinder->groups.size() == 3, "cylinder has 3 groups (torso, top cap, bottom cap)");
+
+        auto torus = TorusGeometry::create(2.f, 0.5f, 16, 32);
+        check(torus->type() == "TorusGeometry", "a TorusGeometry reports its type");
+        check(torus->getAttribute("position") != nullptr, "torus carries position attribute");
+        check(torus->getAttribute("normal") != nullptr, "torus carries normal attribute");
+        check(torus->getIndex() != nullptr && torus->getIndex()->count() > 0, "torus carries indices");
+
+        auto capsule = CapsuleGeometry::create(0.5f, 2.f, 8, 16);
+        check(capsule->type() == "CapsuleGeometry", "a CapsuleGeometry reports its type");
+        check(capsule->getAttribute("position") != nullptr, "capsule carries position attribute");
+        check(capsule->getAttribute("normal") != nullptr, "capsule carries normal attribute");
+
+        auto spline = std::make_shared<CatmullRomCurve3>(std::vector<Vector3>{
+            Vector3(0.f, 0.f, 0.f), Vector3(10.f, 5.f, 0.f), Vector3(20.f, 0.f, 0.f)
+        });
+        auto tube = TubeGeometry::create(spline, 32, 1.f, 12, false);
+        check(tube->type() == "TubeGeometry", "a TubeGeometry reports its type");
+        check(tube->getAttribute("position") != nullptr, "tube carries position attribute");
+        check(tube->getAttribute("normal") != nullptr, "tube carries normal attribute");
+        check(tube->getIndex() != nullptr && tube->getIndex()->count() > 0, "tube carries indices");
+
         // A primitive is a BufferGeometry, so a Mesh takes it with no adapter.
         auto mesh = Mesh::create(box);
         check(mesh->geometry() == box, "a Mesh keeps the primitive it was handed");

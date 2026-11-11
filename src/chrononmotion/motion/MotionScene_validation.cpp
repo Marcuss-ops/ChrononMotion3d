@@ -80,6 +80,14 @@ using scene_detail::saturatedAdd;
                 problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
                                    "'): invalid time remap");
             }
+            if (!std::isfinite(layer.shadowBlur) || layer.shadowBlur < 0.f || layer.shadowBlur > 192.f) {
+                problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                   "'): shadow blur must be finite and in [0, 192]");
+            }
+            if (!std::isfinite(layer.shadowOpacity) || layer.shadowOpacity < 0.f || layer.shadowOpacity > 1.f) {
+                problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
+                                   "'): shadow opacity must be finite and in [0, 1]");
+            }
             const auto reportTrack = [&](const char* trackName, const std::string& problem) {
                 if (!problem.empty()) {
                     problems.push_back("layer " + std::to_string(layer.id) + " ('" + layer.name +
