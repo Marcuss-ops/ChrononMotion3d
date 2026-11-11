@@ -183,6 +183,10 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 writer.key("gel_transmission");
                 writer.boolean(false);
             }
+            if (style.gel_material_profile != "current") {
+                writer.key("gel_material_profile");
+                writer.text(style.gel_material_profile);
+            }
             if (style.gel_soft_fusion) {
                 writer.key("gel_soft_fusion");
                 writer.boolean(*style.gel_soft_fusion);

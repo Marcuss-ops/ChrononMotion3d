@@ -52,6 +52,7 @@
 #include "chrononmotion/motion/RigDrivers.hpp"
 #include "chrononmotion/motion/RigDeformers.hpp"
 #include "chrononmotion/motion/RigBaking.hpp"
+#include "chrononmotion/motion/FaceRig.hpp"
 #include "chrononmotion/motion/RigOperators.hpp"
 #include "chrononmotion/motion/Precomp.hpp"
 #include "chrononmotion/motion/OfflineBaking.hpp"

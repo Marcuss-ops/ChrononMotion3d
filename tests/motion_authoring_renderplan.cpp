@@ -46,6 +46,8 @@ bool sameLoweredPlan(const chronon3d::render_plan::RenderPlan& left,
         if (a.id != b.id || a.type != b.type || a.asset != b.asset || a.source != b.source ||
             a.position != b.position || a.scale != b.scale || a.rotation != b.rotation ||
             a.enable_3d != b.enable_3d || a.opacity != b.opacity ||
+            a.casts_shadows != b.casts_shadows || a.accepts_shadows != b.accepts_shadows ||
+            a.shadow_blur != b.shadow_blur || a.shadow_opacity != b.shadow_opacity ||
             a.animation.has_value() != b.animation.has_value())
             return false;
         if (a.transform_samples.size() != b.transform_samples.size()) return false;
@@ -163,6 +165,48 @@ void testTypedChronon3dLowering() {
     const auto repeatedV3 = lowerToRenderPlan(scene, options);
     check(sameLoweredPlan(v3, repeatedV3),
           "typed V3 lowering repeats every emitted transform and keyframe bit-exactly");
+
+    // Layer shadow emission and validation (BOUNDARY_C3D F4 / TICKET-CM3D-SHADOW-EMISSION)
+    {
+        MotionScene shadowScene("layer_shadow_emission", 30.f);
+        auto& card = shadowScene.addContent(1, "card", ContentRef::image("card.png", {100.f, 100.f}));
+        card.castsShadow = true;
+        card.acceptsShadow = false;
+        card.shadowBlur = 12.f;
+        card.shadowOpacity = 0.65f;
+
+        RenderPlanLoweringOptions shadowOpts;
+        shadowOpts.width = 320;
+        shadowOpts.height = 180;
+        shadowOpts.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
+        LayerPlan cardPlan;
+        cardPlan.type = LayerType::Image;
+        cardPlan.asset = "card.png";
+        cardPlan.size = {100.f, 100.f};
+        cardPlan.size_dimensions = 2;
+        shadowOpts.contentLayers.emplace("1", std::move(cardPlan));
+
+        const auto lowered = lowerToRenderPlan(shadowScene, shadowOpts);
+        check(lowered.layers.size() == 1, "shadow layer plan lowered");
+        check(lowered.layers[0].casts_shadows == true, "layer casts_shadows is lowered");
+        check(lowered.layers[0].accepts_shadows == false, "layer accepts_shadows is lowered");
+        check(lowered.layers[0].shadow_blur && *lowered.layers[0].shadow_blur == 12.f, "layer shadow_blur is lowered");
+        check(lowered.layers[0].shadow_opacity && *lowered.layers[0].shadow_opacity == 0.65f, "layer shadow_opacity is lowered");
+
+        // Fail-closed validation
+        {
+            MotionScene badBlur("bad_blur", 30.f);
+            auto& c = badBlur.addContent(1, "card", ContentRef::image("card.png", {100.f, 100.f}));
+            c.shadowBlur = 250.f;
+            check(!badBlur.validate().empty(), "out of bounds shadowBlur fails validation");
+        }
+        {
+            MotionScene badOpacity("bad_opacity", 30.f);
+            auto& c = badOpacity.addContent(1, "card", ContentRef::image("card.png", {100.f, 100.f}));
+            c.shadowOpacity = 1.5f;
+            check(!badOpacity.validate().empty(), "out of bounds shadowOpacity fails validation");
+        }
+    }
 
     // Cross-repo F3 canary: an image card moves through another card in Z.
     // The test executable can write this exact lowered plan for the C3D

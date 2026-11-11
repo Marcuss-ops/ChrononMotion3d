@@ -61,6 +61,11 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 return owner + " carries gel light parameters without gel_surface";
             if (style.gel_soft_fusion && !style.gel_surface)
                 return owner + " carries gel_soft_fusion without gel_surface";
+            if (style.gel_material_profile != "current" &&
+                style.gel_material_profile != "reference_20261107")
+                return owner + " carries an unsupported gel material profile";
+            if (style.gel_material_profile != "current" && !style.gel_surface)
+                return owner + " carries a gel material profile without gel_surface";
             constexpr float kPi = 3.14159265358979323846f;
             if ((style.gel_light_azimuth_radians &&
                  (!std::isfinite(*style.gel_light_azimuth_radians) ||
@@ -769,6 +774,18 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
             }
             if (const std::string effect = effectProblem(layer); !effect.empty()) return effect;
             if (const std::string tracks = effectParameterProblem(layer); !tracks.empty()) return tracks;
+            if (layer.shadow_blur) {
+                if (!std::isfinite(*layer.shadow_blur) || *layer.shadow_blur < 0.f || *layer.shadow_blur > 192.f)
+                    return owner + " carries shadow_blur outside [0, 192]";
+            }
+            if (layer.shadow_opacity) {
+                if (!std::isfinite(*layer.shadow_opacity) || *layer.shadow_opacity < 0.f || *layer.shadow_opacity > 1.f)
+                    return owner + " carries shadow_opacity outside [0, 1]";
+            }
+            if (schema == chronon3d::render_plan::kRenderPlanSchemaV2 &&
+                (layer.casts_shadows || layer.accepts_shadows || layer.shadow_blur || layer.shadow_opacity)) {
+                return owner + " carries shadow properties that require RenderPlan v3";
+            }
             if (layer.flow_layout || layer.grid_layout) return owner + " carries a layout group";
             if (layer.follow_path) return owner + " carries a follow-path driver";
             // The plan contract has no layer-level auto-orient: `auto_orient`

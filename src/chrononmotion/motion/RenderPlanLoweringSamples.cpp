@@ -593,6 +593,12 @@ RenderPlan lowerSamplesToRenderPlan(
             output.enable_3d = true;
         output.start_frame = chronon3d::Frame{0};
         output.duration_frames = chronon3d::Frame{static_cast<std::int64_t>(frameCount)};
+        if (options.schema == kRenderPlanSchemaV3) {
+            if (layer.castsShadow) output.casts_shadows = true;
+            if (!layer.acceptsShadow) output.accepts_shadows = false;
+            if (layer.shadowBlur > 0.f) output.shadow_blur = layer.shadowBlur;
+            if (layer.shadowOpacity < 1.f) output.shadow_opacity = layer.shadowOpacity;
+        }
         const bool authoredMotionTimeRemap = hasMotionTimeRemap(layer);
         if (authoredMotionTimeRemap && output.time_remap)
             throw std::invalid_argument("lowerToRenderPlan: caller-supplied RenderPlan time remap conflicts with Motion layer timing");

@@ -1,6 +1,6 @@
 # TICKET-CM3D-RIGGED-GLB-TO-RENDERPLAN-20261109 — Il percorso rigged GLB → inline mesh è solo una API di test
 
-- **Stato:** OPEN (2026-11-09)
+- **Stato:** PARTIAL (2026-11-11) — pipeline CLI chiusa localmente; restano evidenza 1080p multi-gesto, Vulkan e same-SHA
 - **Priorità:** P1
 - **Data:** 2026-11-09
 - **Ambito:** ChrononMotion3D tools/lowering → RenderPlan V3 → Chronon3d
@@ -68,51 +68,53 @@ codice ogni volta. La feature "c'è" nelle API; il prodotto "non c'è".
 
 ### 2.1 Comando canonico
 
-- [ ] Aggiungere un tool/CLI (nome indicativo `chrononmotion_character_plan`)
+- [x] Aggiungere un tool/CLI (nome indicativo `chrononmotion_character_plan`)
       con input espliciti:
       `--rig <rigged.glb>`, `--motion <motion-only.glb|json>`, `--clip <name>`
       oppure `--sequence "Idle,G_Point,Idle,G_Shrug"`, `--fps`, `--frames`,
       `--camera` (posizione/target/fov oppure preset), `--out <plan.json>`,
       `--assets-root`.
-- [ ] Usare le authority esistenti: `loadGltfMotion`, `RigProgram`,
+- [x] Usare le authority esistenti: `loadGltfMotion`, `RigProgram`,
       `RigProgramEvaluator`, `applyRigGeometryBake`, `CameraRig`,
       `lowerToRenderPlan`. Nessun secondo evaluator, nessun secondo formato.
-- [ ] Supportare il caso **static base + motion-only**: la mesh statica fornisce
+- [x] Supportare il caso **static base + motion-only**: dal 2026-11-11 la mesh statica è derivata automaticamente dal GLB riggato; `--mesh` è opzionale e accetta un GLB normale. La mesh statica fornisce
       UV/materiali/base color; il motion-only fornisce skin/clip; il matching
       topologico deve fallire chiuso se vertex count/indices non coincidono.
-- [ ] Supportare almeno due gesti concatenati con crossfade, non solo una clip
-      singola.
-- [ ] Camera: usare il resolved frame plan o un provider camera esistente; non
+- [x] Supportare almeno due gesti concatenati con crossfade, non solo una clip
+      singola (`--sequence A,B --crossfade <secondi>`).
+- [x] Camera: usare il resolved frame plan o un provider camera esistente; non
       duplicare projection/DoF/shutter.
 
 ### 2.2 Output e validazione
 
-- [ ] Il piano deve contenere:
+- [x] Il piano deve contenere:
       `inline_mesh` con UV/indices/materiale, `inline_mesh.animation` con
       1..4096 campioni, camera risolta, canvas/fps/durata, output format.
-- [ ] Validare prima di scrivere: topologia, range frame, campioni monotoni,
+- [x] Validare prima di scrivere: topologia, range frame, campioni monotoni,
       NaN/Inf, bounds, budget vertici/indici/byte, materiali mancanti.
-- [ ] Scrivere un manifest con SHA256 degli input, fingerprint del piano,
+- [x] Scrivere un manifest con SHA256 degli input, fingerprint del piano,
       clip/gesti, camera, frame range e versione schema.
-- [ ] Su errore: nessun `.plan.json` parziale, nessun fallback silenzioso.
+- [x] Su errore: nessun `.plan.json` parziale, nessun fallback silenzioso.
 
 ### 2.3 Gate end-to-end
 
 - [ ] Fixture con un GLB riggato reale (20-bone o skeleton importato) e due
-      gesti; 1080×1920, 30 fps, 150 frame.
+      gesti; 1080×1920, 30 fps, 150 frame. Run locale 2026-11-11: 80 frame,
+      320×480, 10 fps, `Idle2`+`Idle` con crossfade 0,25 s; la fixture 1080p
+      resta aperta.
 - [x] Render C3D software: 150/150 frame non vuoti, bounds in movimento,
       hash distinto per frame, nessun crash.
 - [ ] Render C3D Vulkan strict-native: eseguibile solo dopo il ticket
       [TICKET-VULKAN-INLINE-MESH-PBR-20261109](../../../Chronon3d/docs/tickets/TICKET-VULKAN-INLINE-MESH-PBR-20261109.md);
       fino ad allora la lane GPU non può rivendicare la parità materiale.
-- [ ] Test CLI: input mancante, clip sconosciuta, topologia diversa, range
+- [x] Test CLI: input mancante, clip sconosciuta, topologia diversa, range
       fuori budget, camera invalida → errore tipizzato e exit non-zero.
 - [x] Determinismo: due run con gli stessi input → stesso piano, stesso
       fingerprint, stesso manifest.
 
 ### 2.4 Documentazione
 
-- [ ] Aggiornare `docs/AUTORIG_GLB.md` con il percorso "rigged GLB → C3D
+- [x] Aggiornare `docs/AUTORIG_GLB.md` con il percorso "rigged GLB → C3D
       RenderPlan", separato dal percorso OpenGL per frame.
 - [ ] Aggiornare `TICKET-CM3D-REMAINING-WORK-20261106.md` §6/T15: non è
       "ingestione GLB diretta in un job" finché il producer non è un comando.
@@ -123,14 +125,15 @@ codice ogni volta. La feature "c'è" nelle API; il prodotto "non c'è".
 
 ## 3. Criteri di accettazione
 
-- [ ] Un solo comando produce un piano V3 valido da un GLB riggato + due gesti,
-      senza modifiche C++ per shot.
+- [x] Un solo comando produce un piano V3 valido da un GLB riggato + due gesti,
+      senza modifiche C++ per shot (run locale 2026-11-11).
 - [x] Il piano conserva UV/materiale/base color e contiene
       `inline_mesh.animation` con 150 campioni.
 - [x] C3D software renderizza 150/150 frame non vuoti; il manifest è stabile
       tra due run.
-- [ ] Input malformati falliscono chiusi; nessun output parziale.
-- [ ] Test CLI e lowering verdi; nessun test skippato.
+- [x] Input malformati falliscono chiusi; nessun output parziale.
+- [ ] Test CLI e lowering verdi; nessun test skippato. CLI verde il
+      2026-11-11; la suite lowering non è stata rieseguita in questa sessione.
 - [ ] Evidenza con piano, manifest, comandi, hash e frame campione.
 
 **Non-goals:** GUI/DCC, retargeting di clip forestiere, cloth/hair, skinning
@@ -237,3 +240,51 @@ Restano aperti:
 Nota CLI: sulla route `--plan` il flag `--frames 0-2` è stato ignorato e ha
 reso i 150 campioni del piano. Per un range esplicito usare
 `--start-frame`/`--end-frame`.
+
+### 12.2 Chiusura locale 2026-11-11
+
+Modifiche atterrate in `tools/rigged_glb_to_renderplan.cpp`:
+
+- **Base statica automatica**: se `--mesh` è assente, il tool deriva la mesh
+  statica dallo stesso GLB riggato, in memoria (rimuove skin, morph, animazioni
+  e materiali; conserva POSITION/NORMAL/TEXCOORD_0 e gli indici). `--mesh`
+  resta opzionale e ora accetta anche un GLB riggato/testurizzato, non più una
+  copia già ripulita a mano.
+- **Matching topologico fail-closed**: la primitiva base viene scelta per
+  vertex count e confronto esatto degli indici contro il binding del rig;
+  ambiguità o mismatch falliscono prima di scrivere.
+- **Due gesti con crossfade**: `--sequence A,B` e `--crossfade <secondi>`.
+  La durata viene dalle clip, i pesi sono lineari e normalizzati, la geometria
+  deformata viene fusa per vertice (LBS è lineare nelle posizioni).
+- **Manifest v2 con SHA-256** di rig, mesh opzionale e piano, mantenendo
+  FNV-1a come digest compatto. Il piano resta V3.
+- **Validazione CLI**: sequenza di un solo clip, `--frames` con sequenza,
+  `--clip`+`--sequence`, crossfade troppo lungo, FOV/camera non finiti,
+  mesh con topologia diversa, clip sconosciuta e rig illeggibile falliscono
+  con exit non-zero e senza piano parziale.
+
+Evidenza locale (non same-SHA):
+
+| Voce | Valore |
+|---|---|
+| Input | `render/spike/assets/scene03/low-poly_man.glb`, 5.088 vertici, 7.632 indici, SHA-256 `b635aa1ab2267e85afbd4a666450465547fdad27a0d1bab17fea4b6c206f5d50` |
+| Clip | `Idle2` (4,958 s) + `Idle` (3,292 s), crossfade 0,25 s |
+| Output | 80 frame, 320×480, 10 fps, 97.251.753 byte, SHA-256 `fca83e6ece14eafcb262b5434ede381964dc91ea8cafdcdfdd598e0a1c98c1be` |
+| Manifest | v2, SHA-256 `dcdaaaf9f0e8d189867a0bafdbe8235453082788be2d7e985a8c81413509ff10` |
+| Base | La derivazione automatica e `--mesh` sullo stesso GLB producono lo stesso piano: SHA-256 `a527761fad2451636e9ff330c81b449f4f50a2b9734ea58991d4b7483dda0b9e` |
+| Determinismo | Due run della sequenza → stesso SHA-256 `10f0af2691ff01559b638a2b46ff7b5d6f4e2ac3c55626b2bb7b0902d26234e2` |
+| Texture | PNG 32×32 estratto dallo stesso GLB; piano con `asset=lowpoly_diffuse.png` |
+
+Test CLI: `tests/check_character_plan_cli.cmake` (registrato come
+`chrononmotion_character_plan_cli` quando i test sono attivi) e la stessa
+matrice eseguita manualmente sul binario: tutti i casi falliscono chiusi.
+
+Restano aperti, e non vanno dichiarati chiusi:
+
+- run 1080×1920 a 30 fps con due gesti e 150 frame (la sequenza dura 8 s →
+  240 frame a 30 fps);
+- render C3D Vulkan: il CLI locale non parte (`libchronon3d_c.so.2: file too
+  short`) e `vulkaninfo` segnala un ICD non disponibile;
+- certificazione same-SHA su coppia pulita;
+- evidenza con il piano completo (97 MB locali, non versionati);
+- la texture resta un sidecar: il tool non estrae ancora l'immagine dal GLB.

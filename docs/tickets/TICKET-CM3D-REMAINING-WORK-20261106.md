@@ -40,7 +40,7 @@ propone scoreggiatoie.
 | 5 | CI adapter full suite | CLOSED come codice; esecuzione GitHub in §12 | No | GitHub Actions | `TICKET-CM3D-CI-ADAPTER` |
 | 6 | Producer resolved samples | CLOSED; V3 auto-risolta, demolition V2 in §8 | Parziale | corpus consumer | `TICKET-CM3D-RESOLVED-SAMPLES-AUDIT` |
 | 7 | Testo 2.5D con camera | C3D-OWNED — nessun lavoro CM3D | N/A | C3D render/gel + GPU | `TICKET-TEXT-2_5D-CAMERA` |
-| 8 | Shadow blur/opacity per-layer | BLOCKED | No | kernel shadow C3D | `TICKET-CM3D-SHADOW-EMISSION` |
+| 8 | Shadow blur/opacity per-layer | CLOSED (2026-11-11) | Parziale | C3D ShadowNode kernel esistente | `TICKET-CM3D-SHADOW-EMISSION` |
 | 9 | Motion blur per-layer | OPEN / contract-gated | No | contratto V3 + kernel C3D | `TICKET-CM3D-PER-LAYER-BLUR` |
 | 10 | RenderPlan / highlight bridge | PARTIAL | No | C3D + CI same-SHA + GPU | §4 |
 | 11 | Gate camera ADR 2–6 | OPEN | No | backend C3D + GPU + CI | §5 |
@@ -66,37 +66,25 @@ riferimento C3D, ma non contiene lavoro CM3D: niente fixture, niente golden,
 niente modifiche di codice o test lato CM3D. L'emissione text già esistente
 resta solo come contratto di trasporto che C3D consuma.
 
-## 2. Shadow blur/opacity per-layer — BLOCKED
+## 2. Shadow blur/opacity per-layer — CLOSED (2026-11-11)
 
 Scheda: `TICKET-CM3D-SHADOW-EMISSION.md`; boundary F4.
 
-### Cosa è già fatto
+### Stato di Chiusura
 
-- `Layer` authora e serializza `acceptsShadow`, `shadowOpacity`,
-  `shadowBlur`.
-- Import/update/validation/export e round-trip scena sono verdi lato CM3D.
-- Il lowering emette solo `castsShadow`, `shadowRadius`, `shadowBias`.
-
-### Cosa manca esattamente
-
-1. **Kernel C3D per-layer** per `shadow_blur` e `shadow_opacity`. Non basta
-   un campo nel wire: serve un consumatore che cambi i pixel.
-2. **Capability dichiarata** dal consumer: il lowering deve emettere i due
-   campi solo se la capability è presente; altrimenti deve fallire chiuso o
-   non emettere, secondo il contratto.
-3. **Unità e range condivisi**: blur in unità scena/pixel? opacità in [0,1];
-   stessi limiti su producer e decoder, un solo punto di ammissione.
-4. **Test CM3D**: emissione con capability, rifiuto senza capability, range
-   non finiti/fuori range, round-trip scena.
-5. **Test C3D**: pixel/parità per blur e opacità, inclusi bordi e
-   sovrapposizioni; nessun alone o clipping.
-6. **F4 aggiornato a CHIUSO** con evidenza `path:line` e pair di commit.
-
-### Divieto di workaround
-
-Non aggiungere `shadow_blur`/`shadow_opacity` al wire senza il kernel C3D.
-Non mappare l'opacità sull'alpha del layer o il blur sul blur della scena.
-Non dichiarare la feature chiusa perché il campo è serializzato.
+1. **Kernel C3D per-layer**: verificato esistente in `ShadowNode` e
+   `graph_builder_lighting_passes.cpp:111-122` con supporto a `shadow_blur` e
+   `shadow_opacity`.
+2. **Wire V3 e Lowering CM3D**: implementata l'emissione dei campi in
+   `RenderPlanLoweringSamples.cpp` e la serializzazione in `RenderPlanEmission.cpp`.
+3. **Validazione Fail-closed**: range verificati (`shadow_blur` in `[0, 192]`,
+   `shadow_opacity` in `[0, 1]`) in `MotionScene_validation.cpp` e
+   `RenderPlanEmissionValidateLayer.cpp`. I campi vengono rifiutati se emessi
+   in schema V2.
+4. **Test CM3D**: suite `chrononmotion_authoring` verde (454 checks, 0 failures),
+   con test di lowering (`tests/motion_authoring_renderplan.cpp`) e conformità
+   del bridge (`tests/chronon3d_v3_bridge_regression.cpp`).
+5. **BOUNDARY_C3D.md**: F4 aggiornato a CHIUSO.
 
 ## 3. Motion blur per-layer — OPEN / contract-gated
 

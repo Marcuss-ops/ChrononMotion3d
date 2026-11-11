@@ -79,8 +79,13 @@ add_library(chrononmotion STATIC
         src/chrononmotion/assets/GltfReaderSerialization.cpp
         # geometries — the primitives a Mesh can carry
         src/chrononmotion/geometries/BoxGeometry.cpp
+        src/chrononmotion/geometries/CapsuleGeometry.cpp
+        src/chrononmotion/geometries/CylinderGeometry.cpp
+        src/chrononmotion/geometries/LatheGeometry.cpp
         src/chrononmotion/geometries/PlaneGeometry.cpp
         src/chrononmotion/geometries/SphereGeometry.cpp
+        src/chrononmotion/geometries/TorusGeometry.cpp
+        src/chrononmotion/geometries/TubeGeometry.cpp
         # animation — clips and keyframe tracks
         src/chrononmotion/animation/AnimationClip.cpp
         src/chrononmotion/animation/KeyframeTrack.cpp
@@ -141,6 +146,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/motion/RigDeformers.cpp
         src/chrononmotion/motion/RigBaking.cpp
         src/chrononmotion/motion/RigProgram.cpp
+        src/chrononmotion/motion/FaceRig.cpp
         src/chrononmotion/motion/RigOperators.cpp
         src/chrononmotion/motion/OfflineBaking.cpp
         src/chrononmotion/motion/OfflineAudio.cpp
@@ -302,10 +308,28 @@ if(CHRONONMOTION_BUILD_TESTS)
     target_link_libraries(chrononmotion_rig_program PRIVATE chrononmotion)
     chrononmotion_set_target_warnings(chrononmotion_rig_program)
     add_test(NAME chrononmotion_rig_program COMMAND chrononmotion_rig_program)
+    add_executable(chrononmotion_face_rig tests/motion_face_rig.cpp)
+    target_link_libraries(chrononmotion_face_rig PRIVATE chrononmotion)
+    chrononmotion_set_target_warnings(chrononmotion_face_rig)
+    add_test(NAME chrononmotion_face_rig COMMAND chrononmotion_face_rig)
     add_executable(chrononmotion_rig_pipeline tests/motion_rig_pipeline.cpp)
     target_link_libraries(chrononmotion_rig_pipeline PRIVATE chrononmotion)
     chrononmotion_set_target_warnings(chrononmotion_rig_pipeline)
     add_test(NAME chrononmotion_rig_pipeline COMMAND chrononmotion_rig_pipeline)
+
+    # The production character command's fail-closed surface: no arguments,
+    # unknown flags, a one-clip sequence, --frames with a sequence, --clip plus
+    # --sequence, and an unreadable rig must all exit non-zero without writing
+    # a partial plan.
+    if(TARGET chrononmotion_character_plan)
+        add_test(NAME chrononmotion_character_plan_cli
+                 COMMAND ${CMAKE_COMMAND}
+                   -DTOOL=$<TARGET_FILE:chrononmotion_character_plan>
+                   -DRIG=${CMAKE_CURRENT_SOURCE_DIR}/render/spike/assets/scene03/low-poly_man.glb
+                   -DMESH=${CMAKE_CURRENT_SOURCE_DIR}/render/spike/assets/scene03/UAL1_Standard.glb
+                   -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+                   -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/check_character_plan_cli.cmake)
+    endif()
 
     # The resolved frame plan: contract, JSON/digest determinism, and refusal of
     # every rule the plan declares (one negative case per rule).
@@ -498,6 +522,9 @@ if(CHRONONMOTION_BUILD_TESTS)
         chrononmotion_set_target_warnings(chrononmotion_${_mechanics_test})
         add_test(NAME chrononmotion_${_mechanics_test} COMMAND chrononmotion_${_mechanics_test})
     endforeach()
+
+    add_executable(chrononmotion_geometry_showcase tests/motion_geometry_showcase.cpp)
+    target_link_libraries(chrononmotion_geometry_showcase PRIVATE chrononmotion)
 
     add_executable(chrononmotion_geospatial
             tests/motion_geospatial.cpp
