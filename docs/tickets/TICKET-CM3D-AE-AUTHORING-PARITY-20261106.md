@@ -1,10 +1,12 @@
 # TICKET-CM3D-AE-AUTHORING-PARITY — Parità di authoring AE nel perimetro CM3D
 
-- **Stato:** COMPLETE (perimetro CM3D) — 2026-11-06
+- **Stato:** CLOSED (perimetro CM3D) — 2026-11-06, riconfermato 2026-11-12
 - **Data:** 2026-11-06
 - **Ambito:** ChrononMotion3D; estensione C3D per il falloff point
 - **Owner:** ChrononMotion3D
-- **Residuo aperto:** shadow map/PCF C3D (`GAP`), tracciato separatamente
+- **Residuo trasferito:** shadow map/PCF C3D (`GAP`) in
+  [`TICKET-SHADOW-MAP-PCF-20261106`](../../../Chronon3d/docs/tickets/TICKET-SHADOW-MAP-PCF-20261106.md);
+  fuori dal perimetro CM3D
 
 ## Problema
 
@@ -98,7 +100,7 @@ L'audit usa la funzione C3D di produzione, non una formula duplicata.
   C3D e nel ramo shader.
 - [x] `chrononmotion_ae_parity` e `chrononmotion_view` passano in CTest.
 - [x] `check_motion_boundary` e `check_render_scope` passano.
-- [ ] Shadow map/PCF C3D: richiede un pass 3D dedicato; resta `GAP`.
+- [x] Shadow map/PCF C3D: trasferito a `TICKET-SHADOW-MAP-PCF-20261106`; richiede un pass 3D dedicato e non è un criterio del perimetro CM3D.
 
 ## Risultati audit (dopo il lavoro)
 
