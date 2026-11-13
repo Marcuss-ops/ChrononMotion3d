@@ -83,12 +83,13 @@ renderer vocabulary that came along with them:
 * **`core/Clock`** — a wall-clock stopwatch. A frame-deterministic motion engine
   must not read a clock, and nothing called it but the umbrella header.
 * **`math/` renderer vocabulary with no consumer** — `Lut` (texture colour
-  lookup), `SphericalHarmonics3` (environment-map lighting probes),
-  `Capsule`/`Cylindrical` (collision/coordinate helpers), `ImprovedNoise`
-  (procedural terrain/vegetation noise), and `Rng` (an unreferenced PRNG) stay
-  removed. `Ray` and `Frustum` were later reintroduced as small, dependency-free
-  spatial primitives for the minimum + 1 foundation.
-  `Ray::intersectsPlane`, `Sphere::intersectsPlane` and friends went with `Ray`.
+  lookup) and `Capsule`/`Cylindrical` (collision/coordinate helpers) stay
+  removed. `SphericalHarmonics3` (environment-map lighting probes),
+  `ImprovedNoise` (procedural terrain/vegetation noise) and `Rng`
+  (deterministic sampling) were later reintroduced as small, dependency-free
+  math utilities. `Ray` and `Frustum` came back as spatial primitives for the
+  minimum + 1 foundation; `Ray::intersectsPlane`, `Sphere::intersectsPlane`
+  and friends returned with `Ray`.
 * **`constants.hpp`** — from 273 to 63 lines: `CullFace`, `ShadowMap`,
   `ShadowMapConfig`, `Blending`, `BlendEquation`, `BlendFactor`, `DepthFunc`,
   `CombineOperation`, `ToneMapping`, `Mapping`, `TextureWrapping`, `Filter`,

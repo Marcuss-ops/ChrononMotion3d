@@ -11,6 +11,7 @@
 #include "chrononmotion/core/BufferGeometry.hpp"
 #include "chrononmotion/core/Object3D.hpp"
 #include "chrononmotion/materials/Descriptors.hpp"
+#include "chrononmotion/math/Box3.hpp"
 #include "chrononmotion/math/Matrix4.hpp"
 #include "chrononmotion/motion/Content.hpp"
 #include "chrononmotion/motion/Particles.hpp"
@@ -123,6 +124,11 @@ namespace chrononmotion::motion {
         /// singular placements. A negative determinant is legal (a mirrored
         /// instance); a zero one is not, because it cannot be inverted or shaded.
         void validate() const;
+
+        /// Local-space AABB of every placement, starting from the mesh's local
+        /// bounds. An empty batch produces an empty box; call `validate()` first
+        /// when the transforms are not known-good.
+        [[nodiscard]] Box3 bounds(const Box3& localBounds) const;
     };
 
     /// The renderer-facing half of a mesh layer.
