@@ -49,7 +49,7 @@ namespace chrononmotion::motion::detail {
 void writeTextSpans(detail::Writer& writer, const std::vector<chronon3d::TextSpanOverride>& spans);
 void writeTextSelectorTrack(detail::Writer& writer, const AnimationTrackPlan& track);
 void writeTextAnimators(detail::Writer& writer, const std::vector<chronon3d::render_plan::TextAnimatorPlan>& animators);
-void writeStyle(detail::Writer& writer, const LayerStylePlan& style);
+void writeStyle(detail::Writer& writer, const LayerStylePlan& style, const std::string& schema);
 void writeMediaStyle(detail::Writer& writer, const LayerStylePlan& style);
 void writeEffects(detail::Writer& writer, const std::vector<LayerPlan::EffectPlan>& effects);
 void writeInlineMesh(detail::Writer& writer, const InlineMeshPlan& mesh);
@@ -100,7 +100,8 @@ inline void writeKeyframes(
     writer.endArray();
 }
 [[nodiscard]] std::string layerOwner(const chronon3d::render_plan::LayerPlan& layer);
-[[nodiscard]] std::string styleProblem(const chronon3d::render_plan::LayerPlan& layer);
+[[nodiscard]] std::string styleProblem(const chronon3d::render_plan::LayerPlan& layer,
+                                       const std::string& schema);
 [[nodiscard]] std::string effectProblem(const chronon3d::render_plan::LayerPlan& layer);
 [[nodiscard]] std::string effectParameterProblem(const chronon3d::render_plan::LayerPlan& layer);
 [[nodiscard]] std::string trackProblem(const std::string& owner,

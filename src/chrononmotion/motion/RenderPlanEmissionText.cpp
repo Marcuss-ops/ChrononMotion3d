@@ -159,19 +159,69 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
             writer.endArray();
         }
 
-        void writeStyle(detail::Writer& writer, const LayerStylePlan& style) {
+        void writeStyle(detail::Writer& writer, const LayerStylePlan& style,
+                        const std::string& schema) {
+            const bool v3 = schema == chronon3d::render_plan::kRenderPlanSchemaV3;
             writer.beginObject();
             writer.key("font");
             writer.text(style.font);
+            if (!style.font_family.empty()) {
+                writer.key("font_family");
+                writer.text(style.font_family);
+            }
+            if (style.font_weight != 400) {
+                writer.key("font_weight");
+                writer.integer(style.font_weight);
+            }
+            if (style.font_style != "normal") {
+                writer.key("font_style");
+                writer.text(style.font_style);
+            }
+            if (v3 && !style.variation_axes.empty()) {
+                writer.key("variation_axes");
+                writer.text(style.variation_axes);
+            }
+            if (v3 && style.text_direction != "auto") {
+                writer.key("direction");
+                writer.text(style.text_direction);
+            }
+            if (style.text_align != "center") {
+                writer.key("text_align");
+                writer.text(style.text_align);
+            }
             if (style.font_size) {
                 writer.key("font_size");
                 writer.number(*style.font_size);
             }
+            if (style.tracking) {
+                writer.key("tracking");
+                writer.number(*style.tracking);
+            }
             writer.key("fill");
             writer.text(style.fill);
+            if (v3 && style.quality != "fast") {
+                writer.key("quality");
+                writer.text(style.quality);
+            }
+            if (v3 && style.shadow_quality != "fast") {
+                writer.key("shadow_quality");
+                writer.text(style.shadow_quality);
+            }
+            if (v3 && style.stroke_mode != "auto") {
+                writer.key("stroke_mode");
+                writer.text(style.stroke_mode);
+            }
             if (style.gel_surface) {
                 writer.key("gel_surface");
                 writer.boolean(true);
+            }
+            if (style.gel_core) {
+                writer.key("gel_core");
+                writer.boolean(true);
+            }
+            if (style.gel_debug_mode != 0) {
+                writer.key("gel_debug_mode");
+                writer.integer(static_cast<int>(style.gel_debug_mode));
             }
             if (style.extruded_text) {
                 writer.key("extruded_text");
@@ -202,6 +252,26 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                     writer.key("elevation");
                     writer.number(*style.gel_light_elevation);
                 }
+                writer.endObject();
+            }
+            if (style.text_caret) {
+                const auto& caret = *style.text_caret;
+                writer.key("text_caret");
+                writer.beginObject();
+                writer.key("byte_index");
+                writer.unsignedInteger(caret.byte_index);
+                writer.key("width");
+                writer.number(caret.width);
+                writer.key("height");
+                writer.number(caret.height);
+                writer.key("color");
+                writer.text(caret.color);
+                writer.key("opacity");
+                writer.number(caret.opacity);
+                writer.key("blink_period_frames");
+                writer.integer(caret.blink_period_frames);
+                writer.key("blink_duty");
+                writer.number(caret.blink_duty);
                 writer.endObject();
             }
             if (style.glow) {

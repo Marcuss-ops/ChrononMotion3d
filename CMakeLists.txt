@@ -196,8 +196,7 @@ if(CHRONON3D_INCLUDE_DIR)
     # them even in adapter builds that do not inherit C3D's vcpkg toolchain.
     find_package(fmt CONFIG REQUIRED) # boundary-guardrail: allowed — public C3D RenderPlan headers expose fmt in this offline adapter only.
     get_filename_component(_chronon3d_calendar_root "${CHRONON3D_INCLUDE_DIR}" DIRECTORY)
-    add_library(chrononmotion_chronon3d_adapter STATIC
-        "${_chronon3d_calendar_root}/src/animations/temporal/temporal_samples.cpp"
+    set(_chrononmotion_adapter_sources
         src/chrononmotion/motion/LightRigRenderPlan.cpp
         src/chrononmotion/motion/HdriRenderPlan.cpp
         src/chrononmotion/motion/RenderPlanLowering.cpp
@@ -215,6 +214,14 @@ if(CHRONON3D_INCLUDE_DIR)
         src/chrononmotion/motion/RenderPlanEmissionValidateLayer.cpp
         src/chrononmotion/motion/RenderPlanEmissionValidateText.cpp
         src/chrononmotion/motion/RenderPlanEmissionValidateTracks.cpp)
+    # Embedded in a Chronon3D build, the temporal sampler already lives in
+    # `chronon3d_animations`; compiling it here would define the same symbols
+    # twice in the bridge executable. Standalone adapter builds still need it.
+    if(NOT CHRONONMOTION_EMBEDDED_IN_CHRONON3D)
+        list(APPEND _chrononmotion_adapter_sources
+            "${_chronon3d_calendar_root}/src/animations/temporal/temporal_samples.cpp")
+    endif()
+    add_library(chrononmotion_chronon3d_adapter STATIC ${_chrononmotion_adapter_sources})
     target_link_libraries(chrononmotion_chronon3d_adapter PUBLIC chrononmotion fmt::fmt-header-only)
     target_include_directories(chrononmotion_chronon3d_adapter SYSTEM PUBLIC "${CHRONON3D_INCLUDE_DIR}")
     if(DEFINED CHRONON3D_DEPENDENCY_INCLUDE_DIR)
