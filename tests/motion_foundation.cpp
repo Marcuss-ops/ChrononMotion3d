@@ -71,6 +71,50 @@ namespace {
               "frustum rejects an outside box");
     }
 
+    void deterministicMathUtilities() {
+        section("deterministic math utilities");
+
+        SphericalHarmonics3 sh;
+        SphericalHarmonics3::Coefficients coefficients{};
+        coefficients[0] = Vector3(1.f, 2.f, 3.f);
+        coefficients[3] = Vector3(1.f, 0.f, 0.f);
+        sh.set(coefficients);
+
+        Vector3 value;
+        sh.getAt(Vector3(1.f, 0.f, 0.f), value);
+        checkNear(value, Vector3(0.770698f, 0.564190f, 0.846285f), 1e-5f,
+                  "SH evaluates the radiance basis at the normal");
+        sh.getIrradianceAt(Vector3(1.f, 0.f, 0.f), value);
+        checkNear(value, Vector3(1.909555f, 1.772454f, 2.658681f), 1e-5f,
+                  "SH evaluates the cosine-convolved irradiance");
+        sh.zero();
+        sh.getAt(Vector3(0.f, 1.f, 0.f), value);
+        checkNear(value, Vector3(), 1e-6f, "SH zero clears every coefficient");
+
+        ImprovedNoise noise;
+        const float sample = noise.noise(0.5f, 0.25f, 0.75f);
+        check(std::isfinite(sample), "ImprovedNoise returns a finite sample");
+        check(sample >= -1.f && sample <= 1.f, "ImprovedNoise stays inside its documented range");
+        check(sample == noise.noise(0.5f, 0.25f, 0.75f),
+              "ImprovedNoise is a pure function of position");
+        check(sample != noise.noise(1.5f, 0.25f, 0.75f),
+              "ImprovedNoise changes with position");
+
+        Rng rng(42);
+        check(rng.nextUint() == 3184996902u, "Rng pins the first splitmix64 draw");
+        check(rng.nextUint() == 686809907u, "Rng pins the second draw");
+        Rng replay(42);
+        check(replay.nextUint() == 3184996902u, "Rng replays the same seed");
+        Rng other(43);
+        check(other.nextUint() == 3127504016u, "Rng changes with the seed");
+        const float unit = Rng(7).nextFloat();
+        check(unit >= 0.f && unit < 1.f, "Rng nextFloat stays in [0, 1)");
+        check(Rng(42).fork(0).nextUint() != Rng(42).fork(1).nextUint(),
+              "Rng forks are independent streams");
+        check(Rng::hash01(123, 4, 5) == Rng::hash01(123, 4, 5),
+              "Rng stateless hash is repeatable");
+    }
+
     void lightsEvaluateThroughMotionScene() {
         section("data-only light evaluation");
 
@@ -210,6 +254,7 @@ namespace {
 int main() {
     cssColorStyles();
     spatialPrimitives();
+    deterministicMathUtilities();
     lightsEvaluateThroughMotionScene();
     nestedCompositionsCompileWithLocalTime();
     materialDescriptorsAreRendererIndependent();

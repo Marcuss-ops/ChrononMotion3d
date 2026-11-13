@@ -328,4 +328,17 @@ namespace chrononmotion::motion {
         }
     }
 
+    Box3 InstanceBatch::bounds(const Box3& localBounds) const {
+
+        Box3 result;
+        result.makeEmpty();
+        if (localBounds.isEmpty()) return result;
+        for (const Matrix4& local : localTransforms) {
+            Box3 placed = localBounds;
+            placed.applyMatrix4(local);
+            result.union_(placed);
+        }
+        return result;
+    }
+
 }// namespace chrononmotion::motion

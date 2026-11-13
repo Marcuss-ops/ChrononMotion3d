@@ -11,8 +11,11 @@
 #include "chrononmotion/constants.hpp"
 
 #include "chrononmotion/math/MathUtils.hpp"
+#include "chrononmotion/math/ImprovedNoise.hpp"
 #include "chrononmotion/math/Ray.hpp"
 #include "chrononmotion/math/Frustum.hpp"
+#include "chrononmotion/math/Rng.hpp"
+#include "chrononmotion/math/SphericalHarmonics3.hpp"
 
 #include "chrononmotion/core/BufferAttribute.hpp"
 #include "chrononmotion/core/BufferGeometry.hpp"

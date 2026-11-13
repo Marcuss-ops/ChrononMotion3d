@@ -51,6 +51,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/geospatial/MapFlyover.cpp
         src/chrononmotion/geospatial/WebMercator.cpp
         src/chrononmotion/math/Euler.cpp
+        src/chrononmotion/math/ImprovedNoise.cpp
         src/chrononmotion/math/Interpolant.cpp
         src/chrononmotion/math/Line3.cpp
         src/chrononmotion/math/MathUtils.cpp
@@ -62,6 +63,7 @@ add_library(chrononmotion STATIC
         src/chrononmotion/math/Quaternion.cpp
         src/chrononmotion/math/Sphere.cpp
         src/chrononmotion/math/Spherical.cpp
+        src/chrononmotion/math/SphericalHarmonics3.cpp
         src/chrononmotion/math/Triangle.cpp
         src/chrononmotion/math/Vector2.cpp
         src/chrononmotion/math/Vector3.cpp

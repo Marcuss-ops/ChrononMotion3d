@@ -141,6 +141,20 @@ namespace {
               "the scene record carries the instance batch");
     }
 
+    void batchBounds() {
+        section("instance batch bounds");
+
+        const Box3 unit(Vector3(-1.f, -1.f, -1.f), Vector3(1.f, 1.f, 1.f));
+        InstanceBatch batch;
+        batch.localTransforms = {Matrix4{}, translated(10.f, 0.f, 0.f)};
+        const Box3 bounds = batch.bounds(unit);
+        checkNear(bounds.min(), Vector3(-1.f, -1.f, -1.f), 1e-5f,
+                  "bounds include the untransformed instance");
+        checkNear(bounds.max(), Vector3(11.f, 1.f, 1.f), 1e-5f,
+                  "bounds include the translated instance");
+        check(InstanceBatch{}.bounds(unit).isEmpty(), "an empty batch has empty bounds");
+    }
+
     void roundTrip() {
         chrononmotion_test::section("scene round-trip");
 
@@ -176,6 +190,7 @@ namespace {
 int main() {
     contractValidation();
     compileAndSample();
+    batchBounds();
     roundTrip();
     return chrononmotion_test::report();
 }
