@@ -43,6 +43,7 @@
 #include <string>
 
 using chronon3d::render_plan::LayerPlan;
+using chronon3d::render_plan::LayerStylePlan;
 using chronon3d::render_plan::LayerType;
 using chronon3d::render_plan::RenderPlan;
 using namespace chrononmotion::motion;
@@ -120,6 +121,54 @@ RenderPlan makeBridgePlan() {
     matte.size = {320.f, 180.f};
     matte.size_dimensions = 2;
     plan.layers = {image, matte};
+    return plan;
+}
+
+// A text plan exercising every style property the bridge writes. Kept separate
+// from makeBridgePlan so the mask/effect assertions above keep stable indices.
+RenderPlan makeBridgeTextPlan() {
+    RenderPlan plan;
+    plan.schema = chronon3d::render_plan::kRenderPlanSchemaV3;
+    plan.job_id = "bridge-text-style";
+    plan.canvas.width = 640;
+    plan.canvas.height = 360;
+    plan.canvas.fps = chronon3d::FrameRate{30, 1};
+    plan.canvas.duration = chronon3d::Frame{12};
+    plan.output.path = "/tmp/chrononmotion_bridge_text_style.png";
+
+    LayerPlan text;
+    text.type = LayerType::Text;
+    text.id = "bridge-text";
+    text.text = "CHRONON 3D";
+    LayerStylePlan style;
+    style.font = "bridge-font";
+    style.font_family = "Inter";
+    style.font_weight = 700;
+    style.font_style = "italic";
+    style.variation_axes = "wght=650,wdth=92";
+    style.text_direction = "rtl";
+    style.text_align = "left";
+    style.font_size = 48.f;
+    style.tracking = 2.f;
+    style.fill = "#FFFFFF";
+    style.quality = "high";
+    style.shadow_quality = "canonical";
+    style.stroke_mode = "distance";
+    style.gel_surface = true;
+    style.gel_core = true;
+    style.gel_soft_fusion = true;
+    style.gel_debug_mode = 3;
+    chronon3d::render_plan::TextCaretPlan caret;
+    caret.byte_index = 4;
+    caret.width = 3.f;
+    caret.height = 48.f;
+    caret.color = "#FFCC00";
+    caret.opacity = 0.8f;
+    caret.blink_period_frames = 30;
+    caret.blink_duty = 0.4f;
+    style.text_caret = caret;
+    text.style = style;
+    plan.layers = {text};
     return plan;
 }
 
@@ -201,6 +250,47 @@ void checkWriterDrift() {
               "every layer in the plan is written");
 }
 
+void checkTextStyleWriterDrift() {
+    section("text style writer drift: every authored property reaches JSON");
+
+    const auto plan = makeBridgeTextPlan();
+    const auto emitted = nlohmann::json::parse(renderPlanToJson(plan));
+    const auto& style = emitted.at("layers").at(0).at("style");
+
+    checkJson([&] { return style.at("font_family") == "Inter"; },
+              "font_family is written");
+    checkJson([&] { return style.at("font_weight") == 700; },
+              "font_weight is written");
+    checkJson([&] { return style.at("font_style") == "italic"; },
+              "font_style is written");
+    checkJson([&] { return style.at("variation_axes") == "wght=650,wdth=92"; },
+              "variation_axes is written");
+    checkJson([&] { return style.at("direction") == "rtl"; },
+              "direction is written");
+    checkJson([&] { return style.at("text_align") == "left"; },
+              "text_align is written");
+    checkJson([&] { return style.at("tracking") == 2.0; },
+              "tracking is written");
+    checkJson([&] { return style.at("quality") == "high"; },
+              "quality is written");
+    checkJson([&] { return style.at("shadow_quality") == "canonical"; },
+              "shadow_quality is written");
+    checkJson([&] { return style.at("stroke_mode") == "distance"; },
+              "stroke_mode is written");
+    checkJson([&] { return style.at("gel_core") == true; },
+              "gel_core is written");
+    checkJson([&] { return style.at("gel_debug_mode") == 3; },
+              "gel_debug_mode is written");
+    checkJson([&] { return style.at("text_caret").at("byte_index") == 4; },
+              "text_caret byte_index is written");
+    checkJson([&] { return style.at("text_caret").at("width") == 3.0; },
+              "text_caret width is written");
+    checkJson([&] { return style.at("text_caret").at("color") == "#FFCC00"; },
+              "text_caret color is written");
+    checkJson([&] { return style.at("text_caret").at("blink_period_frames") == 30; },
+              "text_caret blink period is written");
+}
+
 void checkWriterFailClosed() {
     section("inexpressible or invalid plans are refused, never silently dropped");
 
@@ -254,6 +344,42 @@ void checkWriterFailClosed() {
     check(!renderPlanEmissionProblem(invalid).empty(),
           "V3-only bridge features are reported when the plan asks for V2");
 
+    const auto textPlan = makeBridgeTextPlan();
+    auto invalidText = textPlan;
+    invalidText.schema = chronon3d::render_plan::kRenderPlanSchemaV2;
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "V3-only text style properties are reported when the plan asks for V2");
+    checkThrowsInvalidArgument([&] { (void)renderPlanToJson(invalidText); },
+                               "V3-only text style properties are refused at write time");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->quality = "ultra";
+    check(!renderPlanEmissionProblem(invalidText).empty(), "unsupported text quality is reported");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->font_weight = 450;
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "font_weight outside the 100..900 hundred steps is reported");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->tracking = 2000.f;
+    check(!renderPlanEmissionProblem(invalidText).empty(), "tracking outside [-1000, 1000] is reported");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->variation_axes = "wght";
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "malformed variation_axes is reported");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->fill_opacity = 0.5f;
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "non-opaque fill_opacity is reported instead of dropped");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->text_caret->width = 0.f;
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "invalid text_caret width is reported");
+
     // Rig-to-mesh frame transport is covered in Motion authoring tests;
     // consumer pixel proof remains explicitly blocked in the bridge checklist.
 }
@@ -285,11 +411,53 @@ void checkConsumerRoundTrip() {
     auto invalid = plan;
     invalid.layers[0].track_matte->source = "missing-matte";
     check(!validWithChronon3D(invalid), "dangling track matte source fails canonical validation");
+
+    const auto textPlan = makeBridgeTextPlan();
+    const auto textJson = nlohmann::json::parse(renderPlanToJson(textPlan));
+    check(validWithChronon3D(textPlan),
+          "emitted text style document passes Chronon3D validation and decoding");
+    const auto decodedText = chronon3d::render_plan::decode_render_plan(textJson);
+    check(decodedText.has_value(), "canonical decoder accepts the emitted text style plan");
+    if (decodedText.has_value()) {
+        const auto& decodedStyle = decodedText->layers[0].style;
+        check(decodedStyle.has_value(), "text style survives the decode round trip");
+        if (decodedStyle) {
+            check(decodedStyle->font_family == "Inter", "font_family survives the decode round trip");
+            check(decodedStyle->font_weight == 700, "font_weight survives the decode round trip");
+            check(decodedStyle->font_style == "italic", "font_style survives the decode round trip");
+            check(decodedStyle->variation_axes == "wght=650,wdth=92",
+                  "variation_axes survives the decode round trip");
+            check(decodedStyle->text_direction == "rtl", "direction survives the decode round trip");
+            check(decodedStyle->text_align == "left", "text_align survives the decode round trip");
+            check(decodedStyle->tracking.has_value() && *decodedStyle->tracking == 2.f,
+                  "tracking survives the decode round trip");
+            check(decodedStyle->quality == "high", "quality survives the decode round trip");
+            check(decodedStyle->shadow_quality == "canonical",
+                  "shadow_quality survives the decode round trip");
+            check(decodedStyle->stroke_mode == "distance",
+                  "stroke_mode survives the decode round trip");
+            check(decodedStyle->gel_core, "gel_core survives the decode round trip");
+            check(decodedStyle->gel_debug_mode == 3,
+                  "gel_debug_mode survives the decode round trip");
+            check(decodedStyle->text_caret.has_value(), "text_caret survives the decode round trip");
+            if (decodedStyle->text_caret) {
+                check(decodedStyle->text_caret->byte_index == 4,
+                      "text_caret byte_index survives the decode round trip");
+                check(decodedStyle->text_caret->width == 3.f,
+                      "text_caret width survives the decode round trip");
+                check(decodedStyle->text_caret->color == "#FFCC00",
+                      "text_caret color survives the decode round trip");
+                check(decodedStyle->text_caret->blink_period_frames == 30,
+                      "text_caret blink period survives the decode round trip");
+            }
+        }
+    }
 }
 #endif
 
 void checkBridge() {
     checkWriterDrift();
+    checkTextStyleWriterDrift();
     checkWriterFailClosed();
 #ifdef CHRONONMOTION_HAS_CHRONON3D_CONSUMER
     checkConsumerRoundTrip();

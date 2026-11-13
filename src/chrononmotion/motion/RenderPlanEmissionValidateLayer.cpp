@@ -8,8 +8,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdint>
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 #include <cstddef>
 #include <initializer_list>
@@ -47,7 +49,7 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
 
         /// Every reason a text style cannot be written down, in the order a
         /// reader would look for them.
-        [[nodiscard]] std::string styleProblem(const LayerPlan& layer) {
+        [[nodiscard]] std::string styleProblem(const LayerPlan& layer, const std::string& schema) {
 
             if (!layer.style) return {};
             const LayerStylePlan& style = *layer.style;
@@ -76,6 +78,105 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                   *style.gel_light_elevation < 0.f ||
                   *style.gel_light_elevation > 1.f)))
                 return owner + " carries gel light parameters outside the supported range";
+
+            if (layer.type == LayerType::Text) {
+                if (!style.font_family.empty() && style.font_family.size() > 256)
+                    return owner + " has a font_family longer than 256 characters";
+                if (style.font_weight < 100 || style.font_weight > 900 ||
+                    style.font_weight % 100 != 0)
+                    return owner + " has a font_weight outside 100..900 in steps of 100";
+                if (style.font_style != "normal" && style.font_style != "italic" &&
+                    style.font_style != "oblique")
+                    return owner + " has an unsupported font_style '" + style.font_style + "'";
+                if (style.text_direction != "auto" && style.text_direction != "ltr" &&
+                    style.text_direction != "rtl")
+                    return owner + " has an unsupported direction '" + style.text_direction + "'";
+                if (style.text_align != "left" && style.text_align != "center" &&
+                    style.text_align != "right")
+                    return owner + " has an unsupported text_align '" + style.text_align + "'";
+                if (style.quality != "fast" && style.quality != "high")
+                    return owner + " has an unsupported text quality '" + style.quality + "'";
+                if (style.shadow_quality != "fast" && style.shadow_quality != "canonical")
+                    return owner + " has an unsupported shadow_quality '" + style.shadow_quality + "'";
+                if (style.stroke_mode != "auto" && style.stroke_mode != "distance" &&
+                    style.stroke_mode != "vector")
+                    return owner + " has an unsupported stroke_mode '" + style.stroke_mode + "'";
+                if (style.tracking &&
+                    (!std::isfinite(*style.tracking) || *style.tracking < -1000.f ||
+                     *style.tracking > 1000.f))
+                    return owner + " has tracking outside [-1000, 1000]";
+                if (style.fill_opacity &&
+                    (!std::isfinite(*style.fill_opacity) || *style.fill_opacity < 0.f ||
+                     *style.fill_opacity > 1.f))
+                    return owner + " has fill_opacity outside [0, 1]";
+                // The wire schema has no fill_opacity key; only the implicit
+                // opaque default is representable, so any other value would be
+                // silently lost.
+                if (style.fill_opacity && *style.fill_opacity != 1.0f)
+                    return owner + " carries fill_opacity other than 1.0, which this emitter does not write";
+                if (style.fill_gradient || style.fill_pattern || style.stroke_pattern)
+                    return owner + " carries a text paint that this emitter does not write";
+                if (style.gel_core && layer.type != LayerType::Text)
+                    return owner + " carries gel_core on a non-text layer";
+                if (style.gel_debug_mode > 7 ||
+                    (style.gel_debug_mode != 0 && !style.gel_surface))
+                    return owner + " carries gel_debug_mode without gel_surface or outside 0..7";
+                if (style.text_caret) {
+                    const auto& caret = *style.text_caret;
+                    if (caret.byte_index > 1'000'000 ||
+                        !std::isfinite(caret.width) || caret.width <= 0.f || caret.width > 256.f ||
+                        !std::isfinite(caret.height) || caret.height < 0.f || caret.height > 4096.f ||
+                        !std::isfinite(caret.opacity) || caret.opacity < 0.f || caret.opacity > 1.f ||
+                        caret.blink_period_frames < 0 || caret.blink_period_frames > 1'000'000 ||
+                        !std::isfinite(caret.blink_duty) || caret.blink_duty < 0.f || caret.blink_duty > 1.f)
+                        return owner + " carries text_caret values outside supported bounds";
+                    if (caret.color.size() != 7 && caret.color.size() != 9)
+                        return owner + " carries text_caret color outside #RRGGBB[AA]";
+                    if (caret.color.front() != '#')
+                        return owner + " carries text_caret color outside #RRGGBB[AA]";
+                    for (std::size_t i = 1; i < caret.color.size(); ++i)
+                        if (!std::isxdigit(static_cast<unsigned char>(caret.color[i])))
+                            return owner + " carries text_caret color outside #RRGGBB[AA]";
+                }
+                if (!style.variation_axes.empty()) {
+                    if (style.variation_axes.size() > 512)
+                        return owner + " has variation_axes longer than 512 characters";
+                    for (char character : style.variation_axes)
+                        if (static_cast<unsigned char>(character) < 0x20 || character > 0x7e)
+                            return owner + " has non-printable variation_axes";
+                    std::size_t axisBegin = 0;
+                    while (axisBegin <= style.variation_axes.size()) {
+                        const std::size_t axisEnd = style.variation_axes.find(',', axisBegin);
+                        const std::string token = style.variation_axes.substr(
+                            axisBegin, axisEnd == std::string::npos
+                                           ? std::string::npos : axisEnd - axisBegin);
+                        if (token.size() < 6 || token[4] != '=')
+                            return owner + " has variation_axes without tag=value entries";
+                        for (std::size_t i = 0; i < 4; ++i)
+                            if (!std::isalnum(static_cast<unsigned char>(token[i])))
+                                return owner + " has a variation_axes tag that is not four alphanumeric characters";
+                        char* end = nullptr;
+                        const float value = std::strtof(token.c_str() + 5, &end);
+                        if (end == token.c_str() + 5 || *end != '\0' || !std::isfinite(value))
+                            return owner + " has a non-finite variation_axes value";
+                        if (axisEnd == std::string::npos) break;
+                        axisBegin = axisEnd + 1;
+                    }
+                }
+                if (schema != chronon3d::render_plan::kRenderPlanSchemaV3 &&
+                    (style.quality != "fast" || style.shadow_quality != "fast" ||
+                     style.stroke_mode != "auto" || !style.variation_axes.empty() ||
+                     style.text_direction != "auto" || style.text_caret))
+                    return owner + " carries a text style property that requires RenderPlan v3";
+            } else if (!style.font.empty() || !style.font_family.empty() ||
+                       style.font_weight != 400 || style.font_style != "normal" ||
+                       !style.variation_axes.empty() || style.text_direction != "auto" ||
+                       style.text_align != "center" || style.font_size ||
+                       style.quality != "fast" || style.shadow_quality != "fast" ||
+                       style.stroke_mode != "auto" || style.tracking || style.gel_core ||
+                       style.gel_debug_mode != 0 || style.text_caret) {
+                return owner + " carries text-only style properties on a non-text layer";
+            }
 
             if (style.text_fit_mode != "none") {
                 return owner + " carries style text_fit_mode '" + style.text_fit_mode +
@@ -849,7 +950,7 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 return owner + " has a single-component scale, which the plan contract cannot express";
             }
 
-            const std::string style = styleProblem(layer);
+            const std::string style = styleProblem(layer, schema);
             if (!style.empty()) return style;
 
             if (layer.animation) {

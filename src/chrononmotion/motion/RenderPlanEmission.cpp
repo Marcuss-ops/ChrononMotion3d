@@ -248,7 +248,7 @@ namespace chrononmotion::motion {
                 writer.key("text");
                 writer.text(layer.text);
                 writer.key("style");
-                writeStyle(writer, *layer.style);
+                writeStyle(writer, *layer.style, schema);
             }
             if (layer.shape) {
                 writer.key("shape");
