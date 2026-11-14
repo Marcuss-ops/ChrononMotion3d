@@ -32,7 +32,10 @@
 
 #include <chrononmotion/motion/RenderPlanEmission.hpp>
 #include <chronon3d/render_plan/render_plan.hpp>
+#include <chronon3d/graphics/pattern_tile.hpp>
 #include <nlohmann/json.hpp>
+
+#include <memory>
 
 #ifdef CHRONONMOTION_HAS_CHRONON3D_CONSUMER
 #include <chronon3d/render_plan/render_plan_validator.hpp>
@@ -158,6 +161,11 @@ RenderPlan makeBridgeTextPlan() {
     style.gel_core = true;
     style.gel_soft_fusion = true;
     style.gel_debug_mode = 3;
+    style.gel_transmission_enabled = false;
+    style.gel_material_profile = "reference_20261107";
+    style.gel_light_azimuth_radians = 0.5f;
+    style.gel_light_elevation = 0.25f;
+    style.glow = chronon3d::render_plan::GlowStyle{18.0f, 0.6f, "#22CCFF"};
     chronon3d::render_plan::TextCaretPlan caret;
     caret.byte_index = 4;
     caret.width = 3.f;
@@ -169,6 +177,26 @@ RenderPlan makeBridgeTextPlan() {
     style.text_caret = caret;
     text.style = style;
     plan.layers = {text};
+    return plan;
+}
+
+// Extrusion is mutually exclusive with the GEL material in the consumer, so
+// it needs its own otherwise-complete text plan.
+RenderPlan makeBridgeExtrudedTextPlan() {
+    auto plan = makeBridgeTextPlan();
+    auto& text = plan.layers[0];
+    auto& style = *text.style;
+    text.enable_3d = true;
+    style.gel_surface = false;
+    style.gel_core = false;
+    style.gel_soft_fusion.reset();
+    style.gel_debug_mode = 0;
+    style.gel_transmission_enabled = true;
+    style.gel_material_profile = "current";
+    style.gel_light_azimuth_radians.reset();
+    style.gel_light_elevation.reset();
+    style.extruded_text = true;
+    style.extrusion_depth = 18.0f;
     return plan;
 }
 
@@ -277,10 +305,34 @@ void checkTextStyleWriterDrift() {
               "shadow_quality is written");
     checkJson([&] { return style.at("stroke_mode") == "distance"; },
               "stroke_mode is written");
+    checkJson([&] { return style.at("font") == "bridge-font"; },
+              "font path is written");
+    checkJson([&] { return style.at("font_size") == 48.0; },
+              "font_size is written");
+    checkJson([&] { return style.at("fill") == "#FFFFFF"; },
+              "fill is written");
+    checkJson([&] { return style.at("gel_surface") == true; },
+              "gel_surface is written");
     checkJson([&] { return style.at("gel_core") == true; },
               "gel_core is written");
     checkJson([&] { return style.at("gel_debug_mode") == 3; },
               "gel_debug_mode is written");
+    checkJson([&] { return style.at("gel_soft_fusion") == true; },
+              "gel_soft_fusion is written");
+    checkJson([&] { return style.at("gel_transmission") == false; },
+              "gel_transmission is written");
+    checkJson([&] { return style.at("gel_material_profile") == "reference_20261107"; },
+              "gel_material_profile is written");
+    checkJson([&] { return style.at("gel_light").at("azimuth_radians") == 0.5; },
+              "gel_light azimuth is written");
+    checkJson([&] { return style.at("gel_light").at("elevation") == 0.25; },
+              "gel_light elevation is written");
+    checkJson([&] { return style.at("glow").at("radius") == 18.0; },
+              "glow radius is written");
+    checkJson([&] { return style.at("glow").at("intensity") == 0.6; },
+              "glow intensity is written");
+    checkJson([&] { return style.at("glow").at("color") == "#22CCFF"; },
+              "glow color is written");
     checkJson([&] { return style.at("text_caret").at("byte_index") == 4; },
               "text_caret byte_index is written");
     checkJson([&] { return style.at("text_caret").at("width") == 3.0; },
@@ -289,6 +341,14 @@ void checkTextStyleWriterDrift() {
               "text_caret color is written");
     checkJson([&] { return style.at("text_caret").at("blink_period_frames") == 30; },
               "text_caret blink period is written");
+
+    const auto extruded = makeBridgeExtrudedTextPlan();
+    const auto emittedExtruded = nlohmann::json::parse(renderPlanToJson(extruded));
+    const auto& extrudedStyle = emittedExtruded.at("layers").at(0).at("style");
+    checkJson([&] { return extrudedStyle.at("extruded_text") == true; },
+              "extruded_text is written");
+    checkJson([&] { return extrudedStyle.at("extrusion_depth") == 18.0; },
+              "extrusion_depth is written");
 }
 
 void checkWriterFailClosed() {
@@ -380,6 +440,51 @@ void checkWriterFailClosed() {
     check(!renderPlanEmissionProblem(invalidText).empty(),
           "invalid text_caret width is reported");
 
+    invalidText = textPlan;
+    invalidText.layers[0].style->text_fit_mode = "shrink_only";
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "text_fit_mode is reported instead of dropped");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->min_font_size = 12.f;
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "font-size limits are reported instead of dropped");
+
+    invalidText = textPlan;
+    chronon3d::render_plan::StrokeStyle textStroke;
+    textStroke.color = "#FFFFFF";
+    textStroke.width = 2.f;
+    invalidText.layers[0].style->stroke = textStroke;
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "text stroke is reported instead of dropped");
+
+    invalidText = textPlan;
+    chronon3d::render_plan::ShadowStyle textShadow;
+    textShadow.color = "#000000";
+    textShadow.offset = {2.f, 2.f};
+    textShadow.offset_dimensions = 2;
+    invalidText.layers[0].style->shadow = textShadow;
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "text shadow is reported instead of dropped");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->backdrop =
+        chronon3d::render_plan::BackdropBlurStyle{};
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "text backdrop blur is reported instead of dropped");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->fill_gradient =
+        chronon3d::graphics::GradientDefinition{};
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "text fill gradient is reported instead of dropped");
+
+    invalidText = textPlan;
+    invalidText.layers[0].style->fill_pattern =
+        std::make_shared<chronon3d::graphics::PatternTile>();
+    check(!renderPlanEmissionProblem(invalidText).empty(),
+          "text fill pattern is reported instead of dropped");
+
     // Rig-to-mesh frame transport is covered in Motion authoring tests;
     // consumer pixel proof remains explicitly blocked in the bridge checklist.
 }
@@ -422,6 +527,10 @@ void checkConsumerRoundTrip() {
         const auto& decodedStyle = decodedText->layers[0].style;
         check(decodedStyle.has_value(), "text style survives the decode round trip");
         if (decodedStyle) {
+            check(decodedStyle->font == "bridge-font", "font path survives the decode round trip");
+            check(decodedStyle->font_size.has_value() && *decodedStyle->font_size == 48.f,
+                  "font_size survives the decode round trip");
+            check(decodedStyle->fill == "#FFFFFF", "fill survives the decode round trip");
             check(decodedStyle->font_family == "Inter", "font_family survives the decode round trip");
             check(decodedStyle->font_weight == 700, "font_weight survives the decode round trip");
             check(decodedStyle->font_style == "italic", "font_style survives the decode round trip");
@@ -436,9 +545,33 @@ void checkConsumerRoundTrip() {
                   "shadow_quality survives the decode round trip");
             check(decodedStyle->stroke_mode == "distance",
                   "stroke_mode survives the decode round trip");
+            check(decodedStyle->gel_surface, "gel_surface survives the decode round trip");
             check(decodedStyle->gel_core, "gel_core survives the decode round trip");
             check(decodedStyle->gel_debug_mode == 3,
                   "gel_debug_mode survives the decode round trip");
+            check(decodedStyle->gel_soft_fusion.has_value() &&
+                      *decodedStyle->gel_soft_fusion,
+                  "gel_soft_fusion survives the decode round trip");
+            check(!decodedStyle->gel_transmission_enabled,
+                  "gel_transmission survives the decode round trip");
+            check(decodedStyle->gel_material_profile == "reference_20261107",
+                  "gel_material_profile survives the decode round trip");
+            check(decodedStyle->gel_light_azimuth_radians.has_value() &&
+                      *decodedStyle->gel_light_azimuth_radians == 0.5f,
+                  "gel_light azimuth survives the decode round trip");
+            check(decodedStyle->gel_light_elevation.has_value() &&
+                      *decodedStyle->gel_light_elevation == 0.25f,
+                  "gel_light elevation survives the decode round trip");
+            check(decodedStyle->glow.has_value(),
+                  "glow survives the decode round trip");
+            if (decodedStyle->glow) {
+                check(decodedStyle->glow->radius == 18.f,
+                      "glow radius survives the decode round trip");
+                check(decodedStyle->glow->intensity == 0.6f,
+                      "glow intensity survives the decode round trip");
+                check(decodedStyle->glow->color == "#22CCFF",
+                      "glow color survives the decode round trip");
+            }
             check(decodedStyle->text_caret.has_value(), "text_caret survives the decode round trip");
             if (decodedStyle->text_caret) {
                 check(decodedStyle->text_caret->byte_index == 4,
@@ -451,6 +584,19 @@ void checkConsumerRoundTrip() {
                       "text_caret blink period survives the decode round trip");
             }
         }
+    }
+
+    const auto extrudedPlan = makeBridgeExtrudedTextPlan();
+    const auto extrudedJson = nlohmann::json::parse(renderPlanToJson(extrudedPlan));
+    check(validWithChronon3D(extrudedPlan),
+          "emitted extrusion document passes Chronon3D validation and decoding");
+    const auto decodedExtruded = chronon3d::render_plan::decode_render_plan(extrudedJson);
+    check(decodedExtruded.has_value(), "canonical decoder accepts the extrusion plan");
+    if (decodedExtruded.has_value() && decodedExtruded->layers[0].style) {
+        const auto& style = *decodedExtruded->layers[0].style;
+        check(style.extruded_text, "extruded_text survives the decode round trip");
+        check(style.extrusion_depth == 18.f,
+              "extrusion_depth survives the decode round trip");
     }
 }
 #endif
