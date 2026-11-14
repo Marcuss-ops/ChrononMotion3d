@@ -197,6 +197,21 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                         writer.key("scale"); writer.number(effect.lens_scale);
                         writer.key("center"); writeFloats(writer, effect.lens_center, effect.lens_center.size());
                         break;
+                    case LayerPlan::EffectKindPlan::RadialBlur:
+                        writer.key("type"); writer.token("radial_blur");
+                        writer.key("center"); writeFloats(writer, effect.radial_center, effect.radial_center.size());
+                        writer.key("amount"); writer.number(effect.radial_amount);
+                        writer.key("render_samples"); writer.integer(effect.radial_render_samples);
+                        writer.key("preview_samples"); writer.integer(effect.radial_preview_samples);
+                        break;
+                    case LayerPlan::EffectKindPlan::Halation:
+                        writer.key("type"); writer.token("halation");
+                        writer.key("threshold"); writer.number(effect.halation_threshold);
+                        writer.key("softness"); writer.number(effect.halation_softness);
+                        writer.key("radius_px"); writer.number(effect.halation_radius);
+                        writer.key("intensity"); writer.number(effect.halation_intensity);
+                        writer.key("tint"); writeFloats(writer, effect.halation_tint, effect.halation_tint.size());
+                        break;
                     default:
                         throw std::invalid_argument("writeEffects: effect was not validated");
                 }

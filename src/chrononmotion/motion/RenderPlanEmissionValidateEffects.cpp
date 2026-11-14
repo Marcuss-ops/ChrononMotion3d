@@ -168,6 +168,24 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                             !std::isfinite(effect.lens_center[0]) || !std::isfinite(effect.lens_center[1]))
                             return owner + " carries lens-distortion values outside supported ranges";
                         break;
+                    case LayerPlan::EffectKindPlan::RadialBlur:
+                        if (!std::isfinite(effect.radial_center[0]) || effect.radial_center[0] < 0.f || effect.radial_center[0] > 1.f ||
+                            !std::isfinite(effect.radial_center[1]) || effect.radial_center[1] < 0.f || effect.radial_center[1] > 1.f ||
+                            !std::isfinite(effect.radial_amount) || effect.radial_amount < 0.f || effect.radial_amount > 10.f ||
+                            effect.radial_render_samples < 2 || effect.radial_render_samples > 256 ||
+                            effect.radial_preview_samples < 2 || effect.radial_preview_samples > 128)
+                            return owner + " carries radial-blur values outside supported ranges";
+                        break;
+                    case LayerPlan::EffectKindPlan::Halation:
+                        if (!std::isfinite(effect.halation_threshold) || effect.halation_threshold < 0.f || effect.halation_threshold > 1.f ||
+                            !std::isfinite(effect.halation_softness) || effect.halation_softness < 0.f || effect.halation_softness > 1.f ||
+                            !std::isfinite(effect.halation_radius) || effect.halation_radius < 0.f || effect.halation_radius > 64.f ||
+                            !std::isfinite(effect.halation_intensity) || effect.halation_intensity < 0.f || effect.halation_intensity > 8.f ||
+                            std::any_of(effect.halation_tint.begin(), effect.halation_tint.end(), [](float v) {
+                                return !std::isfinite(v) || v < 0.f || v > 1.f;
+                            }))
+                            return owner + " carries halation values outside supported ranges";
+                        break;
                     default:
                         return owner + " carries an effect type this emitter does not write";
                 }
