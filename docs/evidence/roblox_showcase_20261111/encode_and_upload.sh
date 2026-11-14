@@ -3,7 +3,8 @@ set -euo pipefail
 
 HERE="/home/pierone/src/go-master/projects/Pyt/VeloxEditing/ChrononMotion3D/docs/evidence/roblox_showcase_20261111"
 UPLOAD_BIN="/home/pierone/src/go-master/projects/Pyt/VeloxEditing/RenderingGen/bin/drive-upload"
-FOLDER_ID="1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)/ops/lib/common.sh"
+FOLDER_ID="$VELOX_DRIVE_OVERLAY_ROOT"
 
 RAW_RGBA="$HERE/out/chronon_gyroscope_1080p.rgba"
 CLEAN_MP4="$HERE/out/10_chronon_procedural_gyroscope_clean_1080p.mp4"

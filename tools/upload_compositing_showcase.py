@@ -8,6 +8,13 @@ Drive folder is not duplicated for every file.
 
 from __future__ import annotations
 
+import sys as _velox_sys
+from pathlib import Path as _VeloxPath
+_velox_sys.path.insert(0, str(_VeloxPath(__file__).resolve().parents[2] / "tools"))
+from stack_config import credentials_file as _credentials_file  # noqa: E402
+from stack_config import overlay_root as _overlay_root  # noqa: E402
+from stack_config import token_file as _token_file  # noqa: E402
+
 import argparse
 import hashlib
 import json
@@ -18,10 +25,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 UPLOADER = REPO / "RenderingGen/bin/drive-upload"
-CREDENTIALS = Path("/home/pierone/.config/velox/credentials.json")
-TOKEN = Path("/home/pierone/.config/velox/token.json")
+CREDENTIALS = _credentials_file()
+TOKEN = _token_file()
 
-ROOT_FOLDER = "1J_xUGo_bchzXDIGqSX04CU44c_Dm3SxS"
+ROOT_FOLDER = _overlay_root()
 SUBFOLDER = "cm3d_compositing_20261110"
 SHOWCASE = REPO / "RenderingGen/Upload/cm3d_compositing_20261110"
 README = "README.txt"
