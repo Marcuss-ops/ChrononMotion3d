@@ -211,6 +211,41 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
                 writer.key("stroke_mode");
                 writer.text(style.stroke_mode);
             }
+            if (style.stroke) {
+                writer.key("stroke");
+                writer.beginObject();
+                writer.key("color");
+                writer.text(style.stroke->color);
+                if (style.stroke->width) {
+                    writer.key("width");
+                    writer.number(*style.stroke->width);
+                }
+                writer.endObject();
+            }
+            if (style.glow) {
+                writer.key("glow");
+                writer.beginObject();
+                writer.key("color");
+                writer.text(style.glow->color);
+                writer.key("radius");
+                writer.number(style.glow->radius);
+                writer.key("intensity");
+                writer.number(style.glow->intensity);
+                writer.endObject();
+            }
+            if (style.wear) {
+                writer.key("wear");
+                writer.beginObject();
+                writer.key("amount");
+                writer.number(style.wear->amount);
+                writer.key("scale");
+                writer.number(style.wear->scale);
+                writer.key("seed");
+                writer.unsignedInteger(style.wear->seed);
+                writer.key("softness");
+                writer.number(style.wear->softness);
+                writer.endObject();
+            }
             if (style.gel_surface) {
                 writer.key("gel_surface");
                 writer.boolean(true);

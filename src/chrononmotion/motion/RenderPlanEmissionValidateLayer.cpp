@@ -185,7 +185,26 @@ using chronon3d::render_plan::ShapePathCommandTypePlan;
             if (style.min_font_size || style.max_font_size) {
                 return owner + " carries an explicit font-size range, which this emitter does not write";
             }
-            if (style.stroke) return owner + " carries a text stroke, which this emitter does not write";
+            if (style.stroke) {
+                if (!chronon3d::render_plan::parse_hex_color(style.stroke->color))
+                    return owner + " has a text stroke color that is not representable as #RRGGBB";
+                if (style.stroke->width && (!std::isfinite(*style.stroke->width) ||
+                    *style.stroke->width < 0.f || *style.stroke->width > 64.f))
+                    return owner + " has a text stroke width outside [0, 64]";
+            }
+            if (style.glow) {
+                if (!chronon3d::render_plan::parse_hex_color(style.glow->color))
+                    return owner + " has a text glow color that is not representable as #RRGGBB";
+                if (!std::isfinite(style.glow->radius) || style.glow->radius < 0.f || style.glow->radius > 256.f ||
+                    !std::isfinite(style.glow->intensity) || style.glow->intensity < 0.f || style.glow->intensity > 4.f)
+                    return owner + " has text glow values outside supported ranges";
+            }
+            if (style.wear) {
+                if (!std::isfinite(style.wear->amount) || style.wear->amount < 0.f || style.wear->amount > 1.f ||
+                    !std::isfinite(style.wear->scale) || style.wear->scale <= 0.f || style.wear->scale > 128.f ||
+                    !std::isfinite(style.wear->softness) || style.wear->softness < 0.f || style.wear->softness > 1.f)
+                    return owner + " has text wear values outside supported ranges";
+            }
             if (style.shadow || !style.shadows.empty()) {
                 return owner + " carries a text shadow, which this emitter does not write";
             }
