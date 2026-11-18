@@ -134,16 +134,37 @@ namespace chrononmotion::motion {
                 writeFloats(writer, layer.rotation, rotation_dimensions);
             }
 
-            if (!layer.screen_space && !layer.transform_samples.empty()) {
+            // Screen-space layers keep canvas coordinates, but their resolved
+            // samples still carry opacity/scale animation (fades, pulse rings).
+            // Emit them only when they differ from the base pose and flatten
+            // the third axis, so a screen-pinned layer cannot opt back into
+            // camera projection just because it animates.
+            const bool screen_space_animated = layer.screen_space &&
+                std::any_of(layer.transform_samples.begin(), layer.transform_samples.end(),
+                            [&](const auto& sample) {
+                                return sample.opacity != layer.opacity ||
+                                       sample.position != layer.position ||
+                                       sample.scale != layer.scale;
+                            });
+            if ((!layer.screen_space || screen_space_animated) &&
+                !layer.transform_samples.empty()) {
                 writer.key("transform_samples");
                 writer.beginArray();
                 for (const auto& sample : layer.transform_samples) {
+                    std::array<float, 3> position = sample.position;
+                    std::array<float, 3> scale = sample.scale;
+                    std::array<float, 3> rotation = sample.rotation_deg;
+                    if (layer.screen_space) {
+                        position[2] = 0.f;
+                        scale[2] = 1.f;
+                        rotation = {0.f, 0.f, 0.f};
+                    }
                     writer.item();
                     writer.beginObject();
                     writer.key("frame"); writer.exactNumber(sample.frame);
-                    writer.key("position"); writeFloats(writer, sample.position, 3);
-                    writer.key("scale"); writeFloats(writer, sample.scale, 3);
-                    writer.key("rotation_deg"); writeFloats(writer, sample.rotation_deg, 3);
+                    writer.key("position"); writeFloats(writer, position, 3);
+                    writer.key("scale"); writeFloats(writer, scale, 3);
+                    writer.key("rotation_deg"); writeFloats(writer, rotation, 3);
                     writer.key("opacity"); writer.number(sample.opacity);
                     writer.endObject();
                 }
