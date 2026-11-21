@@ -34,3 +34,18 @@ CMakeFiles/
 # Python bytecode written by the local tooling scripts (2026-11-10).
 __pycache__/
 *.py[cod]
+
+# Purged from history 2026-11-21: generated renders, evidence media and raw
+# frame dumps stay local (or on Drive). History carries code and docs only.
+*.mp4
+*.mov
+*.webm
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.rgba
+*.ppm
+*.pgm
+*.mp3
+*.wav
