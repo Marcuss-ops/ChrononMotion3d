@@ -327,59 +327,70 @@ namespace chrononmotion::motion {
         // currently being resolved, so a link that reaches back into one already
         // in progress is caught as a cycle instead of recursing forever.
         std::vector<std::pair<Layer::Id, TrackChannel>> visiting;
+        visiting.reserve(order_.size() * 2);
         const LinkResolver resolve = linkResolver(visiting, false);
 
         using EvaluatedSpace = std::pair<Layer::Id, Matrix4>;
-        std::function<EvaluatedSpace(Layer::Id, float, std::vector<Layer::Id>&)> spaceAt;
-        std::function<Matrix4(Layer::Id, float, std::vector<Layer::Id>&)> worldAt;
-        spaceAt = [&](Layer::Id id, float atSeconds,
-                      std::vector<Layer::Id>& recursion) -> EvaluatedSpace {
-            const Layer* layer = findLayer(id);
-            if (!layer) throw std::invalid_argument("MotionScene::evaluate: space switch references an unknown layer");
-            Layer::Id parentId = layer->parentId;
-            Matrix4 offset;
-            float previousSwitchTime = -1.f;
-            for (const SpaceSwitchPoint& point : layer->spaceSwitches) {
-                if (!std::isfinite(point.seconds) || point.seconds < 0.f || point.seconds <= previousSwitchTime)
-                    throw std::invalid_argument("MotionScene::evaluate: space switches must have strictly sorted finite non-negative times");
-                previousSwitchTime = point.seconds;
-                if (point.seconds > atSeconds) break;
-                if (point.parentId == parentId) continue;
-                Matrix4 oldWorld;
-                if (parentId != Layer::kRoot)
-                    oldWorld = worldAt(parentId, point.seconds, recursion);
-                Matrix4 newWorld;
-                if (point.parentId != Layer::kRoot) {
-                    if (!findLayer(point.parentId))
-                        throw std::invalid_argument("MotionScene::evaluate: space switch references an unknown parent");
-                    newWorld = worldAt(point.parentId, point.seconds, recursion);
-                    if (std::fabs(newWorld.determinant()) < 1e-10f)
-                        throw std::invalid_argument("MotionScene::evaluate: space switch parent world matrix is singular");
-                    newWorld.invert();
-                }
-                Matrix4 handoff;
-                handoff.multiplyMatrices(newWorld, oldWorld);
-                offset.premultiply(handoff);
-                parentId = point.parentId;
-            }
-            return {parentId, offset};
-        };
-        worldAt = [&](Layer::Id id, float atSeconds,
-                      std::vector<Layer::Id>& recursion) -> Matrix4 {
-            if (std::find(recursion.begin(), recursion.end(), id) != recursion.end())
-                throw std::invalid_argument("MotionScene::evaluate: cyclic space-switch dependency");
-            recursion.push_back(id);
-            const Layer* layer = findLayer(id);
-            if (!layer) throw std::invalid_argument("MotionScene::evaluate: space switch references an unknown layer");
-            const EvaluatedSpace evaluated = spaceAt(id, atSeconds, recursion);
-            Matrix4 local = layer->sample(atSeconds, resolve).toMatrix();
-            local.premultiply(evaluated.second);
-            if (evaluated.first != Layer::kRoot)
-                local.premultiply(worldAt(evaluated.first, atSeconds, recursion));
-            recursion.pop_back();
-            return local;
-        };
+        // Resolve the space-switch chain without std::function: the previous
+        // lambda pair allocated two erased callables per pose. This local type
+        // keeps the same mutual recursion and exception contract on the stack.
+        struct SpaceResolver {
+            MotionScene& scene;
+            const LinkResolver& resolve;
 
+            EvaluatedSpace spaceAt(Layer::Id id, float atSeconds,
+                                   std::vector<Layer::Id>& recursion) {
+                const Layer* layer = scene.findLayer(id);
+                if (!layer) throw std::invalid_argument("MotionScene::evaluate: space switch references an unknown layer");
+                Layer::Id parentId = layer->parentId;
+                Matrix4 offset;
+                float previousSwitchTime = -1.f;
+                for (const SpaceSwitchPoint& point : layer->spaceSwitches) {
+                    if (!std::isfinite(point.seconds) || point.seconds < 0.f || point.seconds <= previousSwitchTime)
+                        throw std::invalid_argument("MotionScene::evaluate: space switches must have strictly sorted finite non-negative times");
+                    previousSwitchTime = point.seconds;
+                    if (point.seconds > atSeconds) break;
+                    if (point.parentId == parentId) continue;
+                    Matrix4 oldWorld;
+                    if (parentId != Layer::kRoot)
+                        oldWorld = worldAt(parentId, point.seconds, recursion);
+                    Matrix4 newWorld;
+                    if (point.parentId != Layer::kRoot) {
+                        if (!scene.findLayer(point.parentId))
+                            throw std::invalid_argument("MotionScene::evaluate: space switch references an unknown parent");
+                        newWorld = worldAt(point.parentId, point.seconds, recursion);
+                        if (std::fabs(newWorld.determinant()) < 1e-10f)
+                            throw std::invalid_argument("MotionScene::evaluate: space switch parent world matrix is singular");
+                        newWorld.invert();
+                    }
+                    Matrix4 handoff;
+                    handoff.multiplyMatrices(newWorld, oldWorld);
+                    offset.premultiply(handoff);
+                    parentId = point.parentId;
+                }
+                return {parentId, offset};
+            }
+
+            Matrix4 worldAt(Layer::Id id, float atSeconds,
+                            std::vector<Layer::Id>& recursion) {
+                if (std::find(recursion.begin(), recursion.end(), id) != recursion.end())
+                    throw std::invalid_argument("MotionScene::evaluate: cyclic space-switch dependency");
+                recursion.push_back(id);
+                const Layer* layer = scene.findLayer(id);
+                if (!layer) throw std::invalid_argument("MotionScene::evaluate: space switch references an unknown layer");
+                const EvaluatedSpace evaluated = spaceAt(id, atSeconds, recursion);
+                Matrix4 local = layer->sample(atSeconds, resolve).toMatrix();
+                local.premultiply(evaluated.second);
+                if (evaluated.first != Layer::kRoot)
+                    local.premultiply(worldAt(evaluated.first, atSeconds, recursion));
+                recursion.pop_back();
+                return local;
+            }
+        };
+        SpaceResolver spaceResolver{*this, resolve};
+
+        std::vector<Layer::Id> visitingSpaces;
+        visitingSpaces.reserve(order_.size());
         for (std::size_t position = 0; position < order_.size(); ++position) {
             const std::size_t index = order_[position];
 
@@ -393,8 +404,8 @@ namespace chrononmotion::motion {
             const float layerSeconds =
                     layers_[index].mapFrame(exactFrame, sceneSeconds, resolve) / time.fps;
             layers_[index].sample(layerSeconds, state.local, resolve);
-            std::vector<Layer::Id> visitingSpaces;
-            const EvaluatedSpace activeSpace = spaceAt(layers_[index].id, layerSeconds, visitingSpaces);
+            visitingSpaces.clear();
+            const EvaluatedSpace activeSpace = spaceResolver.spaceAt(layers_[index].id, layerSeconds, visitingSpaces);
             const Layer::Id activeParentId = activeSpace.first;
             const Matrix4 localOffset = activeSpace.second;
 
