@@ -325,10 +325,13 @@ namespace chrononmotion::motion {
 
         // One resolver for the whole pass: `visiting` is the stack of channels
         // currently being resolved, so a link that reaches back into one already
-        // in progress is caught as a cycle instead of recursing forever.
-        std::vector<std::pair<Layer::Id, TrackChannel>> visiting;
-        visiting.reserve(order_.size() * 2);
-        const LinkResolver resolve = linkResolver(visiting, false);
+        // in progress is caught as a cycle instead of recursing forever. The
+        // stack is scene-owned scratch: evaluate() runs this pass twice per
+        // frame, so a local vector would allocate on every pose.
+        evaluationVisiting_.clear();
+        if (evaluationVisiting_.capacity() < order_.size() * 2)
+            evaluationVisiting_.reserve(order_.size() * 2);
+        const LinkResolver resolve = linkResolver(evaluationVisiting_, false);
 
         using EvaluatedSpace = std::pair<Layer::Id, Matrix4>;
         // Resolve the space-switch chain without std::function: the previous
@@ -389,8 +392,10 @@ namespace chrononmotion::motion {
         };
         SpaceResolver spaceResolver{*this, resolve};
 
-        std::vector<Layer::Id> visitingSpaces;
-        visitingSpaces.reserve(order_.size());
+        evaluationVisitingSpaces_.clear();
+        if (evaluationVisitingSpaces_.capacity() < order_.size())
+            evaluationVisitingSpaces_.reserve(order_.size());
+        std::vector<Layer::Id>& visitingSpaces = evaluationVisitingSpaces_;
         for (std::size_t position = 0; position < order_.size(); ++position) {
             const std::size_t index = order_[position];
 

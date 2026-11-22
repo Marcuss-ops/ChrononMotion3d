@@ -368,6 +368,13 @@ namespace chrononmotion::motion {
         mutable std::vector<std::vector<Layer::Id>> orderSwitchParentIds_{};
         mutable bool orderDirty_{true};
         mutable bool orderValid_{false};
+
+        // Per-pose scratch. `evaluate()` runs evaluatePose() twice per frame
+        // (frame-1 and frame); these buffers keep the capacity between passes
+        // so the hot path stops allocating a visiting stack and a space-switch
+        // stack for every pose. Evaluation is single-threaded per scene.
+        std::vector<std::pair<Layer::Id, TrackChannel>> evaluationVisiting_{};
+        std::vector<Layer::Id> evaluationVisitingSpaces_{};
     };
 
 }// namespace chrononmotion::motion
